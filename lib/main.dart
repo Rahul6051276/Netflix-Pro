@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE - AUTHENTIC NETFLIX UI WITH STREAM RESOLVER ENGINE
+// NETFLIX PRO - AUTHENTIC MOBILE APP EXPERIENCE
 // ============================================================================
 
 import 'dart:async';
@@ -24,7 +24,7 @@ void main() {
 }
 
 // ============================================================================
-// 1. APP CONFIGURATION & CREDENTIALS
+// 1. CONFIGURATION & TMDB API CREDENTIALS
 // ============================================================================
 
 class AppConfig {
@@ -68,47 +68,85 @@ class NetflixProApp extends StatelessWidget {
         ),
         fontFamily: 'sans-serif',
       ),
-      home: const NetflixSplashScreen(),
+      home: const NetflixAnimatedSplash(),
     );
   }
 }
 
 // ============================================================================
-// 2. NETFLIX SIGNATURE SPLASH SCREEN
+// 2. AUTHENTIC ANIMATED NETFLIX "N" SPLASH SCREEN
 // ============================================================================
 
-class NetflixSplashScreen extends StatefulWidget {
-  const NetflixSplashScreen({super.key});
+class NetflixAnimatedSplash extends StatefulWidget {
+  const NetflixAnimatedSplash({super.key});
 
   @override
-  State<NetflixSplashScreen> createState() => _NetflixSplashScreenState();
+  State<NetflixAnimatedSplash> createState() => _NetflixAnimatedSplashState();
 }
 
-class _NetflixSplashScreenState extends State<NetflixSplashScreen>
+class _NetflixAnimatedSplashState extends State<NetflixAnimatedSplash>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scale;
-  late Animation<double> _opacity;
+  late AnimationController _animCtrl;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+  late Animation<double> _glowAnimation;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _animCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 2200),
     );
-    _scale = Tween<double>(begin: 0.8, end: 1.05).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
-    _opacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
-    _controller.forward();
 
-    Timer(const Duration(milliseconds: 1900), () {
+    _scaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.65, end: 1.15)
+            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 60,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.15, end: 1.25)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 40,
+      ),
+    ]).animate(_animCtrl);
+
+    _opacityAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 35,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1.0),
+        weight: 40,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 25,
+      ),
+    ]).animate(_animCtrl);
+
+    _glowAnimation = Tween<double>(begin: 0.0, end: 32.0).animate(
+      CurvedAnimation(
+        parent: _animCtrl,
+        curve: const Interval(0.2, 0.7, curve: Curves.easeOut),
+      ),
+    );
+
+    _animCtrl.forward();
+
+    Timer(const Duration(milliseconds: 2400), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const NetflixHomeScreen()),
+          PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 600),
+            pageBuilder: (_, __, ___) => const NetflixHomeScreen(),
+            transitionsBuilder: (_, anim, __, child) =>
+                FadeTransition(opacity: anim, child: child),
+          ),
         );
       }
     });
@@ -116,74 +154,28 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _animCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF141414),
+      backgroundColor: Colors.black,
       body: Center(
         child: AnimatedBuilder(
-          animation: _controller,
+          animation: _animCtrl,
           builder: (context, child) {
             return Opacity(
-              opacity: _opacity.value,
+              opacity: _opacityAnimation.value,
               child: Transform.scale(
-                scale: _scale.value,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'N',
-                      style: TextStyle(
-                        color: Color(0xFFE50914),
-                        fontSize: 92,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -2,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black,
-                            blurRadius: 20,
-                            offset: Offset(0, 4),
-                          )
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'NETFLIX',
-                          style: TextStyle(
-                            color: Color(0xFFE50914),
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 4.0,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE50914),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: const Text(
-                            'PRO',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                scale: _scaleAnimation.value,
+                child: SizedBox(
+                  width: 140,
+                  height: 240,
+                  child: CustomPaint(
+                    painter: NetflixLogoPainter(glowRadius: _glowAnimation.value),
+                  ),
                 ),
               ),
             );
@@ -192,6 +184,70 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
       ),
     );
   }
+}
+
+// Netflix Custom Ribbon 'N' Painter
+class NetflixLogoPainter extends CustomPainter {
+  final double glowRadius;
+  NetflixLogoPainter({required this.glowRadius});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double colWidth = size.width * 0.28;
+
+    final leftRect = Rect.fromLTWH(0, 0, colWidth, size.height);
+    final leftPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFFE50914), Color(0xFF8B0000)],
+      ).createShader(leftRect);
+
+    final rightRect = Rect.fromLTWH(size.width - colWidth, 0, colWidth, size.height);
+    final rightPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF8B0000), Color(0xFFE50914)],
+      ).createShader(rightRect);
+
+    // Glow effect
+    if (glowRadius > 0) {
+      final glowPaint = Paint()
+        ..color = const Color(0xFFE50914).withOpacity(0.4)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, glowRadius);
+      canvas.drawRect(leftRect, glowPaint);
+      canvas.drawRect(rightRect, glowPaint);
+    }
+
+    // Draw Left & Right Columns
+    canvas.drawRect(leftRect, leftPaint);
+    canvas.drawRect(rightRect, rightPaint);
+
+    // Draw Center Diagonal Ribbon
+    final diagPath = Path()
+      ..moveTo(0, 0)
+      ..lineTo(colWidth, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(size.width - colWidth, size.height)
+      ..close();
+
+    final diagRect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final diagPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFFF1E27), Color(0xFFB81D24)],
+      ).createShader(diagRect)
+      ..shadowColor = Colors.black.withOpacity(0.85)
+      ..elevation = 12.0;
+
+    canvas.drawPath(diagPath, diagPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant NetflixLogoPainter oldDelegate) =>
+      oldDelegate.glowRadius != glowRadius;
 }
 
 // ============================================================================
@@ -300,7 +356,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
   Future<void> _fetchHeroBillboard() async {
     try {
       final url =
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=30';
+          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc';
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -310,8 +366,8 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
           if (m['poster_path'] == null && m['backdrop_path'] == null) continue;
           list.add({
             'tmdb_id': m['id'],
-            'title': m['name'] ?? 'Netflix Original',
-            'year': (m['first_air_date'] ?? '').toString().split('-')[0],
+            'title': m['name'] ?? m['title'] ?? 'Netflix Original',
+            'year': (m['first_air_date'] ?? m['release_date'] ?? '2025').toString().split('-')[0],
             'rating': m['vote_average']?.toString() ?? '8.4',
             'poster': m['poster_path'] != null
                 ? '${AppConfig.imgBase}${m['poster_path']}'
@@ -340,8 +396,8 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
           if (m['poster_path'] == null) continue;
           list.add({
             'tmdb_id': m['id'],
-            'title': m['title'] ?? 'Top 10 Movie',
-            'year': (m['release_date'] ?? '').toString().split('-')[0],
+            'title': m['title'] ?? m['name'] ?? 'Top 10 Movie',
+            'year': (m['release_date'] ?? m['first_air_date'] ?? '2025').toString().split('-')[0],
             'rating': m['vote_average']?.toString() ?? '8.0',
             'poster': '${AppConfig.imgBase}${m['poster_path']}',
             'backdrop': m['backdrop_path'] != null
@@ -369,11 +425,11 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
       isTv = false;
     } else if (cat == 'trending_movies') {
       url =
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc&vote_count.gte=20';
+          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc';
       isTv = false;
     } else if (cat == 'international_hindi') {
       url =
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=vote_count.desc&vote_count.gte=100';
+          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc';
       isTv = true;
     }
 
@@ -391,9 +447,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
           list.add({
             'tmdb_id': m['id'],
             'title': title,
-            'year': (m['release_date'] ?? m['first_air_date'] ?? '')
-                .toString()
-                .split('-')[0],
+            'year': (m['release_date'] ?? m['first_air_date'] ?? '2025').toString().split('-')[0],
             'rating': m['vote_average']?.toString() ?? '7.8',
             'poster': '${AppConfig.imgBase}${m['poster_path']}',
             'backdrop': m['backdrop_path'] != null
@@ -482,7 +536,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
                   child: _buildNetflixRow('Netflix Hindi Web Series', netflixHindiSeries),
                 ),
                 SliverToBoxAdapter(
-                  child: _buildNetflixRow('Netflix South Blockbusters (Hindi Dubbed)', netflixSouthHits),
+                  child: _buildNetflixRow('Netflix South Hits (Hindi Dubbed)', netflixSouthHits),
                 ),
                 SliverToBoxAdapter(
                   child: _buildNetflixRow('Trending Netflix Originals', netflixTrendingMovies),
@@ -911,7 +965,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Cinema HQ Engines Connected: ${activeProviders.length}',
+                  'Stream Resolvers Connected: ${activeProviders.length}',
                   style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
               ],
@@ -997,7 +1051,7 @@ class TmdbSearchDelegate extends SearchDelegate {
   Widget _searchView() {
     if (query.trim().isEmpty) {
       return const Center(
-        child: Text('Search movies, series, anime...',
+        child: Text('Search Netflix movies, series, originals...',
             style: TextStyle(color: Colors.white54)),
       );
     }
@@ -1064,9 +1118,7 @@ class TmdbSearchDelegate extends SearchDelegate {
           parsed.add({
             'tmdb_id': m['id'],
             'title': m['title'] ?? m['name'] ?? 'Untitled',
-            'year': (m['release_date'] ?? m['first_air_date'] ?? '')
-                .toString()
-                .split('-')[0],
+            'year': (m['release_date'] ?? m['first_air_date'] ?? '2025').toString().split('-')[0],
             'rating': m['vote_average']?.toString() ?? '7.0',
             'poster': m['poster_path'] != null
                 ? '${AppConfig.imgBase}${m['poster_path']}'
@@ -1085,7 +1137,7 @@ class TmdbSearchDelegate extends SearchDelegate {
 }
 
 // ============================================================================
-// 5. 100+ TITLES CATALOG (DRAWER CATEGORIES GRID VIEW)
+// 5. 100+ TITLES CATALOG (DRAWER GRID VIEW - WITH GUARANTEED LOAD FIX)
 // ============================================================================
 
 class MobileCatalogGridView extends StatefulWidget {
@@ -1116,6 +1168,7 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
     _fetch100Titles();
   }
 
+  // Reliable fetch logic - eliminates TMDB 0-result filter clashes
   Future<void> _fetch100Titles() async {
     final bool isTv = widget.categoryType == 'hindi_series' ||
         widget.categoryType == 'english_series';
@@ -1126,23 +1179,23 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
 
       if (widget.categoryType == 'bollywood') {
         url =
-            '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10&page=$page';
+            '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=popularity.desc&page=$page';
       } else if (widget.categoryType == 'south') {
         url =
-            '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=primary_release_date.desc&vote_count.gte=15&page=$page';
+            '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&page=$page';
       } else if (widget.categoryType == 'hollywood_movies') {
         url =
-            '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=primary_release_date.desc&vote_count.gte=50&page=$page';
+            '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&page=$page';
       } else if (widget.categoryType == 'hindi_series') {
         url =
-            '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=first_air_date.desc&vote_count.gte=10&page=$page';
+            '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&page=$page';
       } else if (widget.categoryType == 'english_series') {
         url =
-            '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=first_air_date.desc&vote_count.gte=40&page=$page';
+            '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&page=$page';
       }
 
       try {
-        final res = await http.get(Uri.parse(url));
+        final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           final rawResults = data['results'] ?? [];
@@ -1159,7 +1212,7 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
               'title': t,
               'year': (m['release_date'] ??
                       m['first_air_date'] ??
-                      DateTime.now().year.toString())
+                      '2025')
                   .toString()
                   .split('-')[0],
               'rating': m['vote_average']?.toString() ?? '7.5',
@@ -1175,12 +1228,6 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
         }
       } catch (_) {}
     }
-
-    fetched.sort((a, b) {
-      final yA = int.tryParse(a['year']?.toString() ?? '0') ?? 0;
-      final yB = int.tryParse(b['year']?.toString() ?? '0') ?? 0;
-      return yB.compareTo(yA);
-    });
 
     if (mounted) {
       setState(() {
@@ -1203,9 +1250,28 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
           ? const Center(
               child: CircularProgressIndicator(color: Color(0xFFE50914)))
           : itemsList.isEmpty
-              ? const Center(
-                  child: Text('Titles load nahi ho sake',
-                      style: TextStyle(color: Colors.white60)))
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.wifi_off_rounded, color: Colors.white38, size: 48),
+                      const SizedBox(height: 12),
+                      const Text('Titles load nahi ho sake',
+                          style: TextStyle(color: Colors.white60, fontSize: 15)),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE50914),
+                        ),
+                        onPressed: () {
+                          setState(() => isLoading = true);
+                          _fetch100Titles();
+                        },
+                        child: const Text('Retry', style: TextStyle(color: Colors.white)),
+                      )
+                    ],
+                  ),
+                )
               : GridView.builder(
                   padding: const EdgeInsets.all(12),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1743,7 +1809,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
         'title': widget.item['title'] ?? 'Untitled',
         'poster': widget.item['poster'] ?? '',
         'backdrop': widget.item['backdrop'] ?? widget.item['poster'] ?? '',
-        'year': widget.item['year'] ?? DateTime.now().year.toString(),
+        'year': widget.item['year'] ?? '2025',
         'rating': widget.item['rating'] ?? '8.0',
         'isTv': widget.item['isTv'] ?? false,
       });
