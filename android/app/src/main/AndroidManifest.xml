@@ -1,7 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.netflixpro.netflix_pro">
 
-    <!-- Internet Permission for TMDB and Streaming -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
@@ -11,7 +10,7 @@
         android:icon="@mipmap/ic_launcher">
         
         <activity
-            android:name="io.flutter.embedding.android.FlutterActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
@@ -25,7 +24,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Android v2 embedding marker -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
