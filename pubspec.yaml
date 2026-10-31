@@ -1,0 +1,32 @@
+name: netflix_pro
+description: "Netflix Pro streaming and catalog app built with Flutter."
+publish_to: 'none' # प्राइवेट प्रोजेक्ट के लिए
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Icons
+  cupertino_icons: ^1.0.6
+
+  # API Calls (TMDB और JSON Providers के लिए)
+  http: ^1.2.0
+
+  # Continue Watching / Local Storage
+  shared_preferences: ^2.2.2
+
+  # External Players / Intents
+  android_intent_plus: ^5.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
