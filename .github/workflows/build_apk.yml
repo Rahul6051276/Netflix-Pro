@@ -1,7 +1,10 @@
-name: Build Netflix Pro APK
+name: Build and Release Netflix Pro APK
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -11,26 +14,55 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Flutter
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.22.2'
           channel: 'stable'
+          cache: true
 
-      - name: Install Dependencies
-        run: flutter pub get
+      - name: Setup & Build Netflix Pro App
+        run: |
+          # 1. फ्रेश प्रोजेक्ट बनाएगा (लेटेस्ट Android v2 embedding के साथ)
+          flutter create --org com.netflixpro --project-name netflix_pro temp_build
+          
+          # 2. आपकी lib और pubspec.yaml फ़ाइलें कॉपी करेगा
+          cp -r lib temp_build/
+          cp pubspec.yaml temp_build/pubspec.yaml
+          
+          # 3. ऐप का नाम 'Netflix Pro' सेट करेगा
+          sed -i 's/android:label="[^"]*"/android:label="Netflix Pro"/' temp_build/android/app/src/main/AndroidManifest.xml
+          
+          # 4. इंटरनेट और वीडियो स्ट्रीमिंग परमिशन जोड़ेगा
+          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET" />' temp_build/android/app/src/main/AndroidManifest.xml
+          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' temp_build/android/app/src/main/AndroidManifest.xml
+          
+          # 5. APK बिल्ड शुरू
+          cd temp_build
+          flutter pub get
+          flutter build apk --release
 
-      - name: Build APK
-        run: flutter build apk --release
+      - name: Prepare APK for Release
+        run: |
+          mkdir -p release_apks
+          cp temp_build/build/app/outputs/flutter-apk/app-release.apk release_apks/Netflix-Pro.apk
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: Netflix-Pro-Release-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          tag_name: v1.0.0
+          name: Netflix Pro v1.0.0
+          body: |
+            ## Netflix Pro Mobile Release
+            * Pure Netflix UI & Dark Theme
+            * TMDB Movies & Series Integration
+          files: |
+            release_apks/Netflix-Pro.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
