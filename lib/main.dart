@@ -1,3 +1,7 @@
+// ============================================================================
+// NETFLIX PRO MOBILE - AUTHENTIC NETFLIX UI WITH STREAM RESOLVER ENGINE
+// ============================================================================
+
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -6,10 +10,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:video_player/video_player.dart';
-
-// ============================================================================
-// 1. APP ENTRY POINT & NETFLIX THEME CONFIGURATION
-// ============================================================================
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,34 +23,8 @@ void main() {
   runApp(const NetflixProApp());
 }
 
-class NetflixProApp extends StatelessWidget {
-  const NetflixProApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Netflix Pro',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF141414),
-        primaryColor: const Color(0xFFE50914),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFE50914),
-          surface: Color(0xFF181818),
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF141414),
-          elevation: 0,
-        ),
-      ),
-      home: const NetflixHomeScreen(),
-    );
-  }
-}
-
 // ============================================================================
-// 2. CONFIGURATION & TMDB CREDENTIALS
+// 1. APP CONFIGURATION & CREDENTIALS
 // ============================================================================
 
 class AppConfig {
@@ -76,8 +50,152 @@ bool isDailySoapTitle(String title) {
   return blockList.any((b) => t.contains(b));
 }
 
+class NetflixProApp extends StatelessWidget {
+  const NetflixProApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Netflix Pro',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF141414),
+        primaryColor: const Color(0xFFE50914),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFFE50914),
+          surface: Color(0xFF181818),
+        ),
+        fontFamily: 'sans-serif',
+      ),
+      home: const NetflixSplashScreen(),
+    );
+  }
+}
+
 // ============================================================================
-// 3. NETFLIX PRO HOME SCREEN (BILLBOARD HERO & RED THEME)
+// 2. NETFLIX SIGNATURE SPLASH SCREEN
+// ============================================================================
+
+class NetflixSplashScreen extends StatefulWidget {
+  const NetflixSplashScreen({super.key});
+
+  @override
+  State<NetflixSplashScreen> createState() => _NetflixSplashScreenState();
+}
+
+class _NetflixSplashScreenState extends State<NetflixSplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scale;
+  late Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    _scale = Tween<double>(begin: 0.8, end: 1.05).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+    _opacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
+    _controller.forward();
+
+    Timer(const Duration(milliseconds: 1900), () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const NetflixHomeScreen()),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF141414),
+      body: Center(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Opacity(
+              opacity: _opacity.value,
+              child: Transform.scale(
+                scale: _scale.value,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'N',
+                      style: TextStyle(
+                        color: Color(0xFFE50914),
+                        fontSize: 92,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -2,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black,
+                            blurRadius: 20,
+                            offset: Offset(0, 4),
+                          )
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'NETFLIX',
+                          style: TextStyle(
+                            color: Color(0xFFE50914),
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 4.0,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE50914),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: const Text(
+                            'PRO',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 3. NETFLIX HOMEPAGE (100% NETFLIX CONTENT FEED & BILLBOARD)
 // ============================================================================
 
 class NetflixHomeScreen extends StatefulWidget {
@@ -98,18 +216,18 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
   final PageController _heroController = PageController();
   Timer? _heroTimer;
 
-  var onlyOnNetflix = [];
-  var trendingBollywood = [];
-  var popularHindiSeries = [];
-  var hollywoodHits = [];
-  var southSpecial = [];
+  var top10India = [];
+  var netflixHindiSeries = [];
+  var netflixSouthHits = [];
+  var netflixTrendingMovies = [];
+  var netflixInternationalHindi = [];
 
   bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadAllContent();
+    _loadAllNetflixData();
   }
 
   @override
@@ -135,16 +253,16 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
     }
   }
 
-  Future<void> _loadAllContent() async {
+  Future<void> _loadAllNetflixData() async {
     await Future.wait([
       _fetchProviders(),
       _loadContinueWatching(),
-      _fetchHeroTitles(),
-      _fetchRowCategory('only_netflix', (list) => onlyOnNetflix = list),
-      _fetchRowCategory('bollywood', (list) => trendingBollywood = list),
-      _fetchRowCategory('hindi_series', (list) => popularHindiSeries = list),
-      _fetchRowCategory('hollywood', (list) => hollywoodHits = list),
-      _fetchRowCategory('south', (list) => southSpecial = list),
+      _fetchHeroBillboard(),
+      _fetchTop10India(),
+      _fetchNetflixCategory('hindi_series', (list) => netflixHindiSeries = list),
+      _fetchNetflixCategory('south_hits', (list) => netflixSouthHits = list),
+      _fetchNetflixCategory('trending_movies', (list) => netflixTrendingMovies = list),
+      _fetchNetflixCategory('international_hindi', (list) => netflixInternationalHindi = list),
     ]);
 
     if (mounted) {
@@ -179,31 +297,29 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _fetchHeroTitles() async {
+  Future<void> _fetchHeroBillboard() async {
     try {
       final url =
-          '${AppConfig.tmdbBase}/trending/all/week?api_key=${AppConfig.tmdbKey}';
+          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=30';
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final results = data['results'] as List? ?? [];
         var list = [];
         for (var m in results.take(6)) {
-          if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
+          if (m['poster_path'] == null && m['backdrop_path'] == null) continue;
           list.add({
             'tmdb_id': m['id'],
-            'title': m['title'] ?? m['name'] ?? 'Netflix Original',
-            'year': (m['release_date'] ?? m['first_air_date'] ?? '')
-                .toString()
-                .split('-')[0],
-            'rating': m['vote_average']?.toString() ?? '8.2',
+            'title': m['name'] ?? 'Netflix Original',
+            'year': (m['first_air_date'] ?? '').toString().split('-')[0],
+            'rating': m['vote_average']?.toString() ?? '8.4',
             'poster': m['poster_path'] != null
                 ? '${AppConfig.imgBase}${m['poster_path']}'
                 : '${AppConfig.backdropBase}${m['backdrop_path']}',
             'backdrop': m['backdrop_path'] != null
                 ? '${AppConfig.backdropBase}${m['backdrop_path']}'
                 : '${AppConfig.imgBase}${m['poster_path']}',
-            'isTv': m['media_type'] == 'tv',
+            'isTv': true,
           });
         }
         heroItems = list;
@@ -211,27 +327,54 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _fetchRowCategory(String cat, Function(List) onDone) async {
+  Future<void> _fetchTop10India() async {
+    try {
+      final url =
+          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc';
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final results = data['results'] as List? ?? [];
+        var list = [];
+        for (var m in results.take(10)) {
+          if (m['poster_path'] == null) continue;
+          list.add({
+            'tmdb_id': m['id'],
+            'title': m['title'] ?? 'Top 10 Movie',
+            'year': (m['release_date'] ?? '').toString().split('-')[0],
+            'rating': m['vote_average']?.toString() ?? '8.0',
+            'poster': '${AppConfig.imgBase}${m['poster_path']}',
+            'backdrop': m['backdrop_path'] != null
+                ? '${AppConfig.backdropBase}${m['backdrop_path']}'
+                : '${AppConfig.imgBase}${m['poster_path']}',
+            'isTv': false,
+          });
+        }
+        top10India = list;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fetchNetflixCategory(String cat, Function(List) onDone) async {
     String url = '';
     bool isTv = false;
 
-    if (cat == 'only_netflix') {
+    if (cat == 'hindi_series') {
       url =
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc';
+          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&with_original_language=hi&sort_by=popularity.desc';
       isTv = true;
-    } else if (cat == 'bollywood') {
+    } else if (cat == 'south_hits') {
       url =
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10';
-    } else if (cat == 'hindi_series') {
+          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc';
+      isTv = false;
+    } else if (cat == 'trending_movies') {
       url =
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=first_air_date.desc&vote_count.gte=10';
+          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc&vote_count.gte=20';
+      isTv = false;
+    } else if (cat == 'international_hindi') {
+      url =
+          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=vote_count.desc&vote_count.gte=100';
       isTv = true;
-    } else if (cat == 'hollywood') {
-      url =
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc';
-    } else if (cat == 'south') {
-      url =
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&vote_count.gte=20';
     }
 
     try {
@@ -251,7 +394,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
             'year': (m['release_date'] ?? m['first_air_date'] ?? '')
                 .toString()
                 .split('-')[0],
-            'rating': m['vote_average']?.toString() ?? '7.5',
+            'rating': m['vote_average']?.toString() ?? '7.8',
             'poster': '${AppConfig.imgBase}${m['poster_path']}',
             'backdrop': m['backdrop_path'] != null
                 ? '${AppConfig.backdropBase}${m['backdrop_path']}'
@@ -318,7 +461,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      drawer: _buildNetflixDrawer(),
+      drawer: _buildNetflixAppDrawer(),
       body: isLoading
           ? const Center(
               child: CircularProgressIndicator(color: Color(0xFFE50914)),
@@ -329,24 +472,25 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
                 SliverToBoxAdapter(child: _buildNetflixHeroBillboard()),
                 if (continueWatchingList.isNotEmpty)
                   SliverToBoxAdapter(
-                    child: _buildNetflixRow('Continue Watching', continueWatchingList),
+                    child: _buildContinueWatchingRow(continueWatchingList),
+                  ),
+                if (top10India.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: _buildTop10Row(top10India),
                   ),
                 SliverToBoxAdapter(
-                  child: _buildNetflixRow('Only on Netflix', onlyOnNetflix),
+                  child: _buildNetflixRow('Netflix Hindi Web Series', netflixHindiSeries),
                 ),
                 SliverToBoxAdapter(
-                  child: _buildNetflixRow('Trending Bollywood', trendingBollywood),
+                  child: _buildNetflixRow('Netflix South Blockbusters (Hindi Dubbed)', netflixSouthHits),
                 ),
                 SliverToBoxAdapter(
-                  child: _buildNetflixRow('Popular Hindi Series', popularHindiSeries),
+                  child: _buildNetflixRow('Trending Netflix Originals', netflixTrendingMovies),
                 ),
                 SliverToBoxAdapter(
-                  child: _buildNetflixRow('Hollywood Hits', hollywoodHits),
+                  child: _buildNetflixRow('Netflix International Hits (Hindi Dubbed)', netflixInternationalHindi),
                 ),
-                SliverToBoxAdapter(
-                  child: _buildNetflixRow('South Action Blockbusters', southSpecial),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                const SliverToBoxAdapter(child: SizedBox(height: 35)),
               ],
             ),
     );
@@ -364,12 +508,21 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
       title: Row(
         children: [
           const Text(
+            'N',
+            style: TextStyle(
+              color: Color(0xFFE50914),
+              fontWeight: FontWeight.w900,
+              fontSize: 26,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Text(
             'NETFLIX',
             style: TextStyle(
               color: Color(0xFFE50914),
               fontWeight: FontWeight.w900,
-              fontSize: 22,
-              letterSpacing: 2.0,
+              fontSize: 18,
+              letterSpacing: 2.2,
             ),
           ),
           const SizedBox(width: 6),
@@ -383,7 +536,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
               'PRO',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -443,12 +596,42 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
                     ),
                   ),
                   Positioned(
-                    bottom: 16,
+                    bottom: 14,
                     left: 20,
                     right: 20,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE50914),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                              child: const Text(
+                                'TOP 10',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              '#1 in Series Today',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
                         Text(
                           item['title'],
                           textAlign: TextAlign.center,
@@ -466,44 +649,184 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '${item['year']} • ${item['isTv'] ? "Series" : "Movie"} • ⭐ ${item['rating']}',
+                          '${item['year']} • Netflix Original • ⭐ ${item['rating']}',
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            ElevatedButton.icon(
-                              onPressed: () => _onItemTapped(item),
-                              icon: const Icon(Icons.play_arrow,
-                                  color: Colors.black, size: 28),
-                              label: const Text(
-                                'Play',
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 32, vertical: 8),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ),
+                        const SizedBox(height: 14),
+                        ElevatedButton.icon(
+                          onPressed: () => _onItemTapped(item),
+                          icon: const Icon(Icons.play_arrow, color: Colors.black, size: 28),
+                          label: const Text(
+                            'Play',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
                             ),
-                          ],
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 36, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTop10Row(List items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
+          child: Text(
+            'Top 10 in India Today',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 170,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            itemCount: items.length,
+            itemBuilder: (ctx, idx) {
+              final item = items[idx];
+              final rank = idx + 1;
+              return GestureDetector(
+                onTap: () => _onItemTapped(item),
+                child: Container(
+                  width: 140,
+                  margin: const EdgeInsets.only(right: 8),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        left: 0,
+                        bottom: -15,
+                        child: Text(
+                          '$rank',
+                          style: TextStyle(
+                            fontSize: 105,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF2E2E2E),
+                            shadows: [
+                              Shadow(
+                                color: Colors.white.withOpacity(0.3),
+                                blurRadius: 2,
+                                offset: const Offset(-1, -1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 4,
+                        top: 0,
+                        bottom: 0,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Image.network(
+                            item['poster'],
+                            width: 105,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                Container(width: 105, color: const Color(0xFF1E1E1E)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContinueWatchingRow(List items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
+          child: Text(
+            'Continue Watching for Rahul',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 170,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: items.length,
+            itemBuilder: (ctx, idx) {
+              final item = items[idx];
+              return GestureDetector(
+                onTap: () => _onItemTapped(item),
+                child: Container(
+                  width: 110,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    color: const Color(0xFF1E1E1E),
+                  ),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                item['poster'] ?? '',
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    Container(color: const Color(0xFF1E1E1E)),
+                              ),
+                              const Center(
+                                child: Icon(Icons.play_circle_outline,
+                                    color: Colors.white70, size: 36),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Container(
+                        height: 3,
+                        color: const Color(0xFFE50914),
+                      ),
+                    ],
+                  ),
+                ),
               );
             },
           ),
@@ -565,7 +888,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
     );
   }
 
-  Widget _buildNetflixDrawer() {
+  Widget _buildNetflixAppDrawer() {
     return Drawer(
       backgroundColor: const Color(0xFF141414),
       child: ListView(
@@ -586,24 +909,24 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
                     letterSpacing: 1.5,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
-                  'Active Providers: ${activeProviders.length}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  'Cinema HQ Engines Connected: ${activeProviders.length}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
               ],
             ),
           ),
           _drawerTile('Bollywood Movies', Icons.movie_filter,
               () => _openCatalog('Bollywood Movies', 'bollywood')),
-          _drawerTile('Hindi Web Series', Icons.tv,
-              () => _openCatalog('Hindi Series', 'hindi_series')),
-          _drawerTile('South Blockbusters', Icons.local_fire_department,
-              () => _openCatalog('South Movies', 'south')),
-          _drawerTile('Hollywood Movies', Icons.movie,
+          _drawerTile('South Indian (Hindi Dubbed)', Icons.local_fire_department,
+              () => _openCatalog('South Indian Movies', 'south')),
+          _drawerTile('Hollywood Movies (Hindi Dubbed)', Icons.theaters,
               () => _openCatalog('Hollywood Movies', 'hollywood_movies')),
-          _drawerTile('English Web Series', Icons.live_tv,
-              () => _openCatalog('English Series', 'english_series')),
+          _drawerTile('Hindi Web Series', Icons.live_tv,
+              () => _openCatalog('Hindi Web Series', 'hindi_series')),
+          _drawerTile('English Web Series', Icons.connected_tv,
+              () => _openCatalog('English Web Series', 'english_series')),
         ],
       ),
     );
@@ -611,8 +934,10 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
 
   Widget _drawerTile(String t, IconData icon, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(icon, color: Colors.white70),
-      title: Text(t, style: const TextStyle(color: Colors.white, fontSize: 14)),
+      leading: Icon(icon, color: const Color(0xFFE50914)),
+      title: Text(t,
+          style: const TextStyle(
+              color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
       trailing:
           const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
       onTap: () {
@@ -672,7 +997,7 @@ class TmdbSearchDelegate extends SearchDelegate {
   Widget _searchView() {
     if (query.trim().isEmpty) {
       return const Center(
-        child: Text('Type to search movies & series...',
+        child: Text('Search movies, series, anime...',
             style: TextStyle(color: Colors.white54)),
       );
     }
@@ -760,7 +1085,7 @@ class TmdbSearchDelegate extends SearchDelegate {
 }
 
 // ============================================================================
-// 5. 100+ TITLES CATALOG (DRAWER GRID)
+// 5. 100+ TITLES CATALOG (DRAWER CATEGORIES GRID VIEW)
 // ============================================================================
 
 class MobileCatalogGridView extends StatefulWidget {
@@ -842,8 +1167,8 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
                   ? '${AppConfig.imgBase}${m['poster_path']}'
                   : '${AppConfig.backdropBase}${m['backdrop_path']}',
               'backdrop': m['backdrop_path'] != null
-                ? '${AppConfig.backdropBase}${m['backdrop_path']}'
-                : '${AppConfig.imgBase}${m['poster_path']}',
+                  ? '${AppConfig.backdropBase}${m['backdrop_path']}'
+                  : '${AppConfig.imgBase}${m['poster_path']}',
               'isTv': isTv,
             });
           }
@@ -1143,7 +1468,7 @@ class _MobileEpisodeSelectorDialogState
 }
 
 // ============================================================================
-// 7. CINEMA HQ XTREAM & STREMIO STREAM RESOLVER ENGINE
+// 7. XTREAM IPTV & STREMIO STREAM RESOLVER ENGINE
 // ============================================================================
 
 class MobileQualitySelectorSheet extends StatefulWidget {
@@ -1574,7 +1899,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
 }
 
 // ============================================================================
-// 8. INTERNAL VIDEO PLAYER (CINEMA HQ ENGINE + CROP/ZOOM + VOL/BRIGHTNESS)
+// 8. CINEMA HQ ENGINE INTERNAL VIDEO PLAYER (CROP/ZOOM + VOL/BRIGHTNESS)
 // ============================================================================
 
 class InternalPlayerScreen extends StatefulWidget {
@@ -1613,7 +1938,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
   bool _showOverlayIndicator = false;
   Timer? _overlayTimer;
 
-  int _scaleMode = 2; // CROP (ZOOM default)
+  int _scaleMode = 2; // CROP (Zoom default)
 
   @override
   void initState() {
