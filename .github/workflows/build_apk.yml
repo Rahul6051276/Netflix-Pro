@@ -29,29 +29,23 @@ jobs:
 
       - name: Setup & Build Netflix Pro App
         run: |
-          # 1. फ्रेश प्रोजेक्ट बनाएगा (लेटेस्ट Android v2 embedding के साथ)
-          flutter create --org com.netflixpro --project-name netflix_pro temp_build
+          # 1. Fresh Project banayega
+          flutter create --org com.netflixpro --project-name netflix_pro netflix_build_temp
           
-          # 2. आपकी lib और pubspec.yaml फ़ाइलें कॉपी करेगा
-          cp -r lib temp_build/
-          cp pubspec.yaml temp_build/pubspec.yaml
+          # 2. Code aur aapka AndroidManifest copy karega
+          cp -r lib netflix_build_temp/
+          cp pubspec.yaml netflix_build_temp/pubspec.yaml
+          cp android/app/src/main/AndroidManifest.xml netflix_build_temp/android/app/src/main/AndroidManifest.xml
           
-          # 3. ऐप का नाम 'Netflix Pro' सेट करेगा
-          sed -i 's/android:label="[^"]*"/android:label="Netflix Pro"/' temp_build/android/app/src/main/AndroidManifest.xml
-          
-          # 4. इंटरनेट और वीडियो स्ट्रीमिंग परमिशन जोड़ेगा
-          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET" />' temp_build/android/app/src/main/AndroidManifest.xml
-          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' temp_build/android/app/src/main/AndroidManifest.xml
-          
-          # 5. APK बिल्ड शुरू
-          cd temp_build
+          # 3. Build Release APK
+          cd netflix_build_temp
           flutter pub get
           flutter build apk --release
 
       - name: Prepare APK for Release
         run: |
           mkdir -p release_apks
-          cp temp_build/build/app/outputs/flutter-apk/app-release.apk release_apks/Netflix-Pro.apk
+          cp netflix_build_temp/build/app/outputs/flutter-apk/app-release.apk release_apks/Netflix-Pro.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
