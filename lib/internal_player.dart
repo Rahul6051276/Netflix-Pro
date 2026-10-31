@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
-import 'package:chewie/chewie.dart';
 
 class InternalPlayer extends StatefulWidget {
   final String streamUrl;
@@ -18,110 +17,224 @@ class InternalPlayer extends StatefulWidget {
 }
 
 class _InternalPlayerState extends State<InternalPlayer> {
-  late VideoPlayerController _videoPlayerController;
-  ChewieController? _chewieController;
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
   bool _hasError = false;
+  bool _showControls = true;
 
   @override
   void initState() {
     super.initState();
-    _initializePlayer();
+
+    // फुलस्क्रीन और लैंडस्केप
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+      DeviceOrientation.portraitUp,
+    ]);
+
+    _initPlayer();
   }
 
-  Future<void> _initializePlayer() async {
+  Future<void> _initPlayer() async {
     try {
-      _videoPlayerController = VideoPlayerController.uri(
+      _controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.streamUrl),
       );
 
-      await _videoPlayerController.initialize();
+      await _controller.initialize();
+      _controller.play();
 
-      _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController,
-        autoPlay: true,
-        looping: false,
-        aspectRatio: _videoPlayerController.value.aspectRatio,
-        allowFullScreen: true,
-        fullScreenByDefault: true,
-        deviceOrientationsAfterFullScreen: [
-          DeviceOrientation.portraitUp,
-        ],
-        deviceOrientationsOnEnterFullScreen: [
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ],
-        materialProgressColors: ChewieProgressColors(
-          playedColor: const Color(0xFFE50914),
-          handleColor: const Color(0xFFE50914),
-          backgroundColor: Colors.grey.shade800,
-          bufferedColor: Colors.white38,
-        ),
-        placeholder: Container(
-          color: Colors.black,
-          child: const Center(
-            child: CircularProgressIndicator(color: Color(0xFFE50914)),
-          ),
-        ),
-        errorBuilder: (context, errorMessage) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                'Stream Error: Server is offline or invalid URL.\n$errorMessage',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70),
-              ),
-            ),
-          );
-        },
-      );
-
-      setState(() {});
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _hasError = true;
-      });
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+        });
+      }
     }
   }
 
   @override
   void dispose() {
-    _videoPlayerController.dispose();
-    _chewieController?.dispose();
+    _controller.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
     super.dispose();
   }
 
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return duration.inHours > 0
+        ? '${twoDigits(duration.inHours)}:$minutes:$seconds'
+        : '$minutes:$seconds';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Text(
-          widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: _hasError
-              ? const Text(
-                  'Failed to load stream link.\nPlease try another server.',
-                  style: TextStyle(color: Colors.white),
-                )
-              : _chewieController != null &&
-                      _chewieController!.videoPlayerController.value.isInitialized
-                  ? Chewie(controller: _chewieController!)
-                  : const CircularProgressIndicator(color: Color(0xFFE50914)),
+      body: GestureDetector(
+        onTap: () {
+          setState(() {
+            _showControls = !_showControls;
+          });
+        },
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // 1. वीडियो प्लेयर
+            Center(
+              child: _isInitialized
+                  ? AspectRatio(
+                      aspectRatio: _controller.value.aspectRatio,
+                      child: VideoPlayer(_controller),
+                    )
+                  : _hasError
+                      ? const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.error_outline, color: Colors.red, size: 48),
+                            SizedBox(height: 12),
+                            Text(
+                              'Unable to play stream.\nServer might be offline or link expired.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          ],
+                        )
+                      : const CircularProgressIndicator(color: Color(0xFFE50914)),
+            ),
+
+            // 2. ओवरले कंट्रोल्स
+            if (_showControls && _isInitialized)
+              Container(
+                color: Colors.black45,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // टॉप बार
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                widget.title,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // सेंटर प्ले/पॉज़ बटन
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          iconSize: 42,
+                          icon: const Icon(Icons.replay_10, color: Colors.white),
+                          onPressed: () {
+                            final current = _controller.value.position;
+                            _controller.seekTo(current - const Duration(seconds: 10));
+                          },
+                        ),
+                        const SizedBox(width: 24),
+                        IconButton(
+                          iconSize: 64,
+                          icon: Icon(
+                            _controller.value.isPlaying
+                                ? Icons.pause_circle_filled
+                                : Icons.play_circle_filled,
+                            color: const Color(0xFFE50914),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _controller.value.isPlaying
+                                  ? _controller.pause()
+                                  : _controller.play();
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 24),
+                        IconButton(
+                          iconSize: 42,
+                          icon: const Icon(Icons.forward_10, color: Colors.white),
+                          onPressed: () {
+                            final current = _controller.value.position;
+                            _controller.seekTo(current + const Duration(seconds: 10));
+                          },
+                        ),
+                      ],
+                    ),
+
+                    // बॉटम प्रोग्रेस बार
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: ValueListenableBuilder(
+                          valueListenable: _controller,
+                          builder: (context, VideoPlayerValue value, child) {
+                            final position = value.position;
+                            final duration = value.duration;
+                            return Row(
+                              children: [
+                                Text(
+                                  _formatDuration(position),
+                                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                                ),
+                                Expanded(
+                                  child: Slider(
+                                    activeColor: const Color(0xFFE50914),
+                                    inactiveColor: Colors.white30,
+                                    value: position.inMilliseconds
+                                        .clamp(0, duration.inMilliseconds)
+                                        .toDouble(),
+                                    min: 0.0,
+                                    max: duration.inMilliseconds.toDouble(),
+                                    onChanged: (val) {
+                                      _controller.seekTo(Duration(milliseconds: val.toInt()));
+                                    },
+                                  ),
+                                ),
+                                Text(
+                                  _formatDuration(duration),
+                                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
-}
+}.
