@@ -1,7 +1,3 @@
-// ============================================================================
-// 1. APP ENTRY POINT & SYSTEM CONFIGURATION
-// ============================================================================
-
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -11,17 +7,50 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:video_player/video_player.dart';
 
+// ============================================================================
+// 1. APP ENTRY POINT & NETFLIX THEME CONFIGURATION
+// ============================================================================
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
   ));
-  runApp(const MobileCinemaTvApp());
+  runApp(const NetflixProApp());
+}
+
+class NetflixProApp extends StatelessWidget {
+  const NetflixProApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Netflix Pro',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF141414),
+        primaryColor: const Color(0xFFE50914),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFFE50914),
+          surface: Color(0xFF181818),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF141414),
+          elevation: 0,
+        ),
+      ),
+      home: const NetflixHomeScreen(),
+    );
+  }
 }
 
 // ============================================================================
-// 2. CONFIGURATION & TMDB API CREDENTIALS
+// 2. CONFIGURATION & TMDB CREDENTIALS
 // ============================================================================
 
 class AppConfig {
@@ -47,222 +76,80 @@ bool isDailySoapTitle(String title) {
   return blockList.any((b) => t.contains(b));
 }
 
-class MobileCinemaTvApp extends StatelessWidget {
-  const MobileCinemaTvApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Cinema TV HQ',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0F1014),
-        fontFamily: 'sans-serif',
-      ),
-      home: const MobileSplashScreen(),
-    );
-  }
-}
-
 // ============================================================================
-// 3. SPLASH SCREEN
+// 3. NETFLIX PRO HOME SCREEN (BILLBOARD HERO & RED THEME)
 // ============================================================================
 
-class MobileSplashScreen extends StatefulWidget {
-  const MobileSplashScreen({super.key});
+class NetflixHomeScreen extends StatefulWidget {
+  const NetflixHomeScreen({super.key});
 
   @override
-  State<MobileSplashScreen> createState() => _MobileSplashScreenState();
+  State<NetflixHomeScreen> createState() => _NetflixHomeScreenState();
 }
 
-class _MobileSplashScreenState extends State<MobileSplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scale;
-  late Animation<double> _opacity;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    );
-    _scale = Tween<double>(begin: 0.85, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
-    _opacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
-    _controller.forward();
-
-    Timer(const Duration(milliseconds: 1800), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MobileHomeScreen()),
-        );
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F1014),
-      body: Center(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Opacity(
-              opacity: _opacity.value,
-              child: Transform.scale(
-                scale: _scale.value,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 90,
-                      height: 90,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF0072D2), Color(0xFF001B44)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF0072D2).withOpacity(0.5),
-                            blurRadius: 30,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                        border: Border.all(color: const Color(0xFF38BDF8), width: 2.5),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.play_arrow_rounded, size: 55, color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'CINEMA ',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 2.0,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF0072D2), Color(0xFF00458E)],
-                            ),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'TV HQ',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.5,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// 4. MAIN HOME SCREEN
-// ============================================================================
-
-class MobileHomeScreen extends StatefulWidget {
-  const MobileHomeScreen({super.key});
-
-  @override
-  State<MobileHomeScreen> createState() => _MobileHomeScreenState();
-}
-
-class _MobileHomeScreenState extends State<MobileHomeScreen> {
+class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   var activeProviders = [];
   var continueWatchingList = [];
 
-  var heroBanners = [];
-  var hindiWebSeries = [];
-  var bollywoodLatest = [];
-  var hollywoodHindiDubbed = [];
-  var southHindiDubbed = [];
-  var netflixSeries = [];
-  var amazonSeries = [];
-  var hollywoodHindiSeries = [];
+  var heroItems = [];
+  int currentHeroIndex = 0;
+  final PageController _heroController = PageController();
+  Timer? _heroTimer;
+
+  var onlyOnNetflix = [];
+  var trendingBollywood = [];
+  var popularHindiSeries = [];
+  var hollywoodHits = [];
+  var southSpecial = [];
 
   bool isLoading = true;
-  int _currentHeroIndex = 0;
-  final PageController _heroPageController = PageController();
-  Timer? _heroTimer;
 
   @override
   void initState() {
     super.initState();
-    _loadAllData();
+    _loadAllContent();
   }
 
   @override
   void dispose() {
     _heroTimer?.cancel();
-    _heroPageController.dispose();
+    _heroController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadAllData() async {
-    await Future.wait([
-      _fetchProviders(),
-      _loadContinueWatching(),
-      _fetchTmdbContent(),
-    ]);
-    if (mounted) {
-      setState(() => isLoading = false);
-      _startHeroTimer();
-    }
   }
 
   void _startHeroTimer() {
     _heroTimer?.cancel();
-    if (heroBanners.isNotEmpty) {
-      _heroTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-        if (_heroPageController.hasClients) {
-          int nextPage = (_currentHeroIndex + 1) % heroBanners.length;
-          _heroPageController.animateToPage(
+    if (heroItems.isNotEmpty) {
+      _heroTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+        if (_heroController.hasClients) {
+          int nextPage = (currentHeroIndex + 1) % heroItems.length;
+          _heroController.animateToPage(
             nextPage,
-            duration: const Duration(milliseconds: 600),
+            duration: const Duration(milliseconds: 700),
             curve: Curves.easeInOut,
           );
         }
       });
+    }
+  }
+
+  Future<void> _loadAllContent() async {
+    await Future.wait([
+      _fetchProviders(),
+      _loadContinueWatching(),
+      _fetchHeroTitles(),
+      _fetchRowCategory('only_netflix', (list) => onlyOnNetflix = list),
+      _fetchRowCategory('bollywood', (list) => trendingBollywood = list),
+      _fetchRowCategory('hindi_series', (list) => popularHindiSeries = list),
+      _fetchRowCategory('hollywood', (list) => hollywoodHits = list),
+      _fetchRowCategory('south', (list) => southSpecial = list),
+    ]);
+
+    if (mounted) {
+      setState(() => isLoading = false);
+      _startHeroTimer();
     }
   }
 
@@ -292,78 +179,89 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _fetchTmdbContent() async {
+  Future<void> _fetchHeroTitles() async {
     try {
-      final bollyRes = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=popularity.desc&vote_count.gte=10'));
-      if (bollyRes.statusCode == 200) {
-        bollywoodLatest = _parseResults(jsonDecode(bollyRes.body)['results']);
-        if (bollywoodLatest.isNotEmpty) heroBanners = bollywoodLatest.take(5).toList();
-      }
-
-      final hindiTvRes = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=vote_count.desc&vote_count.gte=10'));
-      if (hindiTvRes.statusCode == 200) {
-        final rawList = jsonDecode(hindiTvRes.body)['results'] ?? [];
-        hindiWebSeries = _parseResults(rawList, isTv: true)
-            .where((item) => !isDailySoapTitle(item['title'] ?? ''))
-            .toList();
-      }
-
-      final hollyRes = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&vote_count.gte=100'));
-      if (hollyRes.statusCode == 200) {
-        hollywoodHindiDubbed = _parseResults(jsonDecode(hollyRes.body)['results']);
-      }
-
-      final southRes = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&vote_count.gte=20'));
-      if (southRes.statusCode == 200) {
-        southHindiDubbed = _parseResults(jsonDecode(southRes.body)['results']);
-      }
-
-      final netflixRes = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=20'));
-      if (netflixRes.statusCode == 200) {
-        netflixSeries = _parseResults(jsonDecode(netflixRes.body)['results'], isTv: true);
-      }
-
-      final amazonRes = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=1024&sort_by=popularity.desc&vote_count.gte=20'));
-      if (amazonRes.statusCode == 200) {
-        amazonSeries = _parseResults(jsonDecode(amazonRes.body)['results'], isTv: true);
-      }
-
-      final hollySeriesRes = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&vote_count.gte=30'));
-      if (hollySeriesRes.statusCode == 200) {
-        hollywoodHindiSeries = _parseResults(jsonDecode(hollySeriesRes.body)['results'], isTv: true);
+      final url =
+          '${AppConfig.tmdbBase}/trending/all/week?api_key=${AppConfig.tmdbKey}';
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final results = data['results'] as List? ?? [];
+        var list = [];
+        for (var m in results.take(6)) {
+          if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
+          list.add({
+            'tmdb_id': m['id'],
+            'title': m['title'] ?? m['name'] ?? 'Netflix Original',
+            'year': (m['release_date'] ?? m['first_air_date'] ?? '')
+                .toString()
+                .split('-')[0],
+            'rating': m['vote_average']?.toString() ?? '8.2',
+            'poster': m['poster_path'] != null
+                ? '${AppConfig.imgBase}${m['poster_path']}'
+                : '${AppConfig.backdropBase}${m['backdrop_path']}',
+            'backdrop': m['backdrop_path'] != null
+                ? '${AppConfig.backdropBase}${m['backdrop_path']}'
+                : '${AppConfig.imgBase}${m['poster_path']}',
+            'isTv': m['media_type'] == 'tv',
+          });
+        }
+        heroItems = list;
       }
     } catch (_) {}
   }
 
-  dynamic _parseResults(dynamic list, {bool isTv = false}) {
-    var res = [];
-    final currentYear = DateTime.now().year.toString();
-    for (var m in (list ?? [])) {
-      if (m['poster_path'] == null && m['backdrop_path'] == null) continue;
-      res.add({
-        'tmdb_id': m['id'],
-        'title': m['title'] ?? m['name'] ?? 'Untitled',
-        'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear)
-            .toString()
-            .split('-')[0],
-        'rating': m['vote_average']?.toString() ?? '7.8',
-        'backdrop': m['backdrop_path'] != null
-            ? '${AppConfig.backdropBase}${m['backdrop_path']}'
-            : '${AppConfig.imgBase}${m['poster_path']}',
-        'poster': m['poster_path'] != null
-            ? '${AppConfig.imgBase}${m['poster_path']}'
-            : '${AppConfig.backdropBase}${m['backdrop_path']}',
-        'isTv': isTv,
-      });
+  Future<void> _fetchRowCategory(String cat, Function(List) onDone) async {
+    String url = '';
+    bool isTv = false;
+
+    if (cat == 'only_netflix') {
+      url =
+          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc';
+      isTv = true;
+    } else if (cat == 'bollywood') {
+      url =
+          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10';
+    } else if (cat == 'hindi_series') {
+      url =
+          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=first_air_date.desc&vote_count.gte=10';
+      isTv = true;
+    } else if (cat == 'hollywood') {
+      url =
+          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc';
+    } else if (cat == 'south') {
+      url =
+          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&vote_count.gte=20';
     }
-    return res;
+
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final results = data['results'] as List? ?? [];
+        var list = [];
+        for (var m in results.take(15)) {
+          if (m['poster_path'] == null) continue;
+          final title = (m['title'] ?? m['name'] ?? 'Untitled').toString();
+          if (isTv && isDailySoapTitle(title)) continue;
+
+          list.add({
+            'tmdb_id': m['id'],
+            'title': title,
+            'year': (m['release_date'] ?? m['first_air_date'] ?? '')
+                .toString()
+                .split('-')[0],
+            'rating': m['vote_average']?.toString() ?? '7.5',
+            'poster': '${AppConfig.imgBase}${m['poster_path']}',
+            'backdrop': m['backdrop_path'] != null
+                ? '${AppConfig.backdropBase}${m['backdrop_path']}'
+                : '${AppConfig.imgBase}${m['poster_path']}',
+            'isTv': isTv,
+          });
+        }
+        onDone(list);
+      }
+    } catch (_) {}
   }
 
   void _onItemTapped(dynamic item) {
@@ -386,9 +284,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF16181F),
+      backgroundColor: const Color(0xFF181818),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
         return MobileQualitySelectorSheet(
@@ -402,346 +300,17 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  Widget _buildAppDrawer() {
-    return Drawer(
-      backgroundColor: const Color(0xFF07080B),
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(color: Color(0xFF0F1014)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF0072D2), Color(0xFF001B44)],
-                    ),
-                    border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
-                  ),
-                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 30),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'CINEMA TV HQ',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
-                ),
-              ],
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.movie_filter_rounded, color: Color(0xFF38BDF8)),
-            title: const Text('Bollywood Movies', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCatalogGridView(
-                    categoryType: 'bollywood',
-                    title: 'Bollywood Movies',
-                    providers: activeProviders,
-                    onItemTapped: _onItemTapped,
-                  ),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.local_movies_rounded, color: Color(0xFF38BDF8)),
-            title: const Text('South Indian (Hindi Dubbed)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCatalogGridView(
-                    categoryType: 'south',
-                    title: 'South Indian Movies',
-                    providers: activeProviders,
-                    onItemTapped: _onItemTapped,
-                  ),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.theaters_rounded, color: Color(0xFF38BDF8)),
-            title: const Text('Hollywood Movies (Hindi Dubbed)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCatalogGridView(
-                    categoryType: 'hollywood_movies',
-                    title: 'Hollywood Movies',
-                    providers: activeProviders,
-                    onItemTapped: _onItemTapped,
-                  ),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.live_tv_rounded, color: Color(0xFF38BDF8)),
-            title: const Text('Hindi Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCatalogGridView(
-                    categoryType: 'hindi_series',
-                    title: 'Hindi Web Series',
-                    providers: activeProviders,
-                    onItemTapped: _onItemTapped,
-                  ),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.connected_tv_rounded, color: Color(0xFF38BDF8)),
-            title: const Text('English Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCatalogGridView(
-                    categoryType: 'english_series',
-                    title: 'English Web Series',
-                    providers: activeProviders,
-                    onItemTapped: _onItemTapped,
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
+  void _openCatalog(String title, String type) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MobileCatalogGridView(
+          title: title,
+          categoryType: type,
+          providers: activeProviders,
+          onItemTapped: _onItemTapped,
         ),
       ),
-    );
-  }
-
-  Widget _buildHorizontalRow(dynamic items) {
-    var list = items is List ? items : [];
-    return SizedBox(
-      height: 120,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        itemCount: list.length,
-        itemBuilder: (ctx, i) {
-          final item = list[i];
-          return GestureDetector(
-            onTap: () => _onItemTapped(item),
-            child: Container(
-              width: 175,
-              margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: const Color(0xFF1E2029),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.network(
-                      item['backdrop'],
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          Container(color: const Color(0xFF1E2029)),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        color: Colors.black87,
-                        child: Text(
-                          item['title'],
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildHeroSlider() {
-    if (heroBanners.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      children: [
-        SizedBox(
-          height: 230,
-          child: PageView.builder(
-            controller: _heroPageController,
-            itemCount: heroBanners.length,
-            onPageChanged: (index) {
-              setState(() => _currentHeroIndex = index);
-            },
-            itemBuilder: (context, index) {
-              final item = heroBanners[index];
-              return GestureDetector(
-                onTap: () => _onItemTapped(item),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.network(
-                      item['backdrop'] ?? item['poster'],
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          Container(color: const Color(0xFF1E2029)),
-                    ),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            const Color(0xFF0F1014).withOpacity(0.3),
-                            const Color(0xFF0F1014),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 12,
-                      left: 14,
-                      right: 14,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  item['title'] ?? '',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.amber.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const Icon(Icons.star_rounded, color: Colors.amber, size: 13),
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            item['rating'] ?? '7.5',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      item['year'] ?? '',
-                                      style: const TextStyle(color: Colors.white70, fontSize: 11),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          ElevatedButton.icon(
-                            onPressed: () => _onItemTapped(item),
-                            icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18),
-                            label: const Text(
-                              'Watch',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0072D2),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(
-            heroBanners.length,
-            (index) => AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: _currentHeroIndex == index ? 16 : 5,
-              height: 4,
-              decoration: BoxDecoration(
-                color: _currentHeroIndex == index
-                    ? const Color(0xFF0072D2)
-                    : Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -749,110 +318,313 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFF0F1014),
-      drawer: _buildAppDrawer(),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: AppBar(
-          backgroundColor: const Color(0xFF0F1014).withOpacity(0.95),
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 28),
-            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-          ),
-          title: Row(
-            children: [
-              const Text(
-                'CINEMA ',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 20,
-                  color: Colors.white,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0072D2), Color(0xFF00458E)],
-                  ),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'HQ',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
-                    color: Colors.white,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.search_rounded, color: Colors.white, size: 26),
-              onPressed: () {
-                showSearch(
-                  context: context,
-                  delegate: TmdbSearchDelegate(
-                    onItemTapped: _onItemTapped,
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
+      drawer: _buildNetflixDrawer(),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF38BDF8)))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeroSlider(),
-                  const SizedBox(height: 12),
-                  if (continueWatchingList.isNotEmpty) ...[
-                    _buildHeader('Continue Watching'),
-                    _buildHorizontalRow(continueWatchingList),
-                  ],
-                  if (bollywoodLatest.isNotEmpty) ...[
-                    _buildHeader('Bollywood Latest Movies'),
-                    _buildHorizontalRow(bollywoodLatest),
-                  ],
-                  if (hollywoodHindiDubbed.isNotEmpty) ...[
-                    _buildHeader('Hollywood Movies (Hindi Dubbed)'),
-                    _buildHorizontalRow(hollywoodHindiDubbed),
-                  ],
-                  if (southHindiDubbed.isNotEmpty) ...[
-                    _buildHeader('South Indian Movies (Hindi Dubbed)'),
-                    _buildHorizontalRow(southHindiDubbed),
-                  ],
-                  if (hindiWebSeries.isNotEmpty) ...[
-                    _buildHeader('Hindi Web Series (Indian Originals)'),
-                    _buildHorizontalRow(hindiWebSeries),
-                  ],
-                  if (netflixSeries.isNotEmpty) ...[
-                    _buildHeader('Netflix Specials & Series (Hindi/Eng)'),
-                    _buildHorizontalRow(netflixSeries),
-                  ],
-                  if (amazonSeries.isNotEmpty) ...[
-                    _buildHeader('Amazon Prime Originals'),
-                    _buildHorizontalRow(amazonSeries),
-                  ],
-                  const SizedBox(height: 25),
-                ],
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFFE50914)),
+            )
+          : CustomScrollView(
+              slivers: [
+                _buildSliverAppBar(),
+                SliverToBoxAdapter(child: _buildNetflixHeroBillboard()),
+                if (continueWatchingList.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: _buildNetflixRow('Continue Watching', continueWatchingList),
+                  ),
+                SliverToBoxAdapter(
+                  child: _buildNetflixRow('Only on Netflix', onlyOnNetflix),
+                ),
+                SliverToBoxAdapter(
+                  child: _buildNetflixRow('Trending Bollywood', trendingBollywood),
+                ),
+                SliverToBoxAdapter(
+                  child: _buildNetflixRow('Popular Hindi Series', popularHindiSeries),
+                ),
+                SliverToBoxAdapter(
+                  child: _buildNetflixRow('Hollywood Hits', hollywoodHits),
+                ),
+                SliverToBoxAdapter(
+                  child: _buildNetflixRow('South Action Blockbusters', southSpecial),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 40)),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildSliverAppBar() {
+    return SliverAppBar(
+      pinned: true,
+      floating: true,
+      backgroundColor: const Color(0xFF141414).withOpacity(0.95),
+      leading: IconButton(
+        icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 28),
+        onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+      ),
+      title: Row(
+        children: [
+          const Text(
+            'NETFLIX',
+            style: TextStyle(
+              color: Color(0xFFE50914),
+              fontWeight: FontWeight.w900,
+              fontSize: 22,
+              letterSpacing: 2.0,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE50914),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: const Text(
+              'PRO',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
               ),
             ),
+          ),
+        ],
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.search, color: Colors.white, size: 26),
+          onPressed: () {
+            showSearch(
+              context: context,
+              delegate: TmdbSearchDelegate(onItemTapped: _onItemTapped),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNetflixHeroBillboard() {
+    if (heroItems.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 480,
+          child: PageView.builder(
+            controller: _heroController,
+            itemCount: heroItems.length,
+            onPageChanged: (i) => setState(() => currentHeroIndex = i),
+            itemBuilder: (ctx, idx) {
+              final item = heroItems[idx];
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    item['poster'],
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: const Color(0xFF181818)),
+                  ),
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.transparent,
+                          Color(0xCC141414),
+                          Color(0xFF141414),
+                        ],
+                        stops: [0.0, 0.45, 0.8, 1.0],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 16,
+                    left: 20,
+                    right: 20,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          item['title'],
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                            shadows: [
+                              Shadow(color: Colors.black, blurRadius: 10),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${item['year']} • ${item['isTv'] ? "Series" : "Movie"} • ⭐ ${item['rating']}',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: () => _onItemTapped(item),
+                              icon: const Icon(Icons.play_arrow,
+                                  color: Colors.black, size: 28),
+                              label: const Text(
+                                'Play',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 32, vertical: 8),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNetflixRow(String title, List items) {
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 165,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: items.length,
+            itemBuilder: (ctx, idx) {
+              final item = items[idx];
+              return GestureDetector(
+                onTap: () => _onItemTapped(item),
+                child: Container(
+                  width: 110,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    color: const Color(0xFF1E1E1E),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Image.network(
+                      item['poster'],
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          Container(color: const Color(0xFF1E1E1E)),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNetflixDrawer() {
+    return Drawer(
+      backgroundColor: const Color(0xFF141414),
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: const BoxDecoration(color: Color(0xFF181818)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                const Text(
+                  'NETFLIX PRO',
+                  style: TextStyle(
+                    color: Color(0xFFE50914),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Active Providers: ${activeProviders.length}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          _drawerTile('Bollywood Movies', Icons.movie_filter,
+              () => _openCatalog('Bollywood Movies', 'bollywood')),
+          _drawerTile('Hindi Web Series', Icons.tv,
+              () => _openCatalog('Hindi Series', 'hindi_series')),
+          _drawerTile('South Blockbusters', Icons.local_fire_department,
+              () => _openCatalog('South Movies', 'south')),
+          _drawerTile('Hollywood Movies', Icons.movie,
+              () => _openCatalog('Hollywood Movies', 'hollywood_movies')),
+          _drawerTile('English Web Series', Icons.live_tv,
+              () => _openCatalog('English Series', 'english_series')),
+        ],
+      ),
+    );
+  }
+
+  Widget _drawerTile(String t, IconData icon, VoidCallback onTap) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.white70),
+      title: Text(t, style: const TextStyle(color: Colors.white, fontSize: 14)),
+      trailing:
+          const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
+      onTap: () {
+        Navigator.pop(context);
+        onTap();
+      },
     );
   }
 }
 
 // ============================================================================
-// 5. TMDB LIVE SEARCH ENGINE
+// 4. TMDB LIVE SEARCH ENGINE
 // ============================================================================
 
 class TmdbSearchDelegate extends SearchDelegate {
@@ -863,8 +635,8 @@ class TmdbSearchDelegate extends SearchDelegate {
   ThemeData appBarTheme(BuildContext context) {
     return ThemeData(
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF0F1014),
-      appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF16181F)),
+      scaffoldBackgroundColor: const Color(0xFF141414),
+      appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF181818)),
       inputDecorationTheme: const InputDecorationTheme(
         hintStyle: TextStyle(color: Colors.white54),
         border: InputBorder.none,
@@ -899,21 +671,27 @@ class TmdbSearchDelegate extends SearchDelegate {
 
   Widget _searchView() {
     if (query.trim().isEmpty) {
-      return const Center(child: Text('Type to search movies & series...', style: TextStyle(color: Colors.white54)));
+      return const Center(
+        child: Text('Type to search movies & series...',
+            style: TextStyle(color: Colors.white54)),
+      );
     }
     return FutureBuilder(
       future: _performSearch(query.trim()),
       builder: (ctx, snapshot) {
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator(color: Color(0xFF38BDF8)));
+          return const Center(
+              child: CircularProgressIndicator(color: Color(0xFFE50914)));
         }
         var list = snapshot.data is List ? snapshot.data as List : [];
         if (list.isEmpty) {
-          return const Center(child: Text('No results found.', style: TextStyle(color: Colors.white54)));
+          return const Center(
+              child: Text('No results found.',
+                  style: TextStyle(color: Colors.white54)));
         }
         return ListView.separated(
           itemCount: list.length,
-          separatorBuilder: (_, __) => const Divider(color: Color(0xFF232631)),
+          separatorBuilder: (_, __) => const Divider(color: Color(0xFF262626)),
           itemBuilder: (ctx, idx) {
             final item = list[idx];
             return ListTile(
@@ -924,11 +702,16 @@ class TmdbSearchDelegate extends SearchDelegate {
                   width: 45,
                   height: 65,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(width: 45, height: 65, color: const Color(0xFF1E2029)),
+                  errorBuilder: (_, __, ___) =>
+                      Container(width: 45, height: 65, color: const Color(0xFF1E1E1E)),
                 ),
               ),
-              title: Text(item['title'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              subtitle: Text('${item['year']} • ${item['isTv'] ? "Series" : "Movie"}', style: const TextStyle(color: Colors.white54)),
+              title: Text(item['title'],
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+              subtitle: Text(
+                  '${item['year']} • ${item['isTv'] ? "Series" : "Movie"}',
+                  style: const TextStyle(color: Colors.white54)),
               onTap: () {
                 close(ctx, null);
                 onItemTapped(item);
@@ -942,7 +725,8 @@ class TmdbSearchDelegate extends SearchDelegate {
 
   Future<dynamic> _performSearch(String q) async {
     try {
-      final url = '${AppConfig.tmdbBase}/search/multi?api_key=${AppConfig.tmdbKey}&query=${Uri.encodeComponent(q)}';
+      final url =
+          '${AppConfig.tmdbBase}/search/multi?api_key=${AppConfig.tmdbKey}&query=${Uri.encodeComponent(q)}';
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -955,10 +739,16 @@ class TmdbSearchDelegate extends SearchDelegate {
           parsed.add({
             'tmdb_id': m['id'],
             'title': m['title'] ?? m['name'] ?? 'Untitled',
-            'year': (m['release_date'] ?? m['first_air_date'] ?? '').toString().split('-')[0],
+            'year': (m['release_date'] ?? m['first_air_date'] ?? '')
+                .toString()
+                .split('-')[0],
             'rating': m['vote_average']?.toString() ?? '7.0',
-            'poster': m['poster_path'] != null ? '${AppConfig.imgBase}${m['poster_path']}' : '${AppConfig.backdropBase}${m['backdrop_path']}',
-            'backdrop': m['backdrop_path'] != null ? '${AppConfig.backdropBase}${m['backdrop_path']}' : '${AppConfig.imgBase}${m['poster_path']}',
+            'poster': m['poster_path'] != null
+                ? '${AppConfig.imgBase}${m['poster_path']}'
+                : '${AppConfig.backdropBase}${m['backdrop_path']}',
+            'backdrop': m['backdrop_path'] != null
+                ? '${AppConfig.backdropBase}${m['backdrop_path']}'
+                : '${AppConfig.imgBase}${m['poster_path']}',
             'isTv': type == 'tv',
           });
         }
@@ -970,7 +760,7 @@ class TmdbSearchDelegate extends SearchDelegate {
 }
 
 // ============================================================================
-// 6. 100+ TITLES CATALOG (DRAWER CATEGORIES GRID VIEW)
+// 5. 100+ TITLES CATALOG (DRAWER GRID)
 // ============================================================================
 
 class MobileCatalogGridView extends StatefulWidget {
@@ -994,9 +784,6 @@ class MobileCatalogGridView extends StatefulWidget {
 class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
   var itemsList = [];
   bool isLoading = true;
-  int _currentHeroIndex = 0;
-  final PageController _heroPageController = PageController();
-  Timer? _heroTimer;
 
   @override
   void initState() {
@@ -1004,190 +791,29 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
     _fetch100Titles();
   }
 
-  @override
-  void dispose() {
-    _heroTimer?.cancel();
-    _heroPageController.dispose();
-    super.dispose();
-  }
-
-  void _startHeroTimer() {
-    _heroTimer?.cancel();
-    if (itemsList.isNotEmpty) {
-      _heroTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-        if (_heroPageController.hasClients) {
-          int count = itemsList.length > 5 ? 5 : itemsList.length;
-          int nextPage = (_currentHeroIndex + 1) % count;
-          _heroPageController.animateToPage(
-            nextPage,
-            duration: const Duration(milliseconds: 600),
-            curve: Curves.easeInOut,
-          );
-        }
-      });
-    }
-  }
-
-  Widget _buildHeroSlider() {
-    final heroItems = itemsList.take(5).toList();
-    if (heroItems.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      children: [
-        SizedBox(
-          height: 220,
-          child: PageView.builder(
-            controller: _heroPageController,
-            itemCount: heroItems.length,
-            onPageChanged: (index) {
-              setState(() => _currentHeroIndex = index);
-            },
-            itemBuilder: (context, index) {
-              final item = heroItems[index];
-              return GestureDetector(
-                onTap: () => widget.onItemTapped(item),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.network(
-                      item['backdrop'] ?? item['poster'],
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          Container(color: const Color(0xFF1E2029)),
-                    ),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            const Color(0xFF0F1014).withOpacity(0.4),
-                            const Color(0xFF0F1014),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 12,
-                      left: 14,
-                      right: 14,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  item['title'] ?? '',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.amber.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            item['rating'] ?? '7.5',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      item['year'] ?? '',
-                                      style: const TextStyle(color: Colors.white70, fontSize: 11),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          ElevatedButton.icon(
-                            onPressed: () => widget.onItemTapped(item),
-                            icon: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18),
-                            label: const Text(
-                              'Watch',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0072D2),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(
-            heroItems.length,
-            (index) => AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: _currentHeroIndex == index ? 16 : 5,
-              height: 4,
-              decoration: BoxDecoration(
-                color: _currentHeroIndex == index
-                    ? const Color(0xFF0072D2)
-                    : Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Future<void> _fetch100Titles() async {
-    final bool isTv = widget.categoryType == 'hindi_series' || widget.categoryType == 'english_series';
+    final bool isTv = widget.categoryType == 'hindi_series' ||
+        widget.categoryType == 'english_series';
     var fetched = [];
 
     for (int page = 1; page <= 5; page++) {
       String url = '';
 
       if (widget.categoryType == 'bollywood') {
-        url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10&page=$page';
+        url =
+            '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10&page=$page';
       } else if (widget.categoryType == 'south') {
-        url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=primary_release_date.desc&vote_count.gte=15&page=$page';
+        url =
+            '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=primary_release_date.desc&vote_count.gte=15&page=$page';
       } else if (widget.categoryType == 'hollywood_movies') {
-        url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=primary_release_date.desc&vote_count.gte=50&page=$page';
+        url =
+            '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=primary_release_date.desc&vote_count.gte=50&page=$page';
       } else if (widget.categoryType == 'hindi_series') {
-        url = '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=first_air_date.desc&vote_count.gte=10&page=$page';
+        url =
+            '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=first_air_date.desc&vote_count.gte=10&page=$page';
       } else if (widget.categoryType == 'english_series') {
-        url = '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=first_air_date.desc&vote_count.gte=40&page=$page';
+        url =
+            '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=first_air_date.desc&vote_count.gte=40&page=$page';
       }
 
       try {
@@ -1206,14 +832,18 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
             fetched.add({
               'tmdb_id': m['id'],
               'title': t,
-              'year': (m['release_date'] ?? m['first_air_date'] ?? DateTime.now().year.toString()).toString().split('-')[0],
+              'year': (m['release_date'] ??
+                      m['first_air_date'] ??
+                      DateTime.now().year.toString())
+                  .toString()
+                  .split('-')[0],
               'rating': m['vote_average']?.toString() ?? '7.5',
               'poster': m['poster_path'] != null
                   ? '${AppConfig.imgBase}${m['poster_path']}'
                   : '${AppConfig.backdropBase}${m['backdrop_path']}',
               'backdrop': m['backdrop_path'] != null
-                  ? '${AppConfig.backdropBase}${m['backdrop_path']}'
-                  : '${AppConfig.imgBase}${m['poster_path']}',
+                ? '${AppConfig.backdropBase}${m['backdrop_path']}'
+                : '${AppConfig.imgBase}${m['poster_path']}',
               'isTv': isTv,
             });
           }
@@ -1232,97 +862,86 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
         itemsList = fetched;
         isLoading = false;
       });
-      _startHeroTimer();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F1014),
+      backgroundColor: const Color(0xFF141414),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF16181F),
-        title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        backgroundColor: const Color(0xFF181818),
+        title: Text(widget.title,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF38BDF8)))
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFFE50914)))
           : itemsList.isEmpty
-              ? const Center(child: Text('Titles load nahi ho sake', style: TextStyle(color: Colors.white60)))
-              : SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      _buildHeroSlider(),
-                      GridView.builder(
-                        physics: const NeverScrollableScrollPhysics(),
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.all(12),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          childAspectRatio: 0.65,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 12,
-                        ),
-                        itemCount: itemsList.length,
-                        itemBuilder: (ctx, idx) {
-                          final item = itemsList[idx];
-                          return GestureDetector(
-                            onTap: () => widget.onItemTapped(item),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  Image.network(
-                                    item['poster'],
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1E2029)),
-                                  ),
-                                  Container(
-                                    decoration: const BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [Colors.transparent, Colors.black87],
-                                        stops: [0.65, 1.0],
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    bottom: 6,
-                                    left: 6,
-                                    right: 6,
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          item['title'],
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                        ),
-                                        Text(
-                                          item['year'],
-                                          style: const TextStyle(color: Colors.white54, fontSize: 9),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+              ? const Center(
+                  child: Text('Titles load nahi ho sake',
+                      style: TextStyle(color: Colors.white60)))
+              : GridView.builder(
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    childAspectRatio: 0.65,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 10,
+                  ),
+                  itemCount: itemsList.length,
+                  itemBuilder: (ctx, idx) {
+                    final item = itemsList[idx];
+                    return GestureDetector(
+                      onTap: () => widget.onItemTapped(item),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.network(
+                              item['poster'],
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  Container(color: const Color(0xFF1E1E1E)),
+                            ),
+                            Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [Colors.transparent, Colors.black87],
+                                  stops: [0.65, 1.0],
+                                ),
                               ),
                             ),
-                          );
-                        },
+                            Positioned(
+                              bottom: 6,
+                              left: 6,
+                              right: 6,
+                              child: Text(
+                                item['title'],
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
     );
   }
 }
 
 // ============================================================================
-// 7. WEB SERIES SEASON & EPISODE SELECTOR POPUP
+// 6. NETFLIX WEB SERIES EPISODE SELECTOR POPUP
 // ============================================================================
 
 class MobileEpisodeSelectorDialog extends StatefulWidget {
@@ -1336,121 +955,185 @@ class MobileEpisodeSelectorDialog extends StatefulWidget {
   });
 
   @override
-  State<MobileEpisodeSelectorDialog> createState() => _MobileEpisodeSelectorDialogState();
+  State<MobileEpisodeSelectorDialog> createState() =>
+      _MobileEpisodeSelectorDialogState();
 }
 
-class _MobileEpisodeSelectorDialogState extends State<MobileEpisodeSelectorDialog> {
+class _MobileEpisodeSelectorDialogState
+    extends State<MobileEpisodeSelectorDialog> {
+  int totalSeasons = 1;
   int selectedSeason = 1;
   int episodeCount = 10;
-  List availableSeasons = [1, 2, 3];
-  bool loadingSeasons = true;
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchTvDetails();
+    _fetchSeriesDetails();
   }
 
-  Future<void> _fetchTvDetails() async {
+  Future<void> _fetchSeriesDetails() async {
     try {
-      final res = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${AppConfig.tmdbKey}'));
+      final url =
+          '${AppConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${AppConfig.tmdbKey}';
+      final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        final seasons = data['seasons'] as List?;
-        if (seasons != null && seasons.isNotEmpty) {
-          final valid = seasons
-              .where((s) => (s['season_number'] ?? 0) > 0)
-              .map((s) => s['season_number'] as int)
-              .toList();
-          if (valid.isNotEmpty) {
-            setState(() {
-              availableSeasons = valid;
-              selectedSeason = valid.first;
-              final cur = seasons.firstWhere((s) => s['season_number'] == selectedSeason, orElse: () => null);
-              episodeCount = cur != null ? (cur['episode_count'] ?? 10) : 10;
-              loadingSeasons = false;
-            });
-            return;
-          }
+        final seasons = data['number_of_seasons'] ?? 1;
+        if (mounted) {
+          setState(() {
+            totalSeasons = seasons > 0 ? seasons : 1;
+          });
         }
+        await _fetchSeasonEpisodes(1);
       }
-    } catch (_) {}
-    if (mounted) setState(() => loadingSeasons = false);
+    } catch (_) {
+      if (mounted) setState(() => isLoading = false);
+    }
   }
 
-  void _onSeasonChanged(int s) {
-    setState(() {
-      selectedSeason = s;
-      episodeCount = 10;
-    });
+  Future<void> _fetchSeasonEpisodes(int s) async {
+    setState(() => isLoading = true);
+    try {
+      final url =
+          '${AppConfig.tmdbBase}/tv/${widget.item['tmdb_id']}/season/$s?api_key=${AppConfig.tmdbKey}';
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final epList = data['episodes'] as List? ?? [];
+        if (mounted) {
+          setState(() {
+            selectedSeason = s;
+            episodeCount = epList.isNotEmpty ? epList.length : 10;
+            isLoading = false;
+          });
+        }
+        return;
+      }
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        selectedSeason = s;
+        episodeCount = 10;
+        isLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: const Color(0xFF1E2029),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: const Color(0xFF181818),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              widget.item['title'],
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-            const SizedBox(height: 14),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: availableSeasons.map((s) {
-                  final isSel = s == selectedSeason;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isSel ? const Color(0xFF0072D2) : const Color(0xFF282B37),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      onPressed: () => _onSeasonChanged(s),
-                      child: Text('Season $s'),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.item['title'],
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(height: 14),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
-              child: GridView.builder(
-                shrinkWrap: true,
-                itemCount: episodeCount,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 1.5,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white70),
+                  onPressed: () => Navigator.pop(context),
+                )
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 36,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: totalSeasons,
                 itemBuilder: (ctx, idx) {
-                  final ep = idx + 1;
-                  return OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFF3A3F50)),
-                      backgroundColor: const Color(0xFF232631),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: EdgeInsets.zero,
+                  final s = idx + 1;
+                  final isSel = s == selectedSeason;
+                  return GestureDetector(
+                    onTap: () => _fetchSeasonEpisodes(s),
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color:
+                            isSel ? const Color(0xFFE50914) : const Color(0xFF262626),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'Season $s',
+                        style: TextStyle(
+                          color: isSel ? Colors.white : Colors.white70,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
                     ),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      widget.onSelected(selectedSeason, ep);
-                    },
-                    child: Text('EP $ep', style: const TextStyle(color: Colors.white, fontSize: 12)),
                   );
                 },
               ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Select Episode',
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 200,
+              child: isLoading
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: Color(0xFFE50914)))
+                  : GridView.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 4,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        childAspectRatio: 1.3,
+                      ),
+                      itemCount: episodeCount,
+                      itemBuilder: (ctx, idx) {
+                        final ep = idx + 1;
+                        return InkWell(
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onSelected(selectedSeason, ep);
+                          },
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF262626),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.white12),
+                            ),
+                            child: Text(
+                              'EP $ep',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -1460,7 +1143,7 @@ class _MobileEpisodeSelectorDialogState extends State<MobileEpisodeSelectorDialo
 }
 
 // ============================================================================
-// 8. XTREAM IPTV & STREMIO STREAM RESOLVER ENGINE
+// 7. CINEMA HQ XTREAM & STREMIO STREAM RESOLVER ENGINE
 // ============================================================================
 
 class MobileQualitySelectorSheet extends StatefulWidget {
@@ -1480,7 +1163,8 @@ class MobileQualitySelectorSheet extends StatefulWidget {
   });
 
   @override
-  State<MobileQualitySelectorSheet> createState() => _MobileQualitySelectorSheetState();
+  State<MobileQualitySelectorSheet> createState() =>
+      _MobileQualitySelectorSheetState();
 }
 
 class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet> {
@@ -1779,7 +1463,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(18),
-      height: MediaQuery.of(context).size.height * 0.5,
+      height: MediaQuery.of(context).size.height * 0.55,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1787,15 +1471,19 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
             widget.season != null
                 ? '${widget.item['title']} - S${widget.season} E${widget.episode}'
                 : widget.item['title'],
-            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+                color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
           if (loading)
-            const Expanded(child: Center(child: CircularProgressIndicator(color: Color(0xFF0072D2))))
+            const Expanded(
+                child: Center(
+                    child: CircularProgressIndicator(color: Color(0xFFE50914))))
           else if (streams.isEmpty)
             const Expanded(
               child: Center(
-                child: Text('No active streams found on servers.', style: TextStyle(color: Colors.white54)),
+                child: Text('No active streams found on servers.',
+                    style: TextStyle(color: Colors.white54)),
               ),
             )
           else
@@ -1809,10 +1497,10 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
                   return Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E2029),
-                      borderRadius: BorderRadius.circular(8),
+                      color: const Color(0xFF262626),
+                      borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: isHindi ? const Color(0xFF10B981) : Colors.white10,
+                        color: isHindi ? const Color(0xFF10B981) : Colors.white12,
                         width: 1.2,
                       ),
                     ),
@@ -1827,7 +1515,8 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
                                   if (isHindi)
                                     Container(
                                       margin: const EdgeInsets.only(right: 6),
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 5, vertical: 2),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFF10B981),
                                         borderRadius: BorderRadius.circular(3),
@@ -1856,16 +1545,20 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
                                 ],
                               ),
                               const SizedBox(height: 2),
-                              Text(s['server'], style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11)),
+                              Text(s['server'],
+                                  style: const TextStyle(
+                                      color: Color(0xFFE50914), fontSize: 11)),
                             ],
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.play_circle_fill, color: Color(0xFF0072D2), size: 28),
+                          icon: const Icon(Icons.play_circle_fill,
+                              color: Color(0xFFE50914), size: 30),
                           onPressed: () => _playStream(s['url'], false),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.open_in_new, color: Colors.amber, size: 24),
+                          icon: const Icon(Icons.open_in_new,
+                              color: Colors.amber, size: 24),
                           onPressed: () => _playStream(s['url'], true),
                         ),
                       ],
@@ -1881,7 +1574,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
 }
 
 // ============================================================================
-// 9. INTERNAL VIDEO PLAYER (FULL SCREEN CROP + 30s + VOL/BRIGHTNESS + LOCK)
+// 8. INTERNAL VIDEO PLAYER (CINEMA HQ ENGINE + CROP/ZOOM + VOL/BRIGHTNESS)
 // ============================================================================
 
 class InternalPlayerScreen extends StatefulWidget {
@@ -1920,8 +1613,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
   bool _showOverlayIndicator = false;
   Timer? _overlayTimer;
 
-  // 0: FIT (16:9), 1: FILL (Stretch), 2: CROP (Zoom / Notch-fill default)
-  int _scaleMode = 2;
+  int _scaleMode = 2; // CROP (ZOOM default)
 
   @override
   void initState() {
@@ -1939,7 +1631,6 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
     try {
       final cleanUrl = widget.streamUrl.trim();
 
-      // Cinema HQ standard initialization: custom headers se IPTV servers block karte hain
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(cleanUrl),
       );
@@ -2075,7 +1766,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
   Widget _buildVideoOutput() {
     if (!_isInit) {
       return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF1E88E5)),
+        child: CircularProgressIndicator(color: Color(0xFFE50914)),
       );
     }
 
@@ -2129,7 +1820,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
           _buildVideoOutput(),
           if (_isInit && _controller.value.isBuffering)
             const Center(
-              child: CircularProgressIndicator(color: Color(0xFF1E88E5)),
+              child: CircularProgressIndicator(color: Color(0xFFE50914)),
             ),
           IgnorePointer(
             child: Container(
@@ -2147,15 +1838,15 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: BoxDecoration(
-                color: const Color(0xFF0C111B).withOpacity(0.9),
+                color: const Color(0xFF181818).withOpacity(0.9),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                    color: const Color(0xFF1E88E5).withOpacity(0.5), width: 1.5),
+                    color: const Color(0xFFE50914).withOpacity(0.5), width: 1.5),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(_overlayIcon, color: const Color(0xFF1E88E5), size: 28),
+                  Icon(_overlayIcon, color: const Color(0xFFE50914), size: 28),
                   const SizedBox(width: 10),
                   Text(
                     _overlayText,
@@ -2172,7 +1863,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0C111B).withOpacity(0.95),
+                  color: const Color(0xFF181818).withOpacity(0.95),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                       color: Colors.redAccent.withOpacity(0.6), width: 1.5),
@@ -2222,13 +1913,13 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                     color: Colors.black87,
                     borderRadius: BorderRadius.circular(25),
                     border:
-                        Border.all(color: const Color(0xFF1E88E5), width: 1.5),
+                        Border.all(color: const Color(0xFFE50914), width: 1.5),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.lock_open_rounded,
-                          color: Color(0xFF1E88E5), size: 20),
+                          color: Color(0xFFE50914), size: 20),
                       SizedBox(width: 8),
                       Text(
                         'Unlock Screen',
@@ -2314,7 +2005,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                             margin: const EdgeInsets.only(right: 10),
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF161922).withOpacity(0.9),
+                              color: const Color(0xFF181818).withOpacity(0.9),
                               shape: BoxShape.circle,
                               border: Border.all(
                                   color: Colors.white24, width: 1.2),
@@ -2329,21 +2020,21 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 14, vertical: 7),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF161922).withOpacity(0.9),
+                              color: const Color(0xFF181818).withOpacity(0.9),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                  color: const Color(0xFF1E88E5), width: 1.5),
+                                  color: const Color(0xFFE50914), width: 1.5),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 const Icon(Icons.aspect_ratio_rounded,
-                                    color: Color(0xFF1E88E5), size: 16),
+                                    color: Color(0xFFE50914), size: 16),
                                 const SizedBox(width: 6),
                                 Text(
                                   scaleNames[_scaleMode],
                                   style: const TextStyle(
-                                    color: Color(0xFF1E88E5),
+                                    color: Color(0xFFE50914),
                                     fontWeight: FontWeight.w700,
                                     fontSize: 12,
                                   ),
@@ -2386,7 +2077,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color:
-                                  const Color(0xFF1E88E5).withOpacity(0.85),
+                                  const Color(0xFFE50914).withOpacity(0.85),
                               border: Border.all(
                                   color: Colors.white24, width: 2),
                             ),
@@ -2437,9 +2128,9 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                         Expanded(
                           child: SliderTheme(
                             data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: const Color(0xFF1E88E5),
+                              activeTrackColor: const Color(0xFFE50914),
                               inactiveTrackColor: Colors.white24,
-                              thumbColor: const Color(0xFF1E88E5),
+                              thumbColor: const Color(0xFFE50914),
                               trackHeight: 3,
                             ),
                             child: Slider(
