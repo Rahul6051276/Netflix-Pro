@@ -3,60 +3,49 @@ name: Build and Release Netflix Pro APK
 on:
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Set up Flutter
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.2'
           channel: 'stable'
-          cache: true
 
-      - name: Setup & Build Netflix Pro App
+      - name: Build Project Setup
         run: |
-          # 1. Fresh Project banayega
-          flutter create --org com.netflixpro --project-name netflix_pro netflix_build_temp
+          flutter create netflix_build_temp
+          cp pubspec.yaml netflix_build_temp/
+          # Pura lib folder copy karein taaki main.dart aur internal_player.dart dono jayein
+          cp -r lib/* netflix_build_temp/lib/
           
-          # 2. Code aur aapka AndroidManifest copy karega
-          cp -r lib netflix_build_temp/
-          cp pubspec.yaml netflix_build_temp/pubspec.yaml
-          cp android/app/src/main/AndroidManifest.xml netflix_build_temp/android/app/src/main/AndroidManifest.xml
+          # AndroidManifest me cleartext traffic inject karein
+          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
           
-          # 3. Build Release APK
           cd netflix_build_temp
           flutter pub get
           flutter build apk --release
 
-      - name: Prepare APK for Release
+      - name: Move APK for Release
         run: |
-          mkdir -p release_apks
-          cp netflix_build_temp/build/app/outputs/flutter-apk/app-release.apk release_apks/Netflix-Pro.apk
+          mkdir -p build_output
+          cp netflix_build_temp/build/app/outputs/flutter-apk/app-release.apk build_output/Netflix-Pro.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
-          name: Netflix Pro v1.0.1
-          body: |
-            ## Netflix Pro Mobile Release
-            * Pure Netflix UI & Dark Theme
-            * TMDB Movies & Series Integration
-          files: |
-            release_apks/Netflix-Pro.apk
+          tag_name: v1.0.9
+          name: Netflix Pro v1.0.9
+          files: build_output/Netflix-Pro.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
