@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:android_intent_plus/android_intent.dart';
+import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
 
-class InternalPlayer extends StatelessWidget {
+class InternalPlayer extends StatefulWidget {
   final String streamUrl;
   final String title;
 
@@ -11,19 +13,85 @@ class InternalPlayer extends StatelessWidget {
     required this.title,
   });
 
-  void _openExternalPlayer(BuildContext context) async {
-    final intent = AndroidIntent(
-      action: 'action_view',
-      data: streamUrl,
-      type: 'video/*',
-    );
+  @override
+  State<InternalPlayer> createState() => _InternalPlayerState();
+}
+
+class _InternalPlayerState extends State<InternalPlayer> {
+  late VideoPlayerController _videoPlayerController;
+  ChewieController? _chewieController;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializePlayer();
+  }
+
+  Future<void> _initializePlayer() async {
     try {
-      await intent.launch();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No external video player found')),
+      _videoPlayerController = VideoPlayerController.uri(
+        Uri.parse(widget.streamUrl),
       );
+
+      await _videoPlayerController.initialize();
+
+      _chewieController = ChewieController(
+        videoPlayerController: _videoPlayerController,
+        autoPlay: true,
+        looping: false,
+        aspectRatio: _videoPlayerController.value.aspectRatio,
+        allowFullScreen: true,
+        fullScreenByDefault: true,
+        deviceOrientationsAfterFullScreen: [
+          DeviceOrientation.portraitUp,
+        ],
+        deviceOrientationsOnEnterFullScreen: [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ],
+        materialProgressColors: ChewieProgressColors(
+          playedColor: const Color(0xFFE50914),
+          handleColor: const Color(0xFFE50914),
+          backgroundColor: Colors.grey.shade800,
+          bufferedColor: Colors.white38,
+        ),
+        placeholder: Container(
+          color: Colors.black,
+          child: const Center(
+            child: CircularProgressIndicator(color: Color(0xFFE50914)),
+          ),
+        ),
+        errorBuilder: (context, errorMessage) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                'Stream Error: Server is offline or invalid URL.\n$errorMessage',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ),
+          );
+        },
+      );
+
+      setState(() {});
+    } catch (e) {
+      setState(() {
+        _hasError = true;
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    _videoPlayerController.dispose();
+    _chewieController?.dispose();
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+    super.dispose();
   }
 
   @override
@@ -31,47 +99,27 @@ class InternalPlayer extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 16)),
+        backgroundColor: Colors.black,
+        title: Text(
+          widget.title,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.play_circle_fill, size: 80, color: Color(0xFFE50914)),
-              const SizedBox(height: 20),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Stream Ready',
-                style: TextStyle(color: Colors.white54, fontSize: 14),
-              ),
-              const SizedBox(height: 30),
-              ElevatedButton.icon(
-                onPressed: () => _openExternalPlayer(context),
-                icon: const Icon(Icons.open_in_new, color: Colors.black),
-                label: const Text(
-                  'Play in Video Player',
-                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                ),
-              ),
-            ],
-          ),
+      body: SafeArea(
+        child: Center(
+          child: _hasError
+              ? const Text(
+                  'Failed to load stream link.\nPlease try another server.',
+                  style: TextStyle(color: Colors.white),
+                )
+              : _chewieController != null &&
+                      _chewieController!.videoPlayerController.value.isInitialized
+                  ? Chewie(controller: _chewieController!)
+                  : const CircularProgressIndicator(color: Color(0xFFE50914)),
         ),
       ),
     );
