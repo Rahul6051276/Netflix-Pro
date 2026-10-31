@@ -26,7 +26,6 @@ class _InternalPlayerState extends State<InternalPlayer> {
   void initState() {
     super.initState();
 
-    // फुलस्क्रीन और लैंडस्केप
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
@@ -92,7 +91,6 @@ class _InternalPlayerState extends State<InternalPlayer> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // 1. वीडियो प्लेयर
             Center(
               child: _isInitialized
                   ? AspectRatio(
@@ -114,15 +112,12 @@ class _InternalPlayerState extends State<InternalPlayer> {
                         )
                       : const CircularProgressIndicator(color: Color(0xFFE50914)),
             ),
-
-            // 2. ओवरले कंट्रोल्स
             if (_showControls && _isInitialized)
               Container(
                 color: Colors.black45,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // टॉप बार
                     SafeArea(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -148,8 +143,6 @@ class _InternalPlayerState extends State<InternalPlayer> {
                         ),
                       ),
                     ),
-
-                    // सेंटर प्ले/पॉज़ बटन
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -189,8 +182,6 @@ class _InternalPlayerState extends State<InternalPlayer> {
                         ),
                       ],
                     ),
-
-                    // बॉटम प्रोग्रेस बार
                     SafeArea(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -237,4 +228,4 @@ class _InternalPlayerState extends State<InternalPlayer> {
       ),
     );
   }
-}.
+}
