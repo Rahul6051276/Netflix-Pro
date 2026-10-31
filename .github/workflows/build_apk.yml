@@ -50,8 +50,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: Netflix Pro v1.0.0
+          tag_name: v1.0.1
+          name: Netflix Pro v1.0.1
           body: |
             ## Netflix Pro Mobile Release
             * Pure Netflix UI & Dark Theme
