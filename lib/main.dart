@@ -296,8 +296,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
                   child: _buildNetflixRow('Only on Netflix', onlyOnNetflix),
                 ),
                 SliverToBoxAdapter(
-                  child: _buildNetflixRow(
-                      'Trending Bollywood', trendingBollywood),
+                  child: _buildNetflixRow('Trending Bollywood', trendingBollywood),
                 ),
                 SliverToBoxAdapter(
                   child: _buildNetflixRow(
@@ -1137,7 +1136,6 @@ class _MobileEpisodeSelectorDialogState
 // ============================================================================
 
 class ServerLauncherHelper {
-  // External Intent Launch (MX Player / VLC / Just Player)
   static Future<void> launchExternalIntent({
     required BuildContext context,
     required String streamUrl,
@@ -1163,7 +1161,6 @@ class ServerLauncherHelper {
     }
   }
 
-  // Internal Player Screen Launch (In-App Zoom / Crop Player)
   static void launchInternalPlayer({
     required BuildContext context,
     required String streamUrl,
@@ -1180,7 +1177,6 @@ class ServerLauncherHelper {
     );
   }
 
-  // Server Bottom Sheet with Blue Internal & Yellow External Buttons
   static void showServerSelector({
     required BuildContext context,
     required dynamic item,
@@ -1289,7 +1285,8 @@ class ServerLauncherHelper {
                     String finalUrl = urlTemplate
                         .replaceAll('{id}', tmdbId)
                         .replaceAll('{s}', season.toString())
-                        .replaceAll('{e}', episode.toString());
+                        .replaceAll('{e}', episode.toString())
+                        .trim();
 
                     final streamTitle =
                         isTv ? '$title - S$season:E$episode' : title;
@@ -1327,7 +1324,7 @@ class ServerLauncherHelper {
                               ],
                             ),
                           ),
-                          // Blue Play Button -> In-App Internal Player (Crop/Zoom)
+                          // Blue Play Button -> In-App Internal Player
                           IconButton(
                             icon: const Icon(Icons.play_circle_fill,
                                 color: Color(0xFF1E88E5), size: 34),
@@ -1340,7 +1337,7 @@ class ServerLauncherHelper {
                               );
                             },
                           ),
-                          // Yellow Share/Intent Button -> External Player
+                          // Yellow Intent Button -> External Player
                           IconButton(
                             icon: const Icon(Icons.open_in_new,
                                 color: Colors.amber, size: 24),
@@ -1423,13 +1420,42 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
 
   Future<void> _initPlayer() async {
     try {
+      String resolvedUrl = widget.streamUrl.trim();
+
+      // 1. Resolve 301/302 Redirects before passing to ExoPlayer
+      try {
+        final client = http.Client();
+        final request = http.Request('GET', Uri.parse(resolvedUrl))
+          ..followRedirects = true
+          ..maxRedirects = 5
+          ..headers.addAll({
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          });
+        final streamedResponse = await client.send(request);
+        if (streamedResponse.headers.containsKey('location')) {
+          resolvedUrl = streamedResponse.headers['location']!;
+        }
+      } catch (_) {}
+
+      // 2. Format Hint determination
+      VideoFormat? format;
+      final lower = resolvedUrl.toLowerCase();
+      if (lower.contains('.m3u8')) {
+        format = VideoFormat.hls;
+      } else if (lower.contains('.mp4')) {
+        format = VideoFormat.other;
+      }
+
       _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.streamUrl),
+        Uri.parse(resolvedUrl),
+        formatHint: format,
         httpHeaders: const {
           'User-Agent':
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': '*/*',
           'Connection': 'keep-alive',
+          'Icy-MetaData': '1',
         },
       );
 
