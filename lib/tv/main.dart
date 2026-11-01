@@ -91,21 +91,37 @@ class MediaItem {
   });
 
   factory MediaItem.fromTmdb(Map<String, dynamic> json, {bool isTv = false, String endpoint = ''}) {
-    final releaseDate = json['release_date'] ?? json['first_air_date'] ?? '2026';
-    final yearParsed = releaseDate.toString().split('-')[0];
+    String parsedYear = '2026';
+    final dateStr = (json['release_date'] ?? json['first_air_date'])?.toString();
+    if (dateStr != null && dateStr.contains('-')) {
+      parsedYear = dateStr.split('-')[0];
+    }
+
+    String ratingStr = '7.5';
+    if (json['vote_average'] != null) {
+      final num? val = json['vote_average'] is num
+          ? json['vote_average']
+          : num.tryParse(json['vote_average'].toString());
+      if (val != null) {
+        ratingStr = val.toStringAsFixed(1);
+      }
+    }
+
+    final backdropPath = json['backdrop_path']?.toString();
+    final posterPath = json['poster_path']?.toString();
 
     return MediaItem(
-      tmdbId: json['id'],
-      title: json['title'] ?? json['name'] ?? 'Untitled',
-      year: yearParsed.isNotEmpty ? yearParsed : '2026',
-      rating: json['vote_average'] != null ? (json['vote_average'] as num).toStringAsFixed(1) : '7.5',
-      backdrop: json['backdrop_path'] != null
-          ? '${TVConfig.backdropBase}${json['backdrop_path']}'
-          : (json['poster_path'] != null ? '${TVConfig.imgBase}${json['poster_path']}' : ''),
-      poster: json['poster_path'] != null
-          ? '${TVConfig.imgBase}${json['poster_path']}'
-          : (json['backdrop_path'] != null ? '${TVConfig.backdropBase}${json['backdrop_path']}' : ''),
-      overview: json['overview'] ?? 'No description available for this title.',
+      tmdbId: json['id'] ?? 0,
+      title: (json['title'] ?? json['name'] ?? 'Untitled').toString(),
+      year: parsedYear,
+      rating: ratingStr,
+      backdrop: backdropPath != null
+          ? '${TVConfig.backdropBase}$backdropPath'
+          : (posterPath != null ? '${TVConfig.imgBase}$posterPath' : ''),
+      poster: posterPath != null
+          ? '${TVConfig.imgBase}$posterPath'
+          : (backdropPath != null ? '${TVConfig.backdropBase}$backdropPath' : ''),
+      overview: (json['overview'] ?? 'No description available for this title.').toString(),
       isTv: isTv,
       endpoint: endpoint,
     );
@@ -145,7 +161,7 @@ class XtreamServerInfo {
 }
 
 // ============================================================================
-// XTREAM & STREMIO STREAM ENGINE
+// XTREAM STREAM ENGINE
 // ============================================================================
 class XtreamStremioEngine {
   static List<XtreamServerInfo> servers = [];
@@ -327,7 +343,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
   int _selectedSidebarIndex = 1;
   MediaItem? activeBillboardItem;
 
-  // 6 Primary Hindi OTT Platforms
   List<MediaItem> netflixHubList = [];
   List<MediaItem> primeHubList = [];
   List<MediaItem> hotstarHubList = [];
@@ -343,14 +358,10 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     _loadInitialContent();
   }
 
-  // Fast Instant Render (No Network Freezing)
   Future<void> _loadInitialContent() async {
     try {
-      // Step 1: Pehle 2 main rows instant load karein taaki screen turant show ho jaye
       final quickResults = await Future.wait([
-        // 1. Netflix Hindi Hub
         _fetchCategory('/discover/movie?with_watch_providers=8&watch_region=IN&with_original_language=hi&sort_by=popularity.desc'),
-        // 2. Amazon Prime Hindi Hub
         _fetchCategory('/discover/movie?with_watch_providers=119&watch_region=IN&with_original_language=hi&sort_by=popularity.desc'),
       ]);
 
@@ -362,14 +373,11 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
           if (netflixHubList.isNotEmpty) {
             activeBillboardItem = netflixHubList.first;
           }
-          isLoading = false; // Screen instant open ho jayegi
+          isLoading = false;
         });
       }
 
-      // Step 2: Baaki 4 OTT Hubs background me smooth fetch honge
       _fetchRemainingHubs();
-
-      // Step 3: Provider sync in background
       XtreamStremioEngine.initEngine();
     } catch (_) {
       if (mounted) setState(() => isLoading = false);
@@ -378,13 +386,9 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
 
   Future<void> _fetchRemainingHubs() async {
     try {
-      // 3. Disney+ Hotstar Specials & Movies
       final hotstar = await _fetchCategory('/discover/movie?with_watch_providers=122&watch_region=IN&sort_by=popularity.desc');
-      // 4. SonyLIV Originals & Drama
       final sony = await _fetchCategory('/discover/tv?with_watch_providers=237&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', isTv: true);
-      // 5. Zee5 Originals & Cinema
       final zee = await _fetchCategory('/discover/movie?with_watch_providers=232&watch_region=IN&with_original_language=hi&sort_by=popularity.desc');
-      // 6. Bollywood Blockbusters
       final bolly = await _fetchCategory('/discover/movie?with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10');
 
       if (mounted) {
@@ -398,7 +402,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     } catch (_) {}
   }
 
-    Future<List<MediaItem>> _fetchCategory(String endpoint, {bool isTv = false}) async {
+  Future<List<MediaItem>> _fetchCategory(String endpoint, {bool isTv = false}) async {
     try {
       final sep = endpoint.contains('?') ? '&' : '?';
       final url = '${TVConfig.tmdbBase}$endpoint${sep}api_key=${TVConfig.tmdbKey}&page=1';
@@ -418,10 +422,9 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
             .map((m) => MediaItem.fromTmdb(m, isTv: isTv, endpoint: endpoint))
             .toList();
       }
-        } catch (e) {
-      print("TMDb API Error: $e");
-    }
+    } catch (_) {}
     return [];
+  }
 
   Future<void> _playMedia(MediaItem item) async {
     final streamUrl = await XtreamStremioEngine.resolveStreamUrl(item);
@@ -463,9 +466,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // TV HERO BILLBOARD
-  // --------------------------------------------------------------------------
   Widget _buildTVBillboard() {
     final item = activeBillboardItem;
     if (item == null) return const SizedBox.shrink();
@@ -590,11 +590,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // TV HORIZONTAL ROW + "SEE ALL (200+ TITLES)"
-  // --------------------------------------------------------------------------
   Widget _buildTVRow(String title, List<MediaItem> items, String endpoint, bool isTv) {
-    // Agar data khali hai ya fetch fail hua, toh black screen mat chhodo, status dikhao
     if (items.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 45, vertical: 12),
@@ -661,7 +657,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
             itemCount: items.length + 1,
             itemBuilder: (ctx, idx) {
               if (idx == items.length) {
-                // SEE ALL CARD (Loads 200+ Titles)
                 return Container(
                   width: 190,
                   margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -775,9 +770,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
       ],
     );
   }
-  // --------------------------------------------------------------------------
-  // AUTHENTIC CLEAN SLIM SIDEBAR
-  // --------------------------------------------------------------------------
+
   Widget _buildTVSidebar() {
     return Container(
       width: 58,
@@ -847,7 +840,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
-    @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
@@ -877,7 +870,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
       ),
     );
   }
-} // <--- YEH BRACKET MISSING HAI! Is bracket ko lagana hai taaki TVHomeScreen yahan band ho sake.
+}
 
 // ============================================================================
 // 3. FULL SCREEN VERTICAL GRID SCREEN (SEE ALL - 200+ TITLES DEEP PAGINATION)
