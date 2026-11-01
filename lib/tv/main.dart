@@ -72,16 +72,16 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   final FocusNode _watchNowFocusNode = FocusNode();
 
   List<dynamic> activeProviders = [];
-  List> continueWatchingList = [];
+  List<dynamic> continueWatchingList = [];
   Map<String, dynamic>? activeShowcaseItem;
 
   // Netflix Ordered Rows
-  List> netflixSeriesList = [];
-  List> netflixMoviesList = [];
-  List> hindiWebSeriesList = [];
-  List> bollywoodMoviesList = [];
-  List> southHindiList = [];
-  List> hollywoodHindiList = [];
+  List<dynamic> netflixSeriesList = [];
+  List<dynamic> netflixMoviesList = [];
+  List<dynamic> hindiWebSeriesList = [];
+  List<dynamic> bollywoodMoviesList = [];
+  List<dynamic> southHindiList = [];
+  List<dynamic> hollywoodHindiList = [];
 
   bool isLoading = true;
 
@@ -126,7 +126,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       final raw = prefs.getString('continue_watching_tv');
       if (raw != null && raw.isNotEmpty && mounted) {
         setState(() {
-          continueWatchingList = List>.from(jsonDecode(raw));
+          continueWatchingList = List<dynamic>.from(jsonDecode(raw));
         });
       }
     } catch (_) {}
@@ -192,8 +192,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     } catch (_) {}
   }
 
-  List> _parseTvList(dynamic list, {bool isTv = false}) {
-    List> res = [];
+  List<dynamic> _parseTvList(dynamic list, {bool isTv = false}) {
+    List<dynamic> res = [];
     final currentYear = DateTime.now().year.toString();
     for (var m in (list ?? [])) {
       if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
