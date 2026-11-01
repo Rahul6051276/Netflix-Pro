@@ -1,12 +1,23 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 
+// TV ka SSL Certificate bypass karne ke liye
+class TVHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+  }
+}
+
 void main() {
+  HttpOverrides.global = TVHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
@@ -387,11 +398,17 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     } catch (_) {}
   }
 
-  Future<List<MediaItem>> _fetchCategory(String endpoint, {bool isTv = false}) async {
+    Future<List<MediaItem>> _fetchCategory(String endpoint, {bool isTv = false}) async {
     try {
       final sep = endpoint.contains('?') ? '&' : '?';
       final url = '${TVConfig.tmdbBase}$endpoint${sep}api_key=${TVConfig.tmdbKey}&page=1';
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      final res = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Android TV; Mobile)',
+        },
+      ).timeout(const Duration(seconds: 12));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -401,9 +418,10 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
             .map((m) => MediaItem.fromTmdb(m, isTv: isTv, endpoint: endpoint))
             .toList();
       }
-    } catch (_) {}
+        } catch (e) {
+      print("TMDb API Error: $e");
+    }
     return [];
-  }
 
   Future<void> _playMedia(MediaItem item) async {
     final streamUrl = await XtreamStremioEngine.resolveStreamUrl(item);
