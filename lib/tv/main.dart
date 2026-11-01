@@ -10,7 +10,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:video_player/video_player.dart';
+import './internal_player.dart';
 
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const NetflixProTvApp());
+}
+
+class NetflixProTvApp extends StatelessWidget {
+  const NetflixProTvApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Netflix Pro TV',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF141414),
+      ),
+      home: const TvHomeScreen(),
+    );
+  }
+}
 class TvConfig {
   static const String gistUrl =
       'https://gist.githubusercontent.com/Rahul6051276/239654d65b2124bffd0ea21b5251dc02/raw/providers.json';
