@@ -75,7 +75,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   List<dynamic> continueWatchingList = [];
   Map<String, dynamic>? activeBillboardItem;
 
-  // 5 CORE OTT CATEGORY LISTS
+  // 5 CORE OTT CATEGORY LISTS (HINDI + ENGLISH)
   List<dynamic> homeNetflixList = [];
   List<dynamic> homePrimeList = [];
   List<dynamic> homeHotstarList = [];
@@ -156,40 +156,40 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   // ============================================================================
-  // 5 CORE OTT CATALOG DATA FETCH
+  // 5 CORE OTT CATALOG DATA FETCH (HINDI + ENGLISH)
   // ============================================================================
   Future<void> _fetchCatalogs() async {
-    // 1. Netflix Blockbusters
+    // 1. Netflix Blockbusters (Hindi + English)
     try {
       final res = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=hi|en&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         homeNetflixList = _parseCatalog(jsonDecode(res.body)['results']);
       }
     } catch (_) {}
 
-    // 2. Amazon Prime Video Hits
+    // 2. Amazon Prime Video Hits (Hindi + English)
     try {
       final res = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=hi|en&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         homePrimeList = _parseCatalog(jsonDecode(res.body)['results']);
       }
     } catch (_) {}
 
-    // 3. Disney+ Hotstar Specials
+    // 3. Disney+ Hotstar Specials (Hindi + English)
     try {
       final res = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=122&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=hi|en&with_watch_providers=122&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         homeHotstarList = _parseCatalog(jsonDecode(res.body)['results']);
       }
     } catch (_) {}
 
-    // 4. SonyLIV Originals & Series
+    // 4. SonyLIV Originals & Series (Hindi + English OTT Series)
     try {
       final res = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_watch_providers=237&watch_region=IN&without_genres=10766&vote_count.gte=2&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
+          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi|en&with_watch_providers=237&watch_region=IN&without_genres=10766&vote_count.gte=1&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         homeSonyLivList = _parseCatalog(jsonDecode(res.body)['results'], isTv: true)
             .where((item) => !isSoapShow(item['title'] ?? ''))
@@ -197,10 +197,10 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       }
     } catch (_) {}
 
-    // 5. ZEE5 Premium Specials
+    // 5. ZEE5 Premium Specials (Hindi + English OTT Series)
     try {
       final res = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_watch_providers=232&watch_region=IN&without_genres=10766&vote_count.gte=2&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
+          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi|en&with_watch_providers=232&watch_region=IN&without_genres=10766&vote_count.gte=1&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         homeZee5List = _parseCatalog(jsonDecode(res.body)['results'], isTv: true)
             .where((item) => !isSoapShow(item['title'] ?? ''))
@@ -208,7 +208,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       }
     } catch (_) {}
 
-    // Billboard Fallback Selection
+    // Set Welcome Billboard
     if (homeNetflixList.isNotEmpty) {
       activeBillboardItem = homeNetflixList.first;
     } else if (homePrimeList.isNotEmpty) {
@@ -257,14 +257,19 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           right: 0,
           child: Column(
             children: [
-              Text(
-                item['title'] ?? '',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 0.5,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  item['title'] ?? '',
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -280,9 +285,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                     ),
                     onPressed: () {},
                     icon: const Icon(Icons.play_arrow, size: 24),
-                    label: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold) != null
-                        ? const Text('Play', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold))
-                        : const SizedBox(),
+                    label: const Text('Play', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(width: 14),
                   ElevatedButton.icon(
