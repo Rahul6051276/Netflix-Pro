@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version_tag:
-        description: 'Release Tag (e.g. v1.0.28)'
+        description: 'Release Tag (e.g. v1.0.29)'
         required: true
-        default: 'v1.0.28'
+        default: 'v1.0.29'
 
 permissions:
   contents: write
@@ -53,7 +53,14 @@ jobs:
           cd netflix_build_temp
           flutter pub get
           dart run flutter_launcher_icons
-          flutter build apk --release
+
+          # 1. Build Mobile APK
+          flutter build apk --release -t lib/mobile/main.dart
+          cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-Mobile.apk
+
+          # 2. Build TV APK
+          flutter build apk --release -t lib/tv/main.dart
+          cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-TV.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -62,10 +69,10 @@ jobs:
           name: "Netflix Pro ${{ github.event.inputs.version_tag }}"
           body: |
             ## Netflix Pro ${{ github.event.inputs.version_tag }}
-            * Android TV & Mobile Support
-            * Just Player Internal Engine Integrated
-            * Touch gestures for Mobile & D-pad seek for TV
+            * **Netflix-Pro-Mobile.apk**: Mobile Touch UI & Gesture Player
+            * **Netflix-Pro-TV.apk**: Android TV Leanback UI & D-pad Just Player
           files: |
-            netflix_build_temp/build/app/outputs/flutter-apk/app-release.apk
+            Netflix-Pro-Mobile.apk
+            Netflix-Pro-TV.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
