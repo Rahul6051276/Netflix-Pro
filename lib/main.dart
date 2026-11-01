@@ -1514,7 +1514,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       final raw = prefs.getString('continue_watching_mobile');
-      List> current = [];
+      var current = [];
       if (raw != null && raw.isNotEmpty) {
         final List<dynamic> decoded = jsonDecode(raw);
         current = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
