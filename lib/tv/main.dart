@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -27,7 +26,6 @@ class TVConfig {
   static const String imgBase = 'https://image.tmdb.org/t/p/w500';
   static const String backdropBase = 'https://image.tmdb.org/t/p/original';
 
-  // Stremio / Torrentio Default Addon Endpoints
   static const List<String> stremioAddons = [
     'https://v3-cinemeta.strem.io',
     'https://torrentio.strem.fun',
@@ -148,10 +146,6 @@ class XtreamServerInfo {
   String buildSeriesActionUrl() {
     return '$serverUrl/player_api.php?username=$username&password=$password&action=get_series';
   }
-
-  String buildSeriesInfoUrl(dynamic seriesId) {
-    return '$serverUrl/player_api.php?username=$username&password=$password&action=get_series_info&series_id=$seriesId';
-  }
 }
 
 class StremioStreamResult {
@@ -177,10 +171,9 @@ class XtreamStremioEngine {
   static Map<String, dynamic> xtreamSeriesCache = {};
   static bool isXtreamSyncing = false;
 
-  // Initialize and Fetch Providers from GitHub Gist
   static Future<void> initEngine() async {
     try {
-      final res = await http.get(Uri.parse(TVConfig.gistUrl)).timeout(const Duration(seconds: 10));
+      final res = await http.get(Uri.parse(TVConfig.gistUrl)).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body);
         servers.clear();
@@ -203,19 +196,9 @@ class XtreamStremioEngine {
       }
     } catch (_) {}
 
-    // Fallback default provider
-    if (servers.isEmpty) {
-      servers.add(
-        XtreamServerInfo(
-          serverUrl: 'http://my-xtream-server.tv:8080',
-          username: 'demoUser',
-          password: 'demoPassword',
-        ),
-      );
+    if (servers.isNotEmpty) {
+      syncXtreamIndexes();
     }
-
-    // Sync Xtream Server Catalogs in background
-    syncXtreamIndexes();
   }
 
   static Future<void> syncXtreamIndexes() async {
@@ -224,8 +207,7 @@ class XtreamStremioEngine {
 
     for (var srv in servers) {
       try {
-        // Fetch VOD streams
-        final vodRes = await http.get(Uri.parse(srv.buildVodActionUrl())).timeout(const Duration(seconds: 12));
+        final vodRes = await http.get(Uri.parse(srv.buildVodActionUrl())).timeout(const Duration(seconds: 10));
         if (vodRes.statusCode == 200) {
           final vodList = jsonDecode(vodRes.body);
           if (vodList is List) {
@@ -245,8 +227,7 @@ class XtreamStremioEngine {
           }
         }
 
-        // Fetch Series catalog
-        final serRes = await http.get(Uri.parse(srv.buildSeriesActionUrl())).timeout(const Duration(seconds: 12));
+        final serRes = await http.get(Uri.parse(srv.buildSeriesActionUrl())).timeout(const Duration(seconds: 10));
         if (serRes.statusCode == 200) {
           final serList = jsonDecode(serRes.body);
           if (serList is List) {
@@ -265,39 +246,34 @@ class XtreamStremioEngine {
             }
           }
         }
-        break; // Successfully indexed from primary active server
+        break;
       } catch (_) {}
     }
     isXtreamSyncing = false;
   }
 
-  // Resolve Ultimate Playable URL: Xtream direct, fallback to TMDb mapping, fallback to Stremio engine
   static Future<String?> resolveStreamUrl(MediaItem item, {int season = 1, int episode = 1}) async {
     if (servers.isEmpty) await initEngine();
+    if (servers.isEmpty) return null;
 
     final primaryServer = servers.first;
     dynamic resolvedId = item.xtreamStreamId;
 
     if (item.isTv) {
-      // 1. Check Series in Xtream cache
       resolvedId ??= xtreamSeriesCache['tmdb_${item.tmdbId}'];
       resolvedId ??= xtreamSeriesCache['name_${item.title.toLowerCase()}'];
       resolvedId ??= item.tmdbId;
 
-      final directXtreamUrl = primaryServer.buildSeriesStreamUrl(resolvedId, season, episode);
-      return directXtreamUrl;
+      return primaryServer.buildSeriesStreamUrl(resolvedId, season, episode);
     } else {
-      // 1. Check Movie in Xtream cache
       resolvedId ??= xtreamVodCache['tmdb_${item.tmdbId}'];
       resolvedId ??= xtreamVodCache['name_${item.title.toLowerCase()}'];
       resolvedId ??= item.tmdbId;
 
-      final directXtreamUrl = primaryServer.buildVodStreamUrl(resolvedId);
-      return directXtreamUrl;
+      return primaryServer.buildVodStreamUrl(resolvedId);
     }
   }
 
-  // Stremio Addon Stream Fallback Resolver (Torrentio / Cinemeta / P2P)
   static Future<List<StremioStreamResult>> fetchStremioStreams(MediaItem item, {int season = 1, int episode = 1}) async {
     List<StremioStreamResult> results = [];
     final idParam = item.isTv ? 'tt_${item.tmdbId}:$season:$episode' : 'tt_${item.tmdbId}';
@@ -306,7 +282,7 @@ class XtreamStremioEngine {
       try {
         final type = item.isTv ? 'series' : 'movie';
         final url = '$addon/stream/$type/$idParam.json';
-        final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
+        final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 4));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           final streams = data['streams'] as List<dynamic>? ?? [];
@@ -350,12 +326,9 @@ class _TVSplashScreenState extends State<TVSplashScreen>
   void initState() {
     super.initState();
 
-    // Background pre-fetch engine while intro plays
-    XtreamStremioEngine.initEngine();
-
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2200),
+      duration: const Duration(milliseconds: 2000),
     );
 
     _scaleAnimation = Tween<double>(begin: 0.5, end: 1.15).animate(
@@ -378,7 +351,7 @@ class _TVSplashScreenState extends State<TVSplashScreen>
 
     _animController.forward();
 
-    Timer(const Duration(milliseconds: 2700), () {
+    Timer(const Duration(milliseconds: 2500), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
@@ -386,7 +359,7 @@ class _TVSplashScreenState extends State<TVSplashScreen>
             transitionsBuilder: (_, animation, __, child) {
               return FadeTransition(opacity: animation, child: child);
             },
-            transitionDuration: const Duration(milliseconds: 700),
+            transitionDuration: const Duration(milliseconds: 600),
           ),
         );
       }
@@ -462,7 +435,7 @@ class _TVSplashScreenState extends State<TVSplashScreen>
 }
 
 // ============================================================================
-// 2. MAIN TV HOME SCREEN (CLEAN ORIGINAL SLIM SIDEBAR + BILLBOARD + ROWS)
+// 2. MAIN TV HOME SCREEN
 // ============================================================================
 class TVHomeScreen extends StatefulWidget {
   const TVHomeScreen({super.key});
@@ -472,10 +445,9 @@ class TVHomeScreen extends StatefulWidget {
 }
 
 class _TVHomeScreenState extends State<TVHomeScreen> {
-  int _selectedSidebarIndex = 1; // 1 = Home
+  int _selectedSidebarIndex = 1;
   MediaItem? activeBillboardItem;
 
-  // OTT Catalogs
   List<MediaItem> netflixSeriesList = [];
   List<MediaItem> netflixMoviesList = [];
   List<MediaItem> primeSeriesList = [];
@@ -491,54 +463,56 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAllCatalogs();
+    _loadInitialContent();
   }
 
-  // Fast Instant Page 1 Loading (Prevents Spinner Freeze)
-  Future<void> _loadAllCatalogs() async {
+  Future<void> _loadInitialContent() async {
     try {
-      final results = await Future.wait([
-        // 1. Netflix Series
-        _fetchCategory('/discover/tv?with_networks=213&sort_by=first_air_date.desc&vote_count.gte=5', isTv: true),
-        // 2. Netflix Movies
-        _fetchCategory('/discover/movie?with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc&vote_count.gte=5'),
-        // 3. Amazon Prime Series
-        _fetchCategory('/discover/tv?with_watch_providers=119&watch_region=IN&sort_by=first_air_date.desc&vote_count.gte=5', isTv: true),
-        // 4. Amazon Prime Movies
-        _fetchCategory('/discover/movie?with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc&vote_count.gte=5'),
-        // 5. SonyLIV Originals
-        _fetchCategory('/discover/tv?with_original_language=hi&with_watch_providers=237&watch_region=IN&sort_by=first_air_date.desc&vote_count.gte=2', isTv: true),
-        // 6. Zee5 Originals
-        _fetchCategory('/discover/movie?with_original_language=hi&with_watch_providers=232&watch_region=IN&sort_by=primary_release_date.desc&vote_count.gte=2'),
-        // 7. Bollywood Blockbusters
-        _fetchCategory('/discover/movie?with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10'),
-        // 8. South Action Hits
-        _fetchCategory('/discover/movie?with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&vote_count.gte=10'),
-        // 9. Hollywood Hits
-        _fetchCategory('/discover/movie?with_original_language=en&sort_by=popularity.desc&vote_count.gte=50'),
+      final quickResults = await Future.wait([
+        _fetchCategory('/discover/tv?with_networks=213&sort_by=popularity.desc', isTv: true),
+        _fetchCategory('/discover/movie?with_watch_providers=8&watch_region=IN&sort_by=popularity.desc'),
       ]);
 
       if (mounted) {
         setState(() {
-          netflixSeriesList = results[0];
-          netflixMoviesList = results[1];
-          primeSeriesList = results[2];
-          primeMoviesList = results[3];
-          sonyLivSeriesList = results[4];
-          zee5List = results[5];
-          bollywoodMoviesList = results[6];
-          southHindiList = results[7];
-          hollywoodHindiList = results[8];
-
+          netflixSeriesList = quickResults[0];
+          netflixMoviesList = quickResults[1];
           if (netflixSeriesList.isNotEmpty) {
             activeBillboardItem = netflixSeriesList.first;
           }
           isLoading = false;
         });
       }
-    } catch (_) {
+
+      _fetchRemainingRows();
+      XtreamStremioEngine.initEngine();
+    } catch (e) {
       if (mounted) setState(() => isLoading = false);
     }
+  }
+
+  Future<void> _fetchRemainingRows() async {
+    try {
+      final pSeries = await _fetchCategory('/discover/tv?with_watch_providers=119&watch_region=IN&sort_by=popularity.desc', isTv: true);
+      final pMovies = await _fetchCategory('/discover/movie?with_watch_providers=119&watch_region=IN&sort_by=popularity.desc');
+      final sLiv = await _fetchCategory('/discover/tv?with_original_language=hi&with_watch_providers=237&watch_region=IN', isTv: true);
+      final z5 = await _fetchCategory('/discover/movie?with_original_language=hi&with_watch_providers=232&watch_region=IN');
+      final bWood = await _fetchCategory('/discover/movie?with_original_language=hi&sort_by=popularity.desc');
+      final south = await _fetchCategory('/discover/movie?with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc');
+      final hWood = await _fetchCategory('/discover/movie?with_original_language=en&sort_by=popularity.desc');
+
+      if (mounted) {
+        setState(() {
+          primeSeriesList = pSeries;
+          primeMoviesList = pMovies;
+          sonyLivSeriesList = sLiv;
+          zee5List = z5;
+          bollywoodMoviesList = bWood;
+          southHindiList = south;
+          hollywoodHindiList = hWood;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<List<MediaItem>> _fetchCategory(String endpoint, {bool isTv = false}) async {
@@ -559,7 +533,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     return [];
   }
 
-  // Playback Action
   Future<void> _playMedia(MediaItem item) async {
     final streamUrl = await XtreamStremioEngine.resolveStreamUrl(item);
 
@@ -587,7 +560,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     }
   }
 
-  // Open Full Screen Vertical Grid ("See All" 200+ titles)
   void _openFullGridView(String categoryTitle, List<MediaItem> initialItems, String endpoint, bool isTv) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -601,9 +573,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // TV BILLBOARD HERO COMPONENT
-  // --------------------------------------------------------------------------
   Widget _buildTVBillboard() {
     final item = activeBillboardItem;
     if (item == null) return const SizedBox.shrink();
@@ -752,9 +721,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // TV HORIZONTAL ROW + "SEE ALL"
-  // --------------------------------------------------------------------------
   Widget _buildTVRow(String title, List<MediaItem> items, String endpoint, bool isTv) {
     if (items.isEmpty) return const SizedBox.shrink();
 
@@ -785,7 +751,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
             itemCount: items.length + 1,
             itemBuilder: (ctx, idx) {
               if (idx == items.length) {
-                // SEE ALL CARD
                 return Container(
                   width: 190,
                   margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -900,9 +865,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // AUTHENTIC CLEAN SLIM SIDEBAR
-  // --------------------------------------------------------------------------
   Widget _buildTVSidebar() {
     return Container(
       width: 58,
@@ -973,9 +935,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // MODAL / DETAILS & STREMIO FALLBACK SELECTOR
-  // --------------------------------------------------------------------------
   void _showMediaDetailsModal(MediaItem item) {
     showModalBottomSheet(
       context: context,
@@ -1135,7 +1094,6 @@ class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
     _loadDeepPages();
   }
 
-  // Deep Pagination to fetch 200+ Items
   Future<void> _loadDeepPages() async {
     setState(() => isLoadingMore = true);
     for (int p = 2; p <= 10; p++) {
