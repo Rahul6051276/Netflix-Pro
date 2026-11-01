@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE - AUTHENTIC UI & ULTRA-FAST RESILIENT ENGINE
+// NETFLIX PRO MOBILE - POWERED BY CINEMA HQ ROCK-SOLID ENGINE
 // ============================================================================
 
 import 'dart:async';
@@ -24,7 +24,7 @@ void main() {
 }
 
 // ============================================================================
-// 1. CONFIGURATION & FAIL-SAFE BACKUPS
+// 1. CONFIGURATION
 // ============================================================================
 
 class AppConfig {
@@ -74,7 +74,7 @@ class NetflixProApp extends StatelessWidget {
 }
 
 // ============================================================================
-// 2. AUTHENTIC ANIMATED NETFLIX "N" SPLASH SCREEN
+// 2. NETFLIX ANIMATED SPLASH SCREEN
 // ============================================================================
 
 class NetflixAnimatedSplash extends StatefulWidget {
@@ -95,46 +95,31 @@ class _NetflixAnimatedSplashState extends State<NetflixAnimatedSplash>
     super.initState();
     _animCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 1600),
     );
 
-    _scaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 0.7, end: 1.1)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 60,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.1, end: 1.2)
-            .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 40,
-      ),
-    ]).animate(_animCtrl);
+    _scaleAnimation = Tween<double>(begin: 0.75, end: 1.15).animate(
+      CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic),
+    );
 
     _opacityAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
-        weight: 40,
+        tween: Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 50,
       ),
       TweenSequenceItem(
-        tween: ConstantTween<double>(1.0),
-        weight: 40,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 20,
+        tween: Tween<double>(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 50,
       ),
     ]).animate(_animCtrl);
 
     _animCtrl.forward();
 
-    Timer(const Duration(milliseconds: 2000), () {
+    Timer(const Duration(milliseconds: 1800), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 500),
+            transitionDuration: const Duration(milliseconds: 400),
             pageBuilder: (_, __, ___) => const NetflixHomeScreen(),
             transitionsBuilder: (_, anim, __, child) =>
                 FadeTransition(opacity: anim, child: child),
@@ -163,8 +148,8 @@ class _NetflixAnimatedSplashState extends State<NetflixAnimatedSplash>
               child: Transform.scale(
                 scale: _scaleAnimation.value,
                 child: SizedBox(
-                  width: 110,
-                  height: 190,
+                  width: 100,
+                  height: 180,
                   child: CustomPaint(
                     painter: NetflixLogoPainter(),
                   ),
@@ -227,7 +212,7 @@ class NetflixLogoPainter extends CustomPainter {
 }
 
 // ============================================================================
-// 3. AUTHENTIC NETFLIX HOMEPAGE (SCREENSHOT EXACT LAYOUT)
+// 3. NETFLIX HOMEPAGE (CINEMA HQ FAST DIRECT RESOLVER)
 // ============================================================================
 
 class NetflixHomeScreen extends StatefulWidget {
@@ -244,21 +229,22 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
 
   var heroItems = [];
   int currentHeroIndex = 0;
-  final PageController _heroController = PageController(viewportFraction: 0.78);
+  final PageController _heroController = PageController(viewportFraction: 0.80);
   Timer? _heroTimer;
 
-  var popularOnNetflix = [];
+  var trendingNow = [];
   var top10India = [];
-  var netflixHindiSeries = [];
-  var netflixSouthHits = [];
-  var netflixInternationalHindi = [];
+  var bollywoodHits = [];
+  var southHindiDubbed = [];
+  var hollywoodHindiDubbed = [];
+  var hindiWebSeries = [];
 
   bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadAllNetflixData();
+    _loadAllInitialData();
   }
 
   @override
@@ -271,12 +257,12 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
   void _startHeroTimer() {
     _heroTimer?.cancel();
     if (heroItems.isNotEmpty) {
-      _heroTimer = Timer.periodic(const Duration(seconds: 6), (timer) {
+      _heroTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
         if (_heroController.hasClients) {
           int nextPage = (currentHeroIndex + 1) % heroItems.length;
           _heroController.animateToPage(
             nextPage,
-            duration: const Duration(milliseconds: 600),
+            duration: const Duration(milliseconds: 500),
             curve: Curves.easeInOut,
           );
         }
@@ -284,22 +270,22 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
     }
   }
 
-  Future<void> _loadAllNetflixData() async {
-    await Future.wait([
-      _fetchProviders(),
-      _loadContinueWatching(),
-      _fetchHeroBillboard(),
-      _fetchTop10India(),
-      _fetchNetflixCategory('popular', (list) => popularOnNetflix = list),
-      _fetchNetflixCategory('hindi_series', (list) => netflixHindiSeries = list),
-      _fetchNetflixCategory('south_hits', (list) => netflixSouthHits = list),
-      _fetchNetflixCategory('international_hindi', (list) => netflixInternationalHindi = list),
-    ]);
+  // CINEMA HQ METHOD: Independent fire & render without blocking Future.wait
+  void _loadAllInitialData() {
+    _fetchProviders();
+    _loadContinueWatching();
 
-    if (mounted) {
-      setState(() => isLoading = false);
-      _startHeroTimer();
-    }
+    _fetchHeroBillboard();
+    _fetchCategoryDirect('/trending/all/day', (list) => setState(() => trendingNow = list));
+    _fetchCategoryDirect('/movie/top_rated?region=IN', (list) => setState(() => top10India = list));
+    _fetchCategoryDirect('/discover/movie?with_original_language=hi&sort_by=popularity.desc', (list) => setState(() => bollywoodHits = list));
+    _fetchCategoryDirect('/discover/movie?with_original_language=te&sort_by=popularity.desc', (list) => setState(() => southHindiDubbed = list));
+    _fetchCategoryDirect('/discover/movie?with_original_language=en&sort_by=popularity.desc', (list) => setState(() => hollywoodHindiDubbed = list));
+    _fetchCategoryDirect('/discover/tv?with_original_language=hi&sort_by=popularity.desc', (list) => setState(() => hindiWebSeries = list));
+
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) setState(() => isLoading = false);
+    });
   }
 
   Future<void> _loadContinueWatching() async {
@@ -310,9 +296,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw);
         if (decoded is List && mounted) {
-          setState(() {
-            continueWatchingList = List.from(decoded);
-          });
+          setState(() => continueWatchingList = List.from(decoded));
         }
       }
     } catch (_) {}
@@ -320,7 +304,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
 
   Future<void> _fetchProviders() async {
     try {
-      final res = await http.get(Uri.parse(AppConfig.gistUrl)).timeout(const Duration(seconds: 4));
+      final res = await http.get(Uri.parse(AppConfig.gistUrl));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         activeProviders = data['active_providers'] ?? [];
@@ -330,88 +314,45 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
 
   Future<void> _fetchHeroBillboard() async {
     try {
-      final url =
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc';
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
+      final url = '${AppConfig.tmdbBase}/trending/all/week?api_key=${AppConfig.tmdbKey}';
+      final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final results = data['results'] as List? ?? [];
         var list = [];
         for (var m in results.take(6)) {
           if (m['poster_path'] == null && m['backdrop_path'] == null) continue;
+          final title = (m['title'] ?? m['name'] ?? 'Netflix Special').toString();
           list.add({
             'tmdb_id': m['id'],
-            'title': m['name'] ?? m['title'] ?? 'Netflix Original',
+            'title': title,
             'overview': m['overview'] ?? '',
-            'year': (m['first_air_date'] ?? m['release_date'] ?? '2025').toString().split('-')[0],
-            'rating': m['vote_average']?.toString() ?? '8.4',
+            'year': (m['release_date'] ?? m['first_air_date'] ?? '2025').toString().split('-')[0],
+            'rating': m['vote_average']?.toString() ?? '8.2',
             'poster': m['poster_path'] != null
                 ? '${AppConfig.imgBase}${m['poster_path']}'
                 : '${AppConfig.backdropBase}${m['backdrop_path']}',
             'backdrop': m['backdrop_path'] != null
                 ? '${AppConfig.backdropBase}${m['backdrop_path']}'
                 : '${AppConfig.imgBase}${m['poster_path']}',
-            'isTv': true,
+            'isTv': m['media_type'] == 'tv',
           });
         }
-        heroItems = list;
+        if (mounted) {
+          setState(() {
+            heroItems = list;
+          });
+          _startHeroTimer();
+        }
       }
     } catch (_) {}
   }
 
-  Future<void> _fetchTop10India() async {
+  Future<void> _fetchCategoryDirect(String endpoint, Function(List) onLoaded) async {
     try {
-      final url =
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc';
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final results = data['results'] as List? ?? [];
-        var list = [];
-        for (var m in results.take(10)) {
-          if (m['poster_path'] == null) continue;
-          list.add({
-            'tmdb_id': m['id'],
-            'title': m['title'] ?? m['name'] ?? 'Top 10 Movie',
-            'overview': m['overview'] ?? '',
-            'year': (m['release_date'] ?? m['first_air_date'] ?? '2025').toString().split('-')[0],
-            'rating': m['vote_average']?.toString() ?? '8.0',
-            'poster': '${AppConfig.imgBase}${m['poster_path']}',
-            'backdrop': m['backdrop_path'] != null
-                ? '${AppConfig.backdropBase}${m['backdrop_path']}'
-                : '${AppConfig.imgBase}${m['poster_path']}',
-            'isTv': false,
-          });
-        }
-        top10India = list;
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _fetchNetflixCategory(String cat, Function(List) onDone) async {
-    String url = '';
-    bool isTv = false;
-
-    if (cat == 'popular') {
-      url =
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=vote_count.desc';
-      isTv = true;
-    } else if (cat == 'hindi_series') {
-      url =
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&with_original_language=hi&sort_by=popularity.desc';
-      isTv = true;
-    } else if (cat == 'south_hits') {
-      url =
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc';
-      isTv = false;
-    } else if (cat == 'international_hindi') {
-      url =
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc';
-      isTv = true;
-    }
-
-    try {
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
+      final sep = endpoint.contains('?') ? '&' : '?';
+      final url = '${AppConfig.tmdbBase}$endpoint${sep}api_key=${AppConfig.tmdbKey}';
+      final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final results = data['results'] as List? ?? [];
@@ -419,6 +360,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
         for (var m in results.take(15)) {
           if (m['poster_path'] == null) continue;
           final title = (m['title'] ?? m['name'] ?? 'Untitled').toString();
+          final bool isTv = endpoint.contains('/tv') || m['media_type'] == 'tv';
           if (isTv && isDailySoapTitle(title)) continue;
 
           list.add({
@@ -434,7 +376,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
             'isTv': isTv,
           });
         }
-        onDone(list);
+        if (mounted) onLoaded(list);
       }
     } catch (_) {}
   }
@@ -533,47 +475,46 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
-      body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFFE50914)),
-            )
-          : Stack(
-              children: [
-                CustomScrollView(
-                  slivers: [
-                    const SliverToBoxAdapter(child: SizedBox(height: 80)),
-                    SliverToBoxAdapter(child: _buildAuthenticHeroCarousel()),
-                    if (continueWatchingList.isNotEmpty)
-                      SliverToBoxAdapter(
-                        child: _buildContinueWatchingRow(continueWatchingList),
-                      ),
-                    SliverToBoxAdapter(
-                      child: _buildNetflixRow('Popular on Netflix', popularOnNetflix),
-                    ),
-                    if (top10India.isNotEmpty)
-                      SliverToBoxAdapter(
-                        child: _buildTop10Row(top10India),
-                      ),
-                    SliverToBoxAdapter(
-                      child: _buildNetflixRow('Netflix Hindi Web Series', netflixHindiSeries),
-                    ),
-                    SliverToBoxAdapter(
-                      child: _buildNetflixRow('Netflix South Hits (Hindi Dubbed)', netflixSouthHits),
-                    ),
-                    SliverToBoxAdapter(
-                      child: _buildNetflixRow('International Hindi Hits', netflixInternationalHindi),
-                    ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 80)),
-                  ],
+      body: Stack(
+        children: [
+          CustomScrollView(
+            slivers: [
+              const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              SliverToBoxAdapter(child: _buildAuthenticHeroCarousel()),
+              if (continueWatchingList.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: _buildContinueWatchingRow(continueWatchingList),
                 ),
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: _buildTopNavBar(),
+              SliverToBoxAdapter(
+                child: _buildNetflixRow('Trending on Netflix', trendingNow),
+              ),
+              if (top10India.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: _buildTop10Row(top10India),
                 ),
-              ],
-            ),
+              SliverToBoxAdapter(
+                child: _buildNetflixRow('Bollywood Blockbusters', bollywoodHits),
+              ),
+              SliverToBoxAdapter(
+                child: _buildNetflixRow('South Indian (Hindi Dubbed)', southHindiDubbed),
+              ),
+              SliverToBoxAdapter(
+                child: _buildNetflixRow('Hollywood Hits (Hindi Dubbed)', hollywoodHindiDubbed),
+              ),
+              SliverToBoxAdapter(
+                child: _buildNetflixRow('Popular Hindi Web Series', hindiWebSeries),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 80)),
+            ],
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _buildTopNavBar(),
+          ),
+        ],
+      ),
       bottomNavigationBar: _buildAuthenticBottomNav(),
     );
   }
@@ -601,12 +542,12 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
           ),
           const SizedBox(width: 20),
           GestureDetector(
-            onTap: () => _openCatalog('Netflix Series', 'hindi_series'),
+            onTap: () => _openCatalog('TV Series', 'hindi_series'),
             child: const Text('TV Shows', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(width: 24),
           GestureDetector(
-            onTap: () => _openCatalog('Netflix Movies', 'bollywood'),
+            onTap: () => _openCatalog('Movies', 'bollywood'),
             child: const Text('Movies', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(width: 24),
@@ -626,12 +567,19 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
   }
 
   Widget _buildAuthenticHeroCarousel() {
-    if (heroItems.isEmpty) return const SizedBox.shrink();
+    if (heroItems.isEmpty) {
+      return Container(
+        height: 380,
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(12)),
+        child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
+      );
+    }
 
     return Column(
       children: [
         SizedBox(
-          height: 400,
+          height: 390,
           child: PageView.builder(
             controller: _heroController,
             itemCount: heroItems.length,
@@ -642,14 +590,14 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
 
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
-                margin: EdgeInsets.symmetric(horizontal: 8, vertical: isCurrent ? 0 : 16),
+                margin: EdgeInsets.symmetric(horizontal: 8, vertical: isCurrent ? 0 : 14),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.6),
-                      blurRadius: 12,
-                      offset: const Offset(0, 8),
+                      blurRadius: 10,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
@@ -671,7 +619,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [Colors.transparent, Colors.transparent, Colors.black87],
-                              stops: [0.0, 0.6, 1.0],
+                              stops: [0.0, 0.55, 1.0],
                             ),
                           ),
                         ),
@@ -689,14 +637,13 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 20,
+                                  fontSize: 18,
                                   fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.5,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '${item['year']} • Netflix Original • ⭐ ${item['rating']}',
+                                '${item['year']} • ⭐ ${item['rating']}',
                                 style: const TextStyle(color: Colors.white70, fontSize: 11),
                               ),
                             ],
@@ -710,7 +657,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
             },
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(
@@ -735,7 +682,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
+          padding: EdgeInsets.fromLTRB(16, 20, 16, 12),
           child: Text(
             'Continue Watching',
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
@@ -874,7 +821,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 22, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
           child: Text(
             title,
             style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
@@ -950,7 +897,7 @@ class _NetflixHomeScreenState extends State<NetflixHomeScreen> {
 }
 
 // ============================================================================
-// 4. AUTHENTIC NETFLIX DETAIL & EPISODES SCREEN (SCREENSHOT 2 EXACT DESIGN)
+// 4. NETFLIX DETAIL & EPISODES SCREEN
 // ============================================================================
 
 class NetflixDetailScreen extends StatefulWidget {
@@ -988,7 +935,7 @@ class _NetflixDetailScreenState extends State<NetflixDetailScreen> {
   Future<void> _fetchSeriesDetails() async {
     try {
       final url = '${AppConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${AppConfig.tmdbKey}';
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 4));
+      final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final seasons = data['number_of_seasons'] ?? 1;
@@ -1006,7 +953,7 @@ class _NetflixDetailScreenState extends State<NetflixDetailScreen> {
     setState(() => loadingEpisodes = true);
     try {
       final url = '${AppConfig.tmdbBase}/tv/${widget.item['tmdb_id']}/season/$s?api_key=${AppConfig.tmdbKey}';
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 4));
+      final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final eps = data['episodes'] as List? ?? [];
@@ -1113,7 +1060,7 @@ class _NetflixDetailScreenState extends State<NetflixDetailScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${widget.item['year']} • Netflix Original • ⭐ ${widget.item['rating']}',
+                    '${widget.item['year']} • ⭐ ${widget.item['rating']}',
                     style: const TextStyle(color: Colors.white60, fontSize: 12),
                   ),
                   const SizedBox(height: 16),
@@ -1239,7 +1186,7 @@ class _NetflixDetailScreenState extends State<NetflixDetailScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      overview.isNotEmpty ? overview : 'Tap to stream this episode in HD with dual audio.',
+                                      overview.isNotEmpty ? overview : 'Tap to stream this episode in HD.',
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(color: Colors.white54, fontSize: 11),
@@ -1275,7 +1222,7 @@ class _NetflixDetailScreenState extends State<NetflixDetailScreen> {
 }
 
 // ============================================================================
-// 5. 100+ TITLES CATALOG (DRAWER & CATEGORIES PARALLEL FETCH ENGINE)
+// 5. 100+ TITLES CATALOG (CINEMA HQ BULLET-PROOF SEQUENTIAL DISCOVERY)
 // ============================================================================
 
 class MobileCatalogGridView extends StatefulWidget {
@@ -1303,36 +1250,30 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
   @override
   void initState() {
     super.initState();
-    _fetchFast100Titles();
+    _fetchCinemaHQCatalog();
   }
 
-  // ULTRA FAST PARALLEL FETCH: No sequential loop stalls
-  Future<void> _fetchFast100Titles() async {
+  // CINEMA HQ METHOD: Direct standard pagination without blocking timeouts
+  Future<void> _fetchCinemaHQCatalog() async {
     final bool isTv = widget.categoryType == 'hindi_series' || widget.categoryType == 'english_series';
+    var fetched = [];
 
-    List<Future<http.Response>> requests = [];
-    for (int page = 1; page <= 5; page++) {
+    for (int page = 1; page <= 4; page++) {
       String url = '';
       if (widget.categoryType == 'bollywood') {
         url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=popularity.desc&page=$page';
       } else if (widget.categoryType == 'south') {
-        url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&page=$page';
+        url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te&sort_by=popularity.desc&page=$page';
       } else if (widget.categoryType == 'hollywood_movies') {
         url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&page=$page';
       } else if (widget.categoryType == 'hindi_series') {
-        url = '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&page=$page';
+        url = '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=popularity.desc&page=$page';
       } else if (widget.categoryType == 'english_series') {
         url = '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&page=$page';
       }
 
-      requests.add(http.get(Uri.parse(url)).timeout(const Duration(seconds: 5)));
-    }
-
-    try {
-      final responses = await Future.wait(requests);
-      var fetched = [];
-
-      for (var res in responses) {
+      try {
+        final res = await http.get(Uri.parse(url));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           final rawResults = data['results'] ?? [];
@@ -1352,24 +1293,28 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
                   ? '${AppConfig.imgBase}${m['poster_path']}'
                   : '${AppConfig.backdropBase}${m['backdrop_path']}',
               'backdrop': m['backdrop_path'] != null
-                  ? '${AppConfig.backdropBase}${m['backdrop_path']}'
-                  : '${AppConfig.imgBase}${m['poster_path']}',
+                ? '${AppConfig.backdropBase}${m['backdrop_path']}'
+                : '${AppConfig.imgBase}${m['poster_path']}',
               'isTv': isTv,
             });
           }
-        }
-      }
 
-      if (mounted) {
-        setState(() {
-          itemsList = fetched;
-          isLoading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => isLoading = false);
-      }
+          // Page 1 aate hi screen par dikha do
+          if (page == 1 && mounted) {
+            setState(() {
+              itemsList = List.from(fetched);
+              isLoading = false;
+            });
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      setState(() {
+        itemsList = fetched;
+        isLoading = false;
+      });
     }
   }
 
@@ -1391,13 +1336,13 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
                     children: [
                       const Icon(Icons.refresh_rounded, color: Colors.white38, size: 48),
                       const SizedBox(height: 12),
-                      const Text('Failed to load. Tap retry.', style: TextStyle(color: Colors.white60)),
+                      const Text('Could not load titles', style: TextStyle(color: Colors.white60)),
                       const SizedBox(height: 12),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)),
                         onPressed: () {
                           setState(() => isLoading = true);
-                          _fetchFast100Titles();
+                          _fetchCinemaHQCatalog();
                         },
                         child: const Text('Retry', style: TextStyle(color: Colors.white)),
                       )
@@ -1639,7 +1584,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
       try {
         final extType = isTv ? 'tv' : 'movie';
         final extRes = await http.get(Uri.parse(
-            '${AppConfig.tmdbBase}/$extType/$targetTmdbId/external_ids?api_key=${AppConfig.tmdbKey}')).timeout(const Duration(seconds: 4));
+            '${AppConfig.tmdbBase}/$extType/$targetTmdbId/external_ids?api_key=${AppConfig.tmdbKey}'));
         if (extRes.statusCode == 200) {
           imdbId = jsonDecode(extRes.body)['imdb_id'];
         }
@@ -1660,7 +1605,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
           try {
             if (isTv) {
               final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_series';
-              final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
+              final xtreamRes = await http.get(Uri.parse(searchApi));
               if (xtreamRes.statusCode == 200) {
                 var seriesList = jsonDecode(xtreamRes.body) as List;
                 var candidates = [];
@@ -1693,7 +1638,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
                 for (var bestSeries in candidates.take(2)) {
                   final seriesId = bestSeries['series_id'];
                   final infoApi = '$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=$seriesId';
-                  final infoRes = await http.get(Uri.parse(infoApi)).timeout(const Duration(seconds: 8));
+                  final infoRes = await http.get(Uri.parse(infoApi));
                   if (infoRes.statusCode == 200) {
                     final infoData = jsonDecode(infoRes.body);
                     final episodesMap = infoData['episodes'] as Map? ?? {};
@@ -1725,7 +1670,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
               }
             } else {
               final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_vod_streams';
-              final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
+              final xtreamRes = await http.get(Uri.parse(searchApi));
               if (xtreamRes.statusCode == 200) {
                 var streamList = jsonDecode(xtreamRes.body) as List;
                 var candidates = [];
@@ -1787,7 +1732,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
             : '$base/stream/movie/$imdbId.json';
 
         try {
-          final res = await http.get(Uri.parse(streamPath)).timeout(const Duration(seconds: 4));
+          final res = await http.get(Uri.parse(streamPath));
           if (res.statusCode == 200) {
             final data = jsonDecode(res.body);
             for (var s in (data['streams'] ?? [])) {
@@ -1984,7 +1929,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
 }
 
 // ============================================================================
-// 8. CINEMA HQ ENGINE INTERNAL VIDEO PLAYER (CROP/ZOOM + GESTURES)
+// 8. CINEMA HQ INTERNAL VIDEO PLAYER (CROP/ZOOM + GESTURES)
 // ============================================================================
 
 class InternalPlayerScreen extends StatefulWidget {
