@@ -448,10 +448,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
-  // --------------------------------------------------------------------------
+    // --------------------------------------------------------------------------
   // NETFLIX LANDSCAPE ROW (16:9 RATIO)
   // --------------------------------------------------------------------------
-  Widget _buildNetflixRow(String title, List> items, {bool isFirstRow = false}) {
+  Widget _buildNetflixRow(String title, List<dynamic> items, {bool isFirstRow = false}) {
     if (items.isEmpty) return const SizedBox.shrink();
 
     return Column(
