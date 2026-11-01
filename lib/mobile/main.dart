@@ -91,11 +91,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     _loadAllMobileData();
   }
 
-  Future<void> _loadAllMobileData() async {
+    Future<void> _loadAllMobileData() async {
+    setState(() => isLoading = true);
     await Future.wait([
       _fetchProviders(),
       _loadContinueWatching(),
-      _fetchCatalogs(),
+    _fetchCatalogs(),
     ]);
     if (mounted) {
       setState(() => isLoading = false);
@@ -128,62 +129,81 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     // ============================================================================
   // 5 CORE OTT CATALOG FETCH (NETFLIX, PRIME, HOTSTAR, SONYLIV, ZEE5)
   // ============================================================================
-  Future<void> _fetchCatalogs() async {
+    Future<void> _fetchCatalogs() async {
+    // 1. Netflix
     try {
-      // 1. Netflix Blockbusters
-      final netflixRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
-      if (netflixRes.statusCode == 200) {
-        homeNetflixList = _parseCatalog(jsonDecode(netflixRes.body)['results']);
-        if (homeNetflixList.isNotEmpty) activeBillboardItem = homeNetflixList.first;
+      final res = await http.get(Uri.parse(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        homeNetflixList = _parseCatalog(jsonDecode(res.body)['results']);
       }
-
-      // 2. Amazon Prime Video Hits
-      final primeRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
-      if (primeRes.statusCode == 200) {
-        homePrimeList = _parseCatalog(jsonDecode(primeRes.body)['results']);
-      }
-
-      // 3. Disney+ Hotstar Specials
-      final hotstarRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 8));
-      if (hotstarRes.statusCode == 200) {
-        homeHotstarList = _parseCatalog(jsonDecode(hotstarRes.body)['results']);
-      }
-
-      // 4. SonyLIV Originals & Web Series (Filtered OTT)
-      final sonylivRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_watch_providers=237&watch_region=IN&without_genres=10766&vote_count.gte=3&sort_by=popularity.desc')).timeout(const Duration(seconds: 8));
-      if (sonylivRes.statusCode == 200) {
-        homeSonyLivList = _parseCatalog(jsonDecode(sonylivRes.body)['results'], isTv: true)
-            .where((item) => !isSoapShow(item['title'] ?? ''))
-            .toList();
-      }
-
-      // 5. ZEE5 Premium Specials (Filtered OTT)
-      final zee5Res = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_watch_providers=232&watch_region=IN&without_genres=10766&vote_count.gte=3&sort_by=popularity.desc')).timeout(const Duration(seconds: 8));
-      if (zee5Res.statusCode == 200) {
-        homeZee5List = _parseCatalog(jsonDecode(zee5Res.body)['results'], isTv: true)
-            .where((item) => !isSoapShow(item['title'] ?? ''))
-            .toList();
-      }
-
-      if (mounted) setState(() {});
     } catch (_) {}
+
+    // 2. Prime Video
+    try {
+      final res = await http.get(Uri.parse(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        homePrimeList = _parseCatalog(jsonDecode(res.body)['results']);
+      }
+    } catch (_) {}
+
+    // 3. Hotstar
+    try {
+      final res = await http.get(Uri.parse(
+          '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        homeHotstarList = _parseCatalog(jsonDecode(res.body)['results']);
+      }
+    } catch (_) {}
+
+    // 4. SonyLIV
+    try {
+      final res = await http.get(Uri.parse(
+          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_watch_providers=237&watch_region=IN&without_genres=10766&vote_count.gte=3&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        homeSonyLivList = _parseCatalog(jsonDecode(res.body)['results'], isTv: true)
+            .where((item) => !isSoapShow(item['title'] ?? ''))
+            .toList();
+      }
+    } catch (_) {}
+
+    // 5. ZEE5
+    try {
+      final res = await http.get(Uri.parse(
+          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_watch_providers=232&watch_region=IN&without_genres=10766&vote_count.gte=3&sort_by=popularity.desc')).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        homeZee5List = _parseCatalog(jsonDecode(res.body)['results'], isTv: true)
+            .where((item) => !isSoapShow(item['title'] ?? ''))
+            .toList();
+      }
+    } catch (_) {}
+
+    // Set Welcome Billboard from first available list
+    if (homeNetflixList.isNotEmpty) {
+      activeBillboardItem = homeNetflixList.first;
+    } else if (homePrimeList.isNotEmpty) {
+      activeBillboardItem = homePrimeList.first;
+    } else if (homeHotstarList.isNotEmpty) {
+      activeBillboardItem = homeHotstarList.first;
+    }
+
+    if (mounted) setState(() {});
   }
 
-  List<dynamic> _parseCatalog(dynamic list, {bool isTv = false}) {
-    List<dynamic> res = [];
+    List<dynamic> _parseCatalog(dynamic list, {bool isTv = false}) {
+    if (list == null) return [];
+    var res = [];
     final currentYear = DateTime.now().year.toString();
-    for (var m in (list ?? [])) {
+    for (var m in list) {
       if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
+      final t = (m['title'] ?? m['name'] ?? 'Untitled').toString();
+
       res.add({
         'tmdb_id': m['id'],
-        'title': m['title'] ?? m['name'] ?? 'Untitled',
+        'title': t,
         'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
-        'rating': m['vote_average']?.toString() ?? '8.0',
+        'rating': m['vote_average']?.toString() ?? '7.5',
         'backdrop': m['backdrop_path'] != null
             ? '${MobileConfig.backdropBase}${m['backdrop_path']}'
             : '${MobileConfig.imgBase}${m['poster_path']}',
@@ -564,7 +584,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-    @override
+      @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: isLoading
@@ -576,16 +596,16 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   if (activeBillboardItem != null) _buildBillboard(activeBillboardItem!),
                   if (continueWatchingList.isNotEmpty)
                     _buildMovieRow('Continue Watching for You', continueWatchingList),
-                                                if (homeNetflixList.isNotEmpty)
-                        _buildMovieRow('Latest Netflix Blockbusters', homeNetflixList),
-                      if (homePrimeList.isNotEmpty)
-                        _buildMovieRow('Amazon Prime Video Hits', homePrimeList),
-                      if (homeHotstarList.isNotEmpty)
-                        _buildMovieRow('Disney+ Hotstar Specials', homeHotstarList),
-                      if (homeSonyLivList.isNotEmpty)
-                        _buildMovieRow('SonyLIV Originals & Series', homeSonyLivList),
-                      if (homeZee5List.isNotEmpty)
-                        _buildMovieRow('ZEE5 Premium Specials', homeZee5List),
+                  if (homeNetflixList.isNotEmpty)
+                    _buildMovieRow('Latest Netflix Blockbusters', homeNetflixList),
+                  if (homePrimeList.isNotEmpty)
+                    _buildMovieRow('Amazon Prime Video Hits', homePrimeList),
+                  if (homeHotstarList.isNotEmpty)
+                    _buildMovieRow('Disney+ Hotstar Specials', homeHotstarList),
+                  if (homeSonyLivList.isNotEmpty)
+                    _buildMovieRow('SonyLIV Originals & Series', homeSonyLivList),
+                  if (homeZee5List.isNotEmpty)
+                    _buildMovieRow('ZEE5 Premium Specials', homeZee5List),
                   const SizedBox(height: 20),
                 ],
               ),
@@ -593,7 +613,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentBottomNavIndex,
         backgroundColor: const Color(0xFF121212),
-        selectedItemColor: Colors.white,
         unselectedItemColor: Colors.white38,
         type: BottomNavigationBarType.fixed,
         onTap: (idx) => setState(() => _currentBottomNavIndex = idx),
