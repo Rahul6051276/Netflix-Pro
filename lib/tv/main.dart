@@ -847,7 +847,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
-  @override
+    @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
@@ -877,7 +877,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
       ),
     );
   }
-}
+} // <--- YEH BRACKET MISSING HAI! Is bracket ko lagana hai taaki TVHomeScreen yahan band ho sake.
 
 // ============================================================================
 // 3. FULL SCREEN VERTICAL GRID SCREEN (SEE ALL - 200+ TITLES DEEP PAGINATION)
@@ -908,7 +908,7 @@ class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
   void initState() {
     super.initState();
     allItems = List.from(widget.initialItems);
-    _loadDeepPages(); // 200+ Titles Deep Fetch
+    _loadDeepPages();
   }
 
   Future<void> _loadDeepPages() async {
