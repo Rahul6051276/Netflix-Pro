@@ -41,6 +41,13 @@ jobs:
           cp pubspec.yaml netflix_build_temp/pubspec.yaml
           cp icon.png netflix_build_temp/icon.png
           
+          # Clean App Name set karein
+          sed -i 's/android:label="[^"]*"/android:label="Netflix Pro"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
+          
+          # Internet & Cleartext HTTP permissions
+          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET" />\n<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' netflix_build_temp/android/app/src/main/AndroidManifest.xml
+          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
+          
           cd netflix_build_temp
           flutter pub get
           dart run flutter_launcher_icons
@@ -48,80 +55,18 @@ jobs:
           # -------------------------------------------------------------
           # 1. BUILD MOBILE APK
           # -------------------------------------------------------------
-          cat << 'EOF' > android/app/src/main/AndroidManifest.xml
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-              <application
-                  android:label="Netflix Pro"
-                  android:name="${applicationName}"
-                  android:icon="@mipmap/launcher_icon"
-                  android:usesCleartextTraffic="true">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:launchMode="singleTop"
-                      android:theme="@style/LaunchTheme"
-                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-                      android:hardwareAccelerated="true"
-                      android:windowSoftInputMode="adjustResize">
-                      <meta-data
-                        android:name="io.flutter.embedding.android.NormalTheme"
-                        android:resource="@style/NormalTheme" />
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                      </intent-filter>
-                  </activity>
-                  <meta-data
-                      android:name="flutterEmbedding"
-                      android:value="2" />
-              </application>
-          </manifest>
-          EOF
-
           flutter build apk --release -t lib/mobile/main.dart
           cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-Mobile.apk
 
           # -------------------------------------------------------------
-          # 2. BUILD ANDROID TV APK (Landscape + Leanback TV Banner)
+          # 2. CONFIGURE & BUILD ANDROID TV APK
           # -------------------------------------------------------------
-          cat << 'EOF' > android/app/src/main/AndroidManifest.xml
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-              <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-              <uses-feature android:name="android.software.leanback" android:required="true" />
-              <application
-                  android:label="Netflix Pro TV"
-                  android:name="${applicationName}"
-                  android:icon="@mipmap/launcher_icon"
-                  android:banner="@mipmap/launcher_icon"
-                  android:usesCleartextTraffic="true">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:launchMode="singleTop"
-                      android:screenOrientation="landscape"
-                      android:theme="@style/LaunchTheme"
-                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-                      android:hardwareAccelerated="true"
-                      android:windowSoftInputMode="adjustResize">
-                      <meta-data
-                        android:name="io.flutter.embedding.android.NormalTheme"
-                        android:resource="@style/NormalTheme" />
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                          <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
-                      </intent-filter>
-                  </activity>
-                  <meta-data
-                      android:name="flutterEmbedding"
-                      android:value="2" />
-              </application>
-          </manifest>
-          EOF
+          # Add TV Features & Leanback Category
+          sed -i '/<application/i <uses-feature android:name="android.hardware.touchscreen" android:required="false" />\n<uses-feature android:name="android.software.leanback" android:required="false" />' android/app/src/main/AndroidManifest.xml
+          sed -i '/android.intent.category.LAUNCHER/a <category android:name="android.intent.category.LEANBACK_LAUNCHER" />' android/app/src/main/AndroidManifest.xml
+          
+          # Force TV Landscape Orientation in Activity
+          sed -i 's/android:name=".MainActivity"/android:name=".MainActivity" android:screenOrientation="landscape"/' android/app/src/main/AndroidManifest.xml
 
           flutter build apk --release -t lib/tv/main.dart
           cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-TV.apk
