@@ -186,7 +186,6 @@ class _NetflixAnimatedSplashState extends State<NetflixAnimatedSplash>
   }
 }
 
-// Netflix Custom Ribbon 'N' Painter
 class NetflixLogoPainter extends CustomPainter {
   final double glowRadius;
   NetflixLogoPainter({required this.glowRadius});
@@ -211,7 +210,6 @@ class NetflixLogoPainter extends CustomPainter {
         colors: [Color(0xFF8B0000), Color(0xFFE50914)],
       ).createShader(rightRect);
 
-    // Glow effect
     if (glowRadius > 0) {
       final glowPaint = Paint()
         ..color = const Color(0xFFE50914).withOpacity(0.4)
@@ -220,11 +218,9 @@ class NetflixLogoPainter extends CustomPainter {
       canvas.drawRect(rightRect, glowPaint);
     }
 
-    // Draw Left & Right Columns
     canvas.drawRect(leftRect, leftPaint);
     canvas.drawRect(rightRect, rightPaint);
 
-    // Draw Center Diagonal Ribbon
     final diagPath = Path()
       ..moveTo(0, 0)
       ..lineTo(colWidth, 0)
@@ -232,15 +228,15 @@ class NetflixLogoPainter extends CustomPainter {
       ..lineTo(size.width - colWidth, size.height)
       ..close();
 
+    canvas.drawShadow(diagPath, Colors.black, 10.0, true);
+
     final diagRect = Rect.fromLTWH(0, 0, size.width, size.height);
     final diagPaint = Paint()
       ..shader = const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [Color(0xFFFF1E27), Color(0xFFB81D24)],
-      ).createShader(diagRect)
-      ..shadowColor = Colors.black.withOpacity(0.85)
-      ..elevation = 12.0;
+      ).createShader(diagRect);
 
     canvas.drawPath(diagPath, diagPaint);
   }
@@ -1168,7 +1164,6 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
     _fetch100Titles();
   }
 
-  // Reliable fetch logic - eliminates TMDB 0-result filter clashes
   Future<void> _fetch100Titles() async {
     final bool isTv = widget.categoryType == 'hindi_series' ||
         widget.categoryType == 'english_series';
