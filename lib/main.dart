@@ -220,7 +220,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   // Categories Data Lists
   var netflixSeries = [];
-  var netflixMovies = []; // New Netflix Blockbuster Movies List
+  var netflixMovies = [];
   var hindiWebSeries = [];
   var bollywoodLatest = [];
   var hollywoodHindiDubbed = [];
@@ -298,19 +298,19 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   Future<void> _fetchTmdbContent() async {
     try {
-      // 1. NETFLIX ORIGINAL SERIES (Network 213)
+      // 1. NETFLIX ORIGINAL SERIES
       final netflixTvRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=20'));
       if (netflixTvRes.statusCode == 200) {
         netflixSeries = _parseResults(jsonDecode(netflixTvRes.body)['results'], isTv: true);
         if (netflixSeries.isNotEmpty) {
-          heroBanners = netflixSeries.take(6).toList(); // SPOTLIGHT HERO BANNER
+          heroBanners = netflixSeries.take(6).toList();
         }
       }
 
-      // 2. NETFLIX BLOCKBUSTER MOVIES (Company 17846 - Indian & Global Netflix Releases)
+      // 2. NETFLIX BLOCKBUSTER MOVIES (with_watch_providers=8&watch_region=IN)
       final netflixMovieRes = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_companies=17846&sort_by=popularity.desc&vote_count.gte=10'));
+          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc&vote_count.gte=10'));
       if (netflixMovieRes.statusCode == 200) {
         netflixMovies = _parseResults(jsonDecode(netflixMovieRes.body)['results']);
       }
@@ -855,7 +855,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                     // 1. NETFLIX ORIGINAL SERIES
                     SliverToBoxAdapter(child: _buildNetflixRow('Only on Netflix (Original Series)', netflixSeries)),
                     
-                    // 2. NETFLIX BLOCKBUSTER MOVIES (NEW ADDITION)
+                    // 2. NETFLIX BLOCKBUSTER MOVIES (LIVE WITH WATCH PROVIDER 8)
                     SliverToBoxAdapter(child: _buildNetflixRow('Netflix Blockbuster Movies', netflixMovies)),
                     
                     // 3. REMAINING ORIGINAL CATEGORIES (ALL PRESERVED)
@@ -1035,7 +1035,7 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
       if (widget.categoryType == 'netflix_originals') {
         url = '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=20&page=$page';
       } else if (widget.categoryType == 'netflix_movies') {
-        url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_companies=17846&sort_by=popularity.desc&vote_count.gte=10&page=$page';
+        url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc&vote_count.gte=10&page=$page';
       } else if (widget.categoryType == 'bollywood') {
         url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10&page=$page';
       } else if (widget.categoryType == 'south') {
