@@ -218,7 +218,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   final PageController _heroController = PageController(viewportFraction: 0.88);
   Timer? _heroTimer;
 
+  // Categories Data Lists
   var netflixSeries = [];
+  var netflixMovies = []; // New Netflix Blockbuster Movies List
   var hindiWebSeries = [];
   var bollywoodLatest = [];
   var hollywoodHindiDubbed = [];
@@ -296,17 +298,24 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   Future<void> _fetchTmdbContent() async {
     try {
-      // 1. NETFLIX ORIGINALS (Network 213)
-      final netflixRes = await http.get(Uri.parse(
+      // 1. NETFLIX ORIGINAL SERIES (Network 213)
+      final netflixTvRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=20'));
-      if (netflixRes.statusCode == 200) {
-        netflixSeries = _parseResults(jsonDecode(netflixRes.body)['results'], isTv: true);
+      if (netflixTvRes.statusCode == 200) {
+        netflixSeries = _parseResults(jsonDecode(netflixTvRes.body)['results'], isTv: true);
         if (netflixSeries.isNotEmpty) {
-          heroBanners = netflixSeries.take(6).toList(); // NETFLIX ORIGINALS IN HERO BANNER
+          heroBanners = netflixSeries.take(6).toList(); // SPOTLIGHT HERO BANNER
         }
       }
 
-      // 2. HINDI WEB SERIES
+      // 2. NETFLIX BLOCKBUSTER MOVIES (Company 17846 - Indian & Global Netflix Releases)
+      final netflixMovieRes = await http.get(Uri.parse(
+          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_companies=17846&sort_by=popularity.desc&vote_count.gte=10'));
+      if (netflixMovieRes.statusCode == 200) {
+        netflixMovies = _parseResults(jsonDecode(netflixMovieRes.body)['results']);
+      }
+
+      // 3. HINDI WEB SERIES
       final hindiTvRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=vote_count.desc&vote_count.gte=10'));
       if (hindiTvRes.statusCode == 200) {
@@ -316,38 +325,35 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             .toList();
       }
 
-      // 3. BOLLYWOOD MOVIES
+      // 4. BOLLYWOOD MOVIES
       final bollyRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=popularity.desc&vote_count.gte=10'));
       if (bollyRes.statusCode == 200) {
         bollywoodLatest = _parseResults(jsonDecode(bollyRes.body)['results']);
-        if (heroBanners.isEmpty && bollywoodLatest.isNotEmpty) {
-          heroBanners = bollywoodLatest.take(6).toList();
-        }
       }
 
-      // 4. HOLLYWOOD HINDI DUBBED
+      // 5. HOLLYWOOD HINDI DUBBED
       final hollyRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&vote_count.gte=100'));
       if (hollyRes.statusCode == 200) {
         hollywoodHindiDubbed = _parseResults(jsonDecode(hollyRes.body)['results']);
       }
 
-      // 5. SOUTH INDIAN DUBBED
+      // 6. SOUTH INDIAN DUBBED
       final southRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&vote_count.gte=20'));
       if (southRes.statusCode == 200) {
         southHindiDubbed = _parseResults(jsonDecode(southRes.body)['results']);
       }
 
-      // 6. AMAZON ORIGINALS
+      // 7. AMAZON ORIGINALS
       final amazonRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=1024&sort_by=popularity.desc&vote_count.gte=20'));
       if (amazonRes.statusCode == 200) {
         amazonSeries = _parseResults(jsonDecode(amazonRes.body)['results'], isTv: true);
       }
 
-      // 7. HOLLYWOOD SERIES
+      // 8. HOLLYWOOD SERIES
       final hollySeriesRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&vote_count.gte=30'));
       if (hollySeriesRes.statusCode == 200) {
@@ -462,7 +468,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              _categorySheetItem('Netflix Originals', () => _openCatalog('Netflix Originals', 'netflix_originals')),
+              _categorySheetItem('Netflix Originals (Series)', () => _openCatalog('Netflix Originals', 'netflix_originals')),
+              _categorySheetItem('Netflix Movies', () => _openCatalog('Netflix Movies', 'netflix_movies')),
               _categorySheetItem('Hindi Web Series', () => _openCatalog('Hindi Web Series', 'hindi_series')),
               _categorySheetItem('Bollywood Movies', () => _openCatalog('Bollywood Movies', 'bollywood')),
               _categorySheetItem('South Indian (Hindi Dubbed)', () => _openCatalog('South Indian Movies', 'south')),
@@ -541,14 +548,14 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  // ----------------- HERO CAROUSEL (WIDE LANDSCAPE BACKDROP) -----------------
+  // ----------------- HERO CAROUSEL -----------------
   Widget _buildHeroCarousel() {
     if (heroBanners.isEmpty) return const SizedBox.shrink();
 
     return Column(
       children: [
         SizedBox(
-          height: 250, // Perfect wide 16:9 banner proportion for mobile
+          height: 250,
           child: PageView.builder(
             controller: _heroController,
             itemCount: heroBanners.length,
@@ -578,7 +585,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       fit: StackFit.expand,
                       children: [
                         Image.network(
-                          item['backdrop'], // WIDE HD LANDSCAPE BACKDROP
+                          item['backdrop'],
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1E1E1E)),
                         ),
@@ -602,7 +609,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                               borderRadius: BorderRadius.circular(3),
                             ),
                             child: const Text(
-                              'NETFLIX ORIGINAL',
+                              'NETFLIX SPOTLIGHT',
                               style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
                             ),
                           ),
@@ -828,7 +835,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  // ----------------- NETFLIX ROW ORDER -----------------
+  // ----------------- NETFLIX PRIORITY LAYOUT -----------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -841,12 +848,17 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 CustomScrollView(
                   slivers: [
                     const SliverToBoxAdapter(child: SizedBox(height: 80)),
-                    SliverToBoxAdapter(child: _buildHeroCarousel()), // NETFLIX ORIGINALS SPOTLIGHT
+                    SliverToBoxAdapter(child: _buildHeroCarousel()), // TOP NETFLIX SPOTLIGHT
                     if (continueWatchingList.isNotEmpty)
                       SliverToBoxAdapter(child: _buildContinueWatchingRow(continueWatchingList)),
                     
-                    // NETFLIX PRIORITY LAYOUT
+                    // 1. NETFLIX ORIGINAL SERIES
                     SliverToBoxAdapter(child: _buildNetflixRow('Only on Netflix (Original Series)', netflixSeries)),
+                    
+                    // 2. NETFLIX BLOCKBUSTER MOVIES (NEW ADDITION)
+                    SliverToBoxAdapter(child: _buildNetflixRow('Netflix Blockbuster Movies', netflixMovies)),
+                    
+                    // 3. REMAINING ORIGINAL CATEGORIES (ALL PRESERVED)
                     SliverToBoxAdapter(child: _buildNetflixRow('Trending Indian Web Series', hindiWebSeries)),
                     SliverToBoxAdapter(child: _buildNetflixRow('Bollywood Blockbusters', bollywoodLatest)),
                     SliverToBoxAdapter(child: _buildNetflixRow('Hollywood Hits (Hindi Dubbed)', hollywoodHindiDubbed)),
@@ -1022,6 +1034,8 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
 
       if (widget.categoryType == 'netflix_originals') {
         url = '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=20&page=$page';
+      } else if (widget.categoryType == 'netflix_movies') {
+        url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_companies=17846&sort_by=popularity.desc&vote_count.gte=10&page=$page';
       } else if (widget.categoryType == 'bollywood') {
         url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10&page=$page';
       } else if (widget.categoryType == 'south') {
