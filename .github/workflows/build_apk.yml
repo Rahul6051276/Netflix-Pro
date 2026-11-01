@@ -2,15 +2,21 @@ name: Build and Release Netflix Pro APK
 
 on:
   workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Release Tag (e.g. v1.0.26)'
+        required: true
+        default: 'v1.0.26'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
@@ -21,31 +27,45 @@ jobs:
         with:
           flutter-version: '3.22.2'
           channel: 'stable'
+          cache: true
 
-      - name: Build Project Setup
+      - name: Setup Build Directory & Dependencies
         run: |
-          flutter create netflix_build_temp
-          cp pubspec.yaml netflix_build_temp/
-          # Pura lib folder copy karein taaki main.dart aur internal_player.dart dono jayein
-          cp -r lib/* netflix_build_temp/lib/
-          
-          # AndroidManifest me cleartext traffic inject karein
-          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
-          
+          mkdir -p netflix_build_temp
           cd netflix_build_temp
-          flutter pub get
+          flutter create --org com.example --project-name netflix_pro .
+          
+          # Plugins add karein
+          flutter pub add http shared_preferences android_intent_plus video_player
+
+      - name: Fix Maven Repositories & Permissions
+        run: |
+          cd netflix_build_temp
+          
+          # Gradle build dependencies ke liye mavenCentral inject karein
+          sed -i 's/google()/google()\n        mavenCentral()/g' android/build.gradle
+          sed -i 's/mavenCentral()/mavenCentral()\n        maven { url "https:\/\/storage.googleapis.com\/download.flutter.io" }/g' android/build.gradle
+          
+          # Manifest permissions aur cleartext traffic inject karein
+          MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
+          sed -i 's/<manifest [^>]*>/&\n    <uses-permission android:name="android.permission.INTERNET"\/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"\/>/' $MANIFEST_FILE
+          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' $MANIFEST_FILE
+
+      - name: Copy All App Files
+        run: |
+          # main.dart aur internal_player.dart dono ko copy karein
+          cp -r lib/* netflix_build_temp/lib/
+
+      - name: Build APK
+        run: |
+          cd netflix_build_temp
           flutter build apk --release
 
-      - name: Move APK for Release
-        run: |
-          mkdir -p build_output
-          cp netflix_build_temp/build/app/outputs/flutter-apk/app-release.apk build_output/Netflix-Pro.apk
-
-      - name: Create GitHub Release
+      - name: Release APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.9
-          name: Netflix Pro v1.0.9
-          files: build_output/Netflix-Pro.apk
+          tag_name: ${{ github.event.inputs.version_tag }}
+          name: "Netflix Pro Release ${{ github.event.inputs.version_tag }}"
+          files: netflix_build_temp/build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
