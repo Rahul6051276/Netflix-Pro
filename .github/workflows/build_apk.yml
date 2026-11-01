@@ -35,7 +35,8 @@ jobs:
       - name: Setup & Build Netflix Pro App
         run: |
           flutter create --org com.netflixpro --project-name netflix_pro netflix_build_temp
-          cp -r lib netflix_build_temp/
+          rm -rf netflix_build_temp/lib
+          cp -r lib netflix_build_temp/lib
           cp pubspec.yaml netflix_build_temp/pubspec.yaml
           cp icon.png netflix_build_temp/icon.png
           
