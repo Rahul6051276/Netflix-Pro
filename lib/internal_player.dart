@@ -1,5 +1,5 @@
 // ============================================================================
-// INTERNAL VIDEO PLAYER (FULL SCREEN CROP + 30s BUTTONS + VOL/BRIGHTNESS)
+// INTERNAL VIDEO PLAYER (TOUCH & DRAG SEEKBAR + FULLSCREEN + CONTROLS)
 // ============================================================================
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -30,6 +30,10 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
   String _errorMessage = '';
   bool _showControls = true;
   Timer? _controlsTimer;
+
+  // Touch Drag Seekbar Variables
+  bool _isDragging = false;
+  double _dragValue = 0.0;
 
   // Gesture Controls (Volume & Brightness)
   double _volume = 1.0;
@@ -76,7 +80,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
       }
 
       _controller.addListener(() {
-        if (mounted) setState(() {});
+        if (mounted && !_isDragging) setState(() {});
       });
     } catch (e) {
       if (mounted) {
@@ -91,7 +95,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
   void _startHideTimer() {
     _controlsTimer?.cancel();
     _controlsTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted && _controller.value.isPlaying) {
+      if (mounted && _controller.value.isPlaying && !_isDragging) {
         setState(() => _showControls = false);
       }
     });
@@ -115,7 +119,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
     if (!_isInit) return;
     final currentPos = _controller.value.position;
     final totalDur = _controller.value.duration;
-    
+
     var newPos = currentPos + Duration(seconds: seconds);
     if (newPos < Duration.zero) newPos = Duration.zero;
     if (newPos > totalDur) newPos = totalDur;
@@ -221,12 +225,12 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
     final scaleNames = ['FIT (16:9)', 'FILL (STRETCH)', 'CROP (ZOOM)'];
     final size = MediaQuery.of(context).size;
 
-    final Duration activeDisplayPos = _isInit ? _controller.value.position : Duration.zero;
+    final Duration activeDisplayPos = _isInit
+        ? (_isDragging
+            ? Duration(milliseconds: _dragValue.toInt())
+            : _controller.value.position)
+        : Duration.zero;
     final Duration totalDur = _isInit ? _controller.value.duration : Duration.zero;
-
-    final double progressRatio = totalDur.inMilliseconds > 0
-        ? (activeDisplayPos.inMilliseconds / totalDur.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -240,7 +244,8 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _toggleControls,
-            onVerticalDragUpdate: (details) => _onVerticalDragUpdate(details, size.width, size.height),
+            onVerticalDragUpdate: (details) =>
+                _onVerticalDragUpdate(details, size.width, size.height),
             child: Container(color: Colors.transparent),
           ),
           if (_showOverlayIndicator)
@@ -249,7 +254,8 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF181818).withOpacity(0.9),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE50914).withOpacity(0.5), width: 1.5),
+                border: Border.all(
+                    color: const Color(0xFFE50914).withOpacity(0.5), width: 1.5),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -258,7 +264,8 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                   const SizedBox(width: 10),
                   Text(
                     _overlayText,
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -279,7 +286,8 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                     const SizedBox(height: 10),
                     const Text(
                       'Stream load nahi ho saki',
-                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -325,7 +333,8 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white12),
                             ),
-                            child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                            child: const Icon(Icons.arrow_back_ios_new_rounded,
+                                color: Colors.white, size: 18),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -345,16 +354,19 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                         GestureDetector(
                           onTap: _cycleScaleMode,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                             decoration: BoxDecoration(
                               color: const Color(0xFF181818).withOpacity(0.9),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFFE50914), width: 1.5),
+                              border: Border.all(
+                                  color: const Color(0xFFE50914), width: 1.5),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.aspect_ratio_rounded, color: Color(0xFFE50914), size: 16),
+                                const Icon(Icons.aspect_ratio_rounded,
+                                    color: Color(0xFFE50914), size: 16),
                                 const SizedBox(width: 6),
                                 Text(
                                   scaleNames[_scaleMode],
@@ -434,55 +446,76 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                     ),
                   ),
                   Positioned(
-                    bottom: 22,
-                    left: 36,
-                    right: 36,
+                    bottom: 16,
+                    left: 24,
+                    right: 24,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        LayoutBuilder(
-                          builder: (ctx, constraints) {
-                            final barWidth = constraints.maxWidth;
-
-                            return SizedBox(
-                              height: 16,
-                              child: Stack(
-                                alignment: Alignment.centerLeft,
-                                children: [
-                                  Container(
-                                    height: 5,
-                                    width: barWidth,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white24,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                  ),
-                                  Container(
-                                    height: 5,
-                                    width: barWidth * progressRatio,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFE50914),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 4,
+                            thumbShape:
+                                const RoundSliderThumbShape(enabledThumbRadius: 7),
+                            overlayShape:
+                                const RoundSliderOverlayShape(overlayRadius: 15),
+                            activeTrackColor: const Color(0xFFE50914),
+                            inactiveTrackColor: Colors.white24,
+                            thumbColor: const Color(0xFFE50914),
+                            overlayColor:
+                                const Color(0xFFE50914).withOpacity(0.3),
+                          ),
+                          child: Slider(
+                            value: _isDragging
+                                ? _dragValue
+                                : (totalDur.inMilliseconds > 0
+                                    ? activeDisplayPos.inMilliseconds
+                                        .clamp(0, totalDur.inMilliseconds)
+                                        .toDouble()
+                                    : 0.0),
+                            min: 0.0,
+                            max: totalDur.inMilliseconds > 0
+                                ? totalDur.inMilliseconds.toDouble()
+                                : 1.0,
+                            onChangeStart: (val) {
+                              _controlsTimer?.cancel();
+                              setState(() {
+                                _isDragging = true;
+                                _dragValue = val;
+                              });
+                            },
+                            onChanged: (val) {
+                              setState(() {
+                                _dragValue = val;
+                              });
+                            },
+                            onChangeEnd: (val) {
+                              _controller.seekTo(
+                                  Duration(milliseconds: val.toInt()));
+                              setState(() {
+                                _isDragging = false;
+                              });
+                              _startHideTimer();
+                            },
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _formatDuration(activeDisplayPos),
-                              style: const TextStyle(color: Colors.white70, fontSize: 12),
-                            ),
-                            Text(
-                              _formatDuration(totalDur),
-                              style: const TextStyle(color: Colors.white70, fontSize: 12),
-                            ),
-                          ],
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _formatDuration(activeDisplayPos),
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12),
+                              ),
+                              Text(
+                                _formatDuration(totalDur),
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
