@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO TV - CINEMA HQ RE-ENGINEERED EDITION (200+ CATALOG & RESOLVER)
+// NETFLIX PRO TV - CINEMA HQ HYBRID EDITION (200+ CATALOG & STREAM RESOLVER)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -12,7 +12,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'internal_player.dart';
 
-// Android TV SSL Handshake Override
+// Android TV SSL Certificate bypass
 class TVHttpOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
@@ -80,7 +80,7 @@ class TvHomeScreen extends StatefulWidget {
 }
 
 class _TvHomeScreenState extends State<TvHomeScreen> {
-  int _selectedNavIndex = 2; // Default Home
+  int _selectedNavIndex = 2; // Default to Home
   final List<FocusNode> _sidebarFocusNodes = List.generate(6, (_) => FocusNode());
   final FocusNode _firstContentCardFocus = FocusNode();
   final FocusNode _watchNowFocusNode = FocusNode();
@@ -166,10 +166,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     } catch (_) {}
   }
 
-  // Fast Instant Render for Home Screen
   Future<void> _fetchHomeCatalogContent() async {
     try {
-      // 1. Bollywood Latest Cinema
       final bollyRes = await http.get(Uri.parse(
           '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5')).timeout(const Duration(seconds: 8));
       if (bollyRes.statusCode == 200) {
@@ -177,21 +175,18 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         if (homeBollywoodList.isNotEmpty) activeShowcaseItem = homeBollywoodList.first;
       }
 
-      // 2. South Indian Blockbusters
       final southRes = await http.get(Uri.parse(
           '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&vote_count.gte=10')).timeout(const Duration(seconds: 8));
       if (southRes.statusCode == 200) {
         homeSouthList = _parseTvList(jsonDecode(southRes.body)['results']);
       }
 
-      // 3. Hollywood Latest Releases (Global & Hindi Dubbed)
       final hollyRes = await http.get(Uri.parse(
           '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 8));
       if (hollyRes.statusCode == 200) {
         homeHollywoodList = _parseTvList(jsonDecode(hollyRes.body)['results']);
       }
 
-      // 4. Hindi Web Series
       final hindiTvRes = await http.get(Uri.parse(
           '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=first_air_date.desc&vote_count.gte=2')).timeout(const Duration(seconds: 8));
       if (hindiTvRes.statusCode == 200) {
@@ -200,7 +195,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             .toList();
       }
 
-      // 5. Global & English Web Series (Latest on air)
       final engTvRes = await http.get(Uri.parse(
           '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 8));
       if (engTvRes.statusCode == 200) {
@@ -209,7 +203,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     } catch (_) {}
   }
 
-  // Deep Fetch 200+ Titles Multi-page Pagination (10 pages x 20 = 200 items)
+  // Deep Fetch 200+ Titles via Multi-page Pagination (10 pages x 20 = 200 items)
   Future<void> _fetchDeepCatalogs() async {
     final sortQuery = _catalogSortType == 'latest'
         ? 'primary_release_date.desc'
@@ -227,7 +221,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       },
     );
 
-    // 2. South Movies (200+)
+    // 2. South Movies (200+ Hindi Dubbed Priority)
     _fetchPages(
       baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=$sortQuery&vote_count.gte=10',
       isTv: false,
@@ -378,7 +372,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             width: 8,
             height: 8,
             decoration: const BoxDecoration(
-              color: Color(0xFFE50914), // Netflix Red Accent Dot
+              color: Color(0xFFE50914),
               shape: BoxShape.circle,
             ),
           ),
@@ -601,15 +595,16 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: items.length,
             itemBuilder: (ctx, idx) {
+              final currentItem = items[idx];
               return NetflixCard(
                 focusNode: (isFirstRow && idx == 0) ? _firstContentCardFocus : null,
-                item: items[idx],
+                item: currentItem,
                 isFirstInRow: idx == 0,
                 onLeftBoundaryHit: _jumpFocusToSidebar,
                 onFocusGained: () {
-                  setState(() => activeShowcaseItem = items[idx]);
+                  setState(() => activeShowcaseItem = currentItem);
                 },
-                onTap: () => _onTvItemSelect(items[idx]),
+                onTap: () => _onTvItemSelect(currentItem),
               );
             },
           ),
@@ -982,7 +977,7 @@ class _TvEpisodeDialogState extends State<TvEpisodeDialog> {
   Future<void> _fetchDetails() async {
     try {
       final res = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${TvConfig.tmdbKey}'));
+          '${TvConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${TvConfig.tmdbKey}')).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final raw = (data['seasons'] as List<dynamic>? ?? [])
@@ -1275,14 +1270,14 @@ class _TvStreamDialogState extends State<TvStreamDialog> {
     }
   }
 
-    Future<void> _saveContinueWatching() async {
+  Future<void> _saveContinueWatching() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       final raw = prefs.getString('continue_watching_tv');
-      List<dynamic> curr = [];
+      List> curr = [];
       if (raw != null && raw.isNotEmpty) {
-        curr = jsonDecode(raw) as List<dynamic>;
+        curr = List>.from(jsonDecode(raw));
       }
       curr.removeWhere((c) => c['tmdb_id'].toString() == widget.item['tmdb_id'].toString());
       curr.insert(0, {
@@ -1293,9 +1288,7 @@ class _TvStreamDialogState extends State<TvStreamDialog> {
         'rating': widget.item['rating'] ?? '8.0',
         'isTv': widget.item['isTv'] ?? false,
       });
-      if (curr.length > 15) {
-        curr = curr.sublist(0, 15);
-      }
+      if (curr.length > 15) curr = curr.sublist(0, 15);
       await prefs.setString('continue_watching_tv', jsonEncode(curr));
       widget.onPlaySaved();
     } catch (_) {}
