@@ -1275,14 +1275,14 @@ class _TvStreamDialogState extends State<TvStreamDialog> {
     }
   }
 
-  Future<void> _saveContinueWatching() async {
+    Future<void> _saveContinueWatching() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       final raw = prefs.getString('continue_watching_tv');
-      List> curr = [];
+      List<dynamic> curr = [];
       if (raw != null && raw.isNotEmpty) {
-        curr = List>.from(jsonDecode(raw));
+        curr = jsonDecode(raw) as List<dynamic>;
       }
       curr.removeWhere((c) => c['tmdb_id'].toString() == widget.item['tmdb_id'].toString());
       curr.insert(0, {
@@ -1293,7 +1293,9 @@ class _TvStreamDialogState extends State<TvStreamDialog> {
         'rating': widget.item['rating'] ?? '8.0',
         'isTv': widget.item['isTv'] ?? false,
       });
-      if (curr.length > 15) curr = curr.sublist(0, 15);
+      if (curr.length > 15) {
+        curr = curr.sublist(0, 15);
+      }
       await prefs.setString('continue_watching_tv', jsonEncode(curr));
       widget.onPlaySaved();
     } catch (_) {}
