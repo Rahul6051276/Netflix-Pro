@@ -46,7 +46,24 @@ class NetflixProMobileApp extends StatelessWidget {
     );
   }
 }
-
+// ============================================================================
+// SOAP FILTER LOGIC
+// ============================================================================
+bool isSoapShow(String title) {
+  final t = title.toLowerCase();
+  const blocked = [
+    'c.i.d.', 'cid', 'bhabiji', 'balika vadhu', 'kapil sharma', 'roadies',
+    'pavitra rishta', 'kumkum bhagya', 'jhanak', 'kundali bhagya',
+    'ye rishta', 'yrkkh', 'taarak mehta', 'tmkoc', 'kasautii', 'ishqbaaaz',
+    'anupamaa', 'bigg boss', 'khatron ke khiladi', 'splitsvilla',
+    'crime patrol', 'savdhaan india', 'diya aur baati', 'qubool hai',
+    'jamai raja', 'tujhse hai raabta', 'radhakrishn', 'koffee with karan',
+    'chudail', 'sasural', 'fitoor', 'bhojpuri', 'nagin', 'naagin', 'parineetii',
+    'udaariyaan', 'imlie', 'ghukk', 'shravani', 'suhaagan', 'dharampatnii',
+    'lo chudail', 'chali sasural'
+  ];
+  return blocked.any((b) => t.contains(b));
+}
 class MobileHomeScreen extends StatefulWidget {
   const MobileHomeScreen({super.key});
 
@@ -547,11 +564,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  @override
+    @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
