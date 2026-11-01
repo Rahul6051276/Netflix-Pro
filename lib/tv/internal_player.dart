@@ -1,10 +1,8 @@
-// ============================================================================
-// MOBILE JUST PLAYER INTERNAL ENGINE (TOUCH GESTURES & SCRUBBER SEEK)
-// ============================================================================
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:android_intent_plus/android_intent.dart';
 
 class InternalPlayerScreen extends StatefulWidget {
   final String streamUrl;
@@ -23,156 +21,106 @@ class InternalPlayerScreen extends StatefulWidget {
   State<InternalPlayerScreen> createState() => _InternalPlayerScreenState();
 }
 
-class _InternalPlayerScreenState extends State<InternalPlayerScreen>
-    with WidgetsBindingObserver {
+typedef TvPlayerScreen = InternalPlayerScreen;
+
+class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
   late VideoPlayerController _controller;
   bool _isInit = false;
-  bool _hasError = false;
-
-  bool _showOverlay = true;
+  bool _showControls = true;
   Timer? _hideTimer;
-
-  int _scaleMode = 0; // 0: FIT, 1: STRETCH, 2: CROP
-  String _toastMessage = '';
-  Timer? _toastTimer;
-
-  double _touchDragOffset = 0;
-  bool _isTouching = false;
-  int _seekOffsetSec = 0;
-  Duration _targetSeekPos = Duration.zero;
+  int _scaleMode = 0; // 0: Fit (16:9), 1: Stretch, 2: Zoom/Crop
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
     _initVideo();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached) {
-      _cleanExit();
-    }
-  }
+  void _initVideo() async {
+    _controller = VideoPlayerController.networkUrl(
+      Uri.parse(widget.streamUrl),
+      httpHeaders: const {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) CinemaTV/1.0',
+        'Accept': '*/*',
+        'Connection': 'keep-alive',
+      },
+    );
 
-  void _cleanExit() {
-    _hideTimer?.cancel();
-    _toastTimer?.cancel();
-    if (_isInit) {
-      _controller.pause();
-      _controller.dispose();
-      _isInit = false;
-    }
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
-    if (mounted && Navigator.canPop(context)) {
-      Navigator.pop(context);
-    }
-  }
-
-  Future<void> _initVideo() async {
     try {
-      _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.streamUrl),
-        httpHeaders: const {
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': '*/*',
-          'Connection': 'keep-alive',
-        },
-      );
-
       await _controller.initialize();
       _controller.play();
-
       if (mounted) setState(() => _isInit = true);
 
       _controller.addListener(() {
-        if (mounted && !_isTouching) setState(() {});
+        if (mounted) setState(() {});
       });
 
-      _startOverlayTimeout();
+      _startHideTimer();
+    } catch (_) {}
+  }
+
+  void _startHideTimer() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted && _controller.value.isPlaying) {
+        setState(() => _showControls = false);
+      }
+    });
+  }
+
+  void _launchJustPlayer() async {
+    _controller.pause();
+    final intent = AndroidIntent(
+      action: 'action_view',
+      data: widget.streamUrl,
+      type: 'video/*',
+      package: 'com.brouken.player',
+      arguments: {'title': widget.title},
+    );
+    try {
+      await intent.launch();
     } catch (_) {
-      if (mounted) setState(() => _hasError = true);
+      final fallback = AndroidIntent(
+        action: 'action_view',
+        data: widget.streamUrl,
+        type: 'video/*',
+      );
+      await fallback.launch();
     }
   }
 
-  void _startOverlayTimeout() {
-    _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted && _controller.value.isPlaying && !_isTouching) {
-        setState(() => _showOverlay = false);
-      }
-    });
-  }
-
   void _cycleScaleMode() {
-    final names = ['FIT (16:9)', 'STRETCH (FULL)', 'ZOOM (CROP)'];
     setState(() {
       _scaleMode = (_scaleMode + 1) % 3;
-      _toastMessage = names[_scaleMode];
-    });
-
-    _toastTimer?.cancel();
-    _toastTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _toastMessage = '');
     });
   }
 
-  void _commitSeek(Duration target) {
-    if (!_isInit) return;
-    _controller.seekTo(target).then((_) {
-      if (mounted) {
-        setState(() {
-          _isTouching = false;
-          _seekOffsetSec = 0;
-          _touchDragOffset = 0;
-        });
-        _controller.play();
-        _startOverlayTimeout();
+  void _handleDpad(LogicalKeyboardKey key) {
+    setState(() => _showControls = true);
+    _startHideTimer();
+
+    if (key == LogicalKeyboardKey.select || key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.space) {
+      if (_isInit) {
+        _controller.value.isPlaying ? _controller.pause() : _controller.play();
       }
-    });
-  }
-
-  void _onHorizontalDragStart(DragStartDetails details) {
-    if (!_isInit) return;
-    setState(() {
-      _isTouching = true;
-      _touchDragOffset = 0;
-      _targetSeekPos = _controller.value.position;
-      _showOverlay = true;
-    });
-  }
-
-  void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    if (!_isInit) return;
-    _touchDragOffset += details.primaryDelta ?? 0;
-
-    final seekDeltaSeconds = (_touchDragOffset / 8).round();
-    final dur = _controller.value.duration;
-    Duration calc = _controller.value.position + Duration(seconds: seekDeltaSeconds);
-
-    if (calc < Duration.zero) calc = Duration.zero;
-    if (calc > dur) calc = dur;
-
-    setState(() {
-      _targetSeekPos = calc;
-      _seekOffsetSec = seekDeltaSeconds;
-    });
-  }
-
-  void _onHorizontalDragEnd(DragEndDetails details) {
-    if (!_isInit) return;
-    _commitSeek(_targetSeekPos);
+    } else if (key == LogicalKeyboardKey.arrowRight) {
+      if (_isInit) {
+        final pos = _controller.value.position + const Duration(seconds: 15);
+        _controller.seekTo(pos);
+      }
+    } else if (key == LogicalKeyboardKey.arrowLeft) {
+      if (_isInit) {
+        final pos = _controller.value.position - const Duration(seconds: 15);
+        _controller.seekTo(pos > Duration.zero ? pos : Duration.zero);
+      }
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      _launchJustPlayer();
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      _cycleScaleMode();
+    } else if (key == LogicalKeyboardKey.escape || key == LogicalKeyboardKey.goBack) {
+      Navigator.pop(context);
+    }
   }
 
   String _formatDuration(Duration d) {
@@ -184,16 +132,12 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
-    _toastTimer?.cancel();
-    if (_isInit) {
-      _controller.dispose();
-    }
+    if (_isInit) _controller.dispose();
     super.dispose();
   }
 
-  Widget _buildVideoLayer() {
+  Widget _buildVideo() {
     if (!_isInit) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)));
     }
@@ -232,217 +176,92 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
-    final Duration currentPos = _isInit ? _controller.value.position : Duration.zero;
-    final Duration totalDur = _isInit ? _controller.value.duration : Duration.zero;
-    final Duration activeDisplayPos = _isTouching ? _targetSeekPos : currentPos;
+    final pos = _isInit ? _controller.value.position : Duration.zero;
+    final dur = _isInit ? _controller.value.duration : Duration.zero;
 
-    final double progressRatio = totalDur.inMilliseconds > 0
-        ? (activeDisplayPos.inMilliseconds / totalDur.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
-
-    return PopScope(
-      canPop: false,
-      onPopInvoked: (didPop) {
-        if (!didPop) _cleanExit();
+    return Focus(
+      autofocus: true,
+      onKey: (node, event) {
+        if (event is RawKeyDownEvent) {
+          _handleDpad(event.logicalKey);
+        }
+        return KeyEventResult.handled;
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: GestureDetector(
-          onTap: () {
-            setState(() => _showOverlay = !_showOverlay);
-            if (_showOverlay) _startOverlayTimeout();
-          },
-          onDoubleTap: () {
-            if (_isInit) {
-              if (_controller.value.isPlaying) {
-                _controller.pause();
-              } else {
-                _controller.play();
-              }
-            }
-          },
-          onHorizontalDragStart: _onHorizontalDragStart,
-          onHorizontalDragUpdate: _onHorizontalDragUpdate,
-          onHorizontalDragEnd: _onHorizontalDragEnd,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              _buildVideoLayer(),
+        body: Stack(
+          alignment: Alignment.center,
+          children: [
+            _buildVideo(),
 
-              if (_toastMessage.isNotEmpty)
-                Positioned(
-                  top: 30,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF141414).withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white24),
+            // Top Header: Title aur Just Player Hint
+            if (_showControls)
+              Positioned(
+                top: 28,
+                left: 36,
+                right: 36,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                     ),
-                    child: Text(
-                      _toastMessage,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE50914),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        '▲ Open in Just Player',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
+              ),
 
-              if (_isTouching)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+            // Bottom Progress Bar & TV remote hints
+            if (_showControls && _isInit)
+              Positioned(
+                bottom: 24,
+                left: 36,
+                right: 36,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.black87,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE50914), width: 1.5),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        _seekOffsetSec >= 0 ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
-                        color: Colors.white,
-                        size: 32,
+                      LinearProgressIndicator(
+                        value: dur.inMilliseconds > 0 ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0) : 0.0,
+                        backgroundColor: Colors.white24,
+                        color: const Color(0xFFE50914),
+                        minHeight: 6,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatDuration(_targetSeekPos),
-                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        '${_seekOffsetSec >= 0 ? "+" : ""}${_seekOffsetSec}s',
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-
-              if (_showOverlay && _isInit)
-                Positioned(
-                  top: 14,
-                  left: 16,
-                  right: 16,
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
-                        onPressed: _cleanExit,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          widget.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.aspect_ratio_rounded, color: Colors.white),
-                        onPressed: _cycleScaleMode,
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('${_formatDuration(pos)} / ${_formatDuration(dur)}',
+                              style: const TextStyle(color: Colors.white, fontSize: 14)),
+                          Text(
+                            _scaleMode == 0 ? 'FIT (16:9)' : (_scaleMode == 1 ? 'STRETCH' : 'ZOOM (CROP)'),
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                          const Text('◀ 15s | OK Play/Pause | 15s ▶',
+                              style: TextStyle(color: Colors.white54, fontSize: 12)),
+                        ],
                       ),
                     ],
                   ),
                 ),
-
-              if ((_showOverlay || _isTouching) && _isInit)
-                Positioned(
-                  bottom: 16,
-                  left: 20,
-                  right: 20,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        LayoutBuilder(
-                          builder: (ctx, constraints) {
-                            final barWidth = constraints.maxWidth;
-                            final thumbLeft = (barWidth * progressRatio).clamp(0.0, barWidth - 14.0);
-
-                            return GestureDetector(
-                              onHorizontalDragUpdate: (details) {
-                                final tapPos = details.localPosition.dx.clamp(0.0, barWidth);
-                                final ratio = tapPos / barWidth;
-                                final targetMs = (totalDur.inMilliseconds * ratio).round();
-                                _commitSeek(Duration(milliseconds: targetMs));
-                              },
-                              child: SizedBox(
-                                height: 20,
-                                child: Stack(
-                                  alignment: Alignment.centerLeft,
-                                  children: [
-                                    Container(
-                                      height: 5,
-                                      width: barWidth,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white24,
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                    ),
-                                    Container(
-                                      height: 5,
-                                      width: barWidth * progressRatio,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFE50914),
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      left: thumbLeft,
-                                      child: Container(
-                                        width: 14,
-                                        height: 14,
-                                        decoration: const BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _formatDuration(activeDisplayPos),
-                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                _controller.value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                color: Colors.white,
-                                size: 28,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  if (_controller.value.isPlaying) {
-                                    _controller.pause();
-                                  } else {
-                                    _controller.play();
-                                  }
-                                });
-                              },
-                            ),
-                            Text(
-                              _formatDuration(totalDur),
-                              style: const TextStyle(color: Colors.white54, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
