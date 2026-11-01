@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO TV - CINEMA HQ HYBRID EDITION (HINDI + ENGLISH LATEST MIX)
+// NETFLIX PRO TV - COMPLETE MASTER EDITION (SEE ALL GRID + SORT + NO SOAPS)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -40,6 +40,7 @@ class TvConfig {
   static const String backdropBase = 'https://image.tmdb.org/t/p/w1280';
 }
 
+// Strict Daily Soap & TV Serial Filter
 bool isSoapShow(String title) {
   final t = title.toLowerCase();
   const blocked = [
@@ -48,7 +49,10 @@ bool isSoapShow(String title) {
     'ye rishta', 'yrkkh', 'taarak mehta', 'tmkoc', 'kasautii', 'ishqbaaaz',
     'anupamaa', 'bigg boss', 'khatron ke khiladi', 'splitsvilla',
     'crime patrol', 'savdhaan india', 'diya aur baati', 'qubool hai',
-    'jamai raja', 'tujhse hai raabta', 'radhakrishn', 'koffee with karan'
+    'jamai raja', 'tujhse hai raabta', 'radhakrishn', 'koffee with karan',
+    'chudail', 'sasural', 'fitoor', 'bhojpuri', 'nagin', 'naagin', 'parineetii',
+    'udaariyaan', 'imlie', 'ghukk', 'shravani', 'suhaagan', 'dharampatnii',
+    'lo chudail', 'chali sasural'
   ];
   return blocked.any((b) => t.contains(b));
 }
@@ -80,7 +84,7 @@ class TvHomeScreen extends StatefulWidget {
 }
 
 class _TvHomeScreenState extends State<TvHomeScreen> {
-  int _selectedNavIndex = 2; // Default to Home
+  int _selectedNavIndex = 2; // Default Home
   final List<FocusNode> _sidebarFocusNodes = List.generate(6, (_) => FocusNode());
   final FocusNode _firstContentCardFocus = FocusNode();
   final FocusNode _watchNowFocusNode = FocusNode();
@@ -166,7 +170,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     } catch (_) {}
   }
 
-  // Mobile jaise direct latest release endpoints (Hindi + English Mix)
+  // Fast Instant Render for Home Screen
   Future<void> _fetchHomeCatalogContent() async {
     try {
       // 1. Netflix Latest (Movies in IN region - Hindi + English)
@@ -191,9 +195,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         homeHotstarList = _parseTvList(jsonDecode(hotstarRes.body)['results']);
       }
 
-      // 4. Hindi Web Series (Latest)
+      // 4. Hindi Web Series (Filtered OTT Only - No Daily Soaps)
       final hindiTvRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=first_air_date.desc')).timeout(const Duration(seconds: 8));
+          '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=5')).timeout(const Duration(seconds: 8));
       if (hindiTvRes.statusCode == 200) {
         homeHindiSeriesList = _parseTvList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
             .where((item) => !isSoapShow(item['title'] ?? ''))
@@ -209,7 +213,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     } catch (_) {}
   }
 
-  // Deep Fetch 200+ Titles via Multi-page Pagination (10 pages x 20 = 200 items)
+  // Deep Fetch 200+ Titles via Multi-page Pagination
   Future<void> _fetchDeepCatalogs() async {
     final sortQuery = _catalogSortType == 'latest'
         ? 'primary_release_date.desc'
@@ -245,9 +249,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       },
     );
 
-    // 4. Hindi Web Series (200+)
+    // 4. Hindi Web Series (200+ Pure OTT Shows)
     _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=$sortTvQuery',
+      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5&sort_by=$sortTvQuery',
       isTv: true,
       onDone: (list) {
         if (mounted) {
@@ -308,9 +312,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     final currentYear = DateTime.now().year.toString();
     for (var m in (list ?? [])) {
       if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
+      final t = (m['title'] ?? m['name'] ?? 'Untitled').toString();
+      if (isTv && isSoapShow(t)) continue;
+
       res.add({
         'tmdb_id': m['id'],
-        'title': m['title'] ?? m['name'] ?? 'Untitled',
+        'title': t,
         'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
         'rating': m['vote_average']?.toString() ?? '7.5',
         'backdrop': m['backdrop_path'] != null
@@ -565,10 +572,29 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   // ============================================================================
-  // NETFLIX LANDSCAPE ROW (16:9 RATIO)
+  // NETFLIX LANDSCAPE ROW WITH DIRECT SEE-ALL INTEGRATION
   // ============================================================================
-  Widget _buildNetflixRow(String title, List<dynamic> items, {bool isFirstRow = false}) {
+  Widget _buildNetflixRow(
+    String title,
+    List<dynamic> items,
+    String baseUrl, {
+    bool isFirstRow = false,
+    bool isTv = false,
+  }) {
     if (items.isEmpty) return const SizedBox.shrink();
+
+    void openSeeAll() {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TVCategoryGridScreen(
+            title: title,
+            baseUrl: baseUrl,
+            isTv: isTv,
+            onSelect: (item) => _onTvItemSelect(item),
+          ),
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -587,9 +613,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   letterSpacing: 0.5,
                 ),
               ),
-              Text(
-                '${items.length} Titles',
-                style: const TextStyle(color: Colors.white38, fontSize: 11),
+              InkWell(
+                onTap: openSeeAll,
+                child: Text(
+                  '${items.length} Titles  •  See All →',
+                  style: const TextStyle(color: Color(0xFFE50914), fontSize: 12, fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
@@ -599,8 +628,49 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: items.length,
+            itemCount: items.length + 1,
             itemBuilder: (ctx, idx) {
+              if (idx == items.length) {
+                return Container(
+                  width: 160,
+                  margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Focus(
+                    child: Builder(
+                      builder: (context) {
+                        final isFocused = Focus.of(context).hasFocus;
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: openSeeAll,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF222222),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isFocused ? Colors.white : Colors.white24,
+                                width: isFocused ? 2.5 : 1.0,
+                              ),
+                              boxShadow: isFocused
+                                  ? [BoxShadow(color: const Color(0xFFE50914).withOpacity(0.55), blurRadius: 10, spreadRadius: 2)]
+                                  : [],
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: const [
+                                Icon(Icons.grid_view_rounded, color: Color(0xFFE50914), size: 32),
+                                SizedBox(height: 6),
+                                Text('See All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                Text('Explore Catalog', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              }
+
               final currentItem = items[idx];
               return NetflixCard(
                 focusNode: (isFirstRow && idx == 0) ? _firstContentCardFocus : null,
@@ -698,18 +768,45 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         if (_selectedNavIndex == 2 || _selectedNavIndex <= 1) ...[
                           if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
                           if (continueWatchingList.isNotEmpty)
-                            _buildNetflixRow('Continue Watching', continueWatchingList, isFirstRow: true),
+                            _buildNetflixRow(
+                              'Continue Watching',
+                              continueWatchingList,
+                              '',
+                              isFirstRow: true,
+                            ),
                           if (homeNetflixList.isNotEmpty)
-                            _buildNetflixRow('Latest Netflix Blockbusters (Hindi + Global)', homeNetflixList,
-                                isFirstRow: continueWatchingList.isEmpty),
+                            _buildNetflixRow(
+                              'Latest Netflix Blockbusters (Hindi + Global)',
+                              homeNetflixList,
+                              '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
+                              isFirstRow: continueWatchingList.isEmpty,
+                            ),
                           if (homePrimeList.isNotEmpty)
-                            _buildNetflixRow('Amazon Prime Video Hits', homePrimeList),
+                            _buildNetflixRow(
+                              'Amazon Prime Video Hits',
+                              homePrimeList,
+                              '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN',
+                            ),
                           if (homeHotstarList.isNotEmpty)
-                            _buildNetflixRow('Disney+ Hotstar & Cinema Specials', homeHotstarList),
+                            _buildNetflixRow(
+                              'Disney+ Hotstar & Cinema Specials',
+                              homeHotstarList,
+                              '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN',
+                            ),
                           if (homeHindiSeriesList.isNotEmpty)
-                            _buildNetflixRow('Latest Hindi Web Series', homeHindiSeriesList),
+                            _buildNetflixRow(
+                              'Latest Hindi Web Series',
+                              homeHindiSeriesList,
+                              '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
+                              isTv: true,
+                            ),
                           if (homeEnglishSeriesList.isNotEmpty)
-                            _buildNetflixRow('Global Hits On The Air', homeEnglishSeriesList),
+                            _buildNetflixRow(
+                              'Global Hits On The Air',
+                              homeEnglishSeriesList,
+                              '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US',
+                              isTv: true,
+                            ),
                         ],
 
                         // TAB 3: DEDICATED MOVIES SECTION (200+ CATALOG)
@@ -719,15 +816,18 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           _buildNetflixRow(
                             'Bollywood Hit Movies',
                             allBollywoodMovies.isNotEmpty ? allBollywoodMovies : homeNetflixList,
+                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
                             isFirstRow: true,
                           ),
                           _buildNetflixRow(
                             'South Indian Blockbusters (Hindi Dubbed)',
                             allSouthMovies.isNotEmpty ? allSouthMovies : homePrimeList,
+                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn',
                           ),
                           _buildNetflixRow(
                             'Hollywood Blockbusters (Hindi Dubbed & Global)',
                             allHollywoodMovies.isNotEmpty ? allHollywoodMovies : homeHotstarList,
+                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}',
                           ),
                         ],
 
@@ -738,26 +838,55 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           _buildNetflixRow(
                             'Hindi OTT Web Series',
                             allHindiSeries.isNotEmpty ? allHindiSeries : homeHindiSeriesList,
+                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
                             isFirstRow: true,
+                            isTv: true,
                           ),
                           _buildNetflixRow(
                             'Global Web Series (Hindi Dubbed & English)',
                             allEnglishSeries.isNotEmpty ? allEnglishSeries : homeEnglishSeriesList,
+                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}',
+                            isTv: true,
                           ),
                           _buildNetflixRow(
                             'South Indian Web Series (Hindi Dubbed)',
                             allSouthSeries,
+                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml',
+                            isTv: true,
                           ),
                         ],
 
                         // TAB 5: EXPLORE ALL
                         if (_selectedNavIndex == 5) ...[
                           _buildCategoryHeader('Explore All Collections'),
-                          _buildNetflixRow('Bollywood Top Rated', homeNetflixList, isFirstRow: true),
-                          _buildNetflixRow('South Indian Hits', homePrimeList),
-                          _buildNetflixRow('Hollywood Dubbed Hits', homeHotstarList),
-                          _buildNetflixRow('Hindi Originals', homeHindiSeriesList),
-                          _buildNetflixRow('Global Shows', homeEnglishSeriesList),
+                          _buildNetflixRow(
+                            'Bollywood Top Rated',
+                            homeNetflixList,
+                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
+                            isFirstRow: true,
+                          ),
+                          _buildNetflixRow(
+                            'South Indian Hits',
+                            homePrimeList,
+                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn',
+                          ),
+                          _buildNetflixRow(
+                            'Hollywood Dubbed Hits',
+                            homeHotstarList,
+                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}',
+                          ),
+                          _buildNetflixRow(
+                            'Hindi Originals',
+                            homeHindiSeriesList,
+                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
+                            isTv: true,
+                          ),
+                          _buildNetflixRow(
+                            'Global Shows',
+                            homeEnglishSeriesList,
+                            '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US',
+                            isTv: true,
+                          ),
                         ],
                       ],
                     ),
@@ -765,6 +894,259 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ============================================================================
+// FULL SCREEN VERTICAL GRID SCREEN (SEE ALL WITH LATEST / POPULAR TOGGLE)
+// ============================================================================
+class TVCategoryGridScreen extends StatefulWidget {
+  final String title;
+  final String baseUrl;
+  final bool isTv;
+  final Function(dynamic) onSelect;
+
+  const TVCategoryGridScreen({
+    super.key,
+    required this.title,
+    required this.baseUrl,
+    required this.isTv,
+    required this.onSelect,
+  });
+
+  @override
+  State<TVCategoryGridScreen> createState() => _TVCategoryGridScreenState();
+}
+
+class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
+  var items = [];
+  bool isLoading = true;
+  String sortType = 'latest'; // 'latest' or 'popular'
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchGridData();
+  }
+
+  void _toggleSort() {
+    setState(() {
+      sortType = sortType == 'latest' ? 'popular' : 'latest';
+      isLoading = true;
+      items.clear();
+    });
+    _fetchGridData();
+  }
+
+  Future<void> _fetchGridData() async {
+    final sortQuery = sortType == 'latest'
+        ? (widget.isTv ? 'first_air_date.desc' : 'primary_release_date.desc')
+        : 'popularity.desc';
+
+    var cleanUrl = widget.baseUrl;
+    cleanUrl = cleanUrl.replaceAll(RegExp(r'sort_by=[^&]+'), '');
+    final sep = cleanUrl.contains('?') ? '&' : '?';
+
+    var accumulated = [];
+    for (int p = 1; p <= 10; p++) {
+      try {
+        final url = '$cleanUrl${sep}sort_by=$sortQuery&page=$p';
+        final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body)['results'];
+          final currentYear = DateTime.now().year.toString();
+          for (var m in (data ?? [])) {
+            if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
+            final t = (m['title'] ?? m['name'] ?? 'Untitled').toString();
+            if (isSoapShow(t)) continue;
+
+            accumulated.add({
+              'tmdb_id': m['id'],
+              'title': t,
+              'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
+              'rating': m['vote_average']?.toString() ?? '7.5',
+              'backdrop': m['backdrop_path'] != null
+                  ? '${TvConfig.backdropBase}${m['backdrop_path']}'
+                  : '${TvConfig.imgBase}${m['poster_path']}',
+              'poster': m['poster_path'] != null
+                  ? '${TvConfig.imgBase}${m['poster_path']}'
+                  : '${TvConfig.backdropBase}${m['backdrop_path']}',
+              'overview': m['overview'] ?? '',
+              'isTv': widget.isTv,
+            });
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      setState(() {
+        items = accumulated;
+        isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF141414),
+      appBar: AppBar(
+        backgroundColor: Colors.black.withOpacity(0.9),
+        title: Row(
+          children: [
+            Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 19)),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(color: const Color(0xFFE50914), borderRadius: BorderRadius.circular(4)),
+              child: Text('${items.length} Titles', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 24),
+            child: Focus(
+              onKey: (node, event) {
+                if (event is RawKeyDownEvent &&
+                    (event.logicalKey == LogicalKeyboardKey.select ||
+                        event.logicalKey == LogicalKeyboardKey.enter)) {
+                  _toggleSort();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: Builder(builder: (c) {
+                final focused = Focus.of(c).hasFocus;
+                return InkWell(
+                  onTap: _toggleSort,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: focused ? Colors.white : const Color(0xFF242424),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: focused ? Colors.white : const Color(0xFFE50914),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          sortType == 'latest' ? Icons.fiber_new_rounded : Icons.whatshot_rounded,
+                          size: 18,
+                          color: focused ? Colors.black : const Color(0xFFE50914),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          sortType == 'latest' ? 'Filter: Latest Releases' : 'Filter: Most Popular',
+                          style: TextStyle(
+                            color: focused ? Colors.black : Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+          : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 5,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 18,
+                  childAspectRatio: 0.68,
+                ),
+                itemCount: items.length,
+                itemBuilder: (ctx, idx) {
+                  final item = items[idx];
+                  return Focus(
+                    child: Builder(
+                      builder: (context) {
+                        final isFocused = Focus.of(context).hasFocus;
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onSelect(item);
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isFocused ? Colors.white : Colors.transparent,
+                                width: isFocused ? 3.0 : 0.0,
+                              ),
+                              boxShadow: isFocused
+                                  ? [BoxShadow(color: const Color(0xFFE50914).withOpacity(0.55), blurRadius: 12, spreadRadius: 2)]
+                                  : [],
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Image.network(
+                                  item['poster'],
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
+                                ),
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                    decoration: const BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.bottomCenter,
+                                        end: Alignment.topCenter,
+                                        colors: [Colors.black, Colors.transparent],
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          item['title'] ?? '',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                                        ),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text('${item['rating']} ★', style: const TextStyle(color: Color(0xFF46D369), fontSize: 11)),
+                                            Text('${item['year']}', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
     );
   }
 }
