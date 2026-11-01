@@ -1,5 +1,5 @@
 // ============================================================================
-// INTERNAL VIDEO PLAYER (TOUCH & DRAG SEEKBAR + FULLSCREEN + CONTROLS)
+// MOBILE JUST PLAYER INTERNAL ENGINE (TOUCH GESTURES & SCRUBBER SEEK)
 // ============================================================================
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -23,42 +23,63 @@ class InternalPlayerScreen extends StatefulWidget {
   State<InternalPlayerScreen> createState() => _InternalPlayerScreenState();
 }
 
-class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
+class _InternalPlayerScreenState extends State<InternalPlayerScreen>
+    with WidgetsBindingObserver {
   late VideoPlayerController _controller;
   bool _isInit = false;
   bool _hasError = false;
-  String _errorMessage = '';
-  bool _showControls = true;
-  Timer? _controlsTimer;
 
-  // Touch Drag Seekbar Variables
-  bool _isDragging = false;
-  double _dragValue = 0.0;
+  bool _showOverlay = true;
+  Timer? _hideTimer;
 
-  // Gesture Controls (Volume & Brightness)
-  double _volume = 1.0;
-  double _brightness = 0.5;
-  String _overlayText = '';
-  IconData _overlayIcon = Icons.volume_up_rounded;
-  bool _showOverlayIndicator = false;
-  Timer? _overlayTimer;
+  int _scaleMode = 0; // 0: FIT, 1: STRETCH, 2: CROP
+  String _toastMessage = '';
+  Timer? _toastTimer;
 
-  // 0: FIT (16:9), 1: FILL (Stretch), 2: CROP (Zoom / Notch-fill default)
-  int _scaleMode = 2;
+  double _touchDragOffset = 0;
+  bool _isTouching = false;
+  int _seekOffsetSec = 0;
+  Duration _targetSeekPos = Duration.zero;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-
-    _initPlayer();
+    _initVideo();
   }
 
-  Future<void> _initPlayer() async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _cleanExit();
+    }
+  }
+
+  void _cleanExit() {
+    _hideTimer?.cancel();
+    _toastTimer?.cancel();
+    if (_isInit) {
+      _controller.pause();
+      _controller.dispose();
+      _isInit = false;
+    }
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _initVideo() async {
     try {
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.streamUrl),
@@ -71,95 +92,87 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
       );
 
       await _controller.initialize();
-      _controller.setVolume(_volume);
       _controller.play();
-      _startHideTimer();
 
-      if (mounted) {
-        setState(() => _isInit = true);
-      }
+      if (mounted) setState(() => _isInit = true);
 
       _controller.addListener(() {
-        if (mounted && !_isDragging) setState(() {});
+        if (mounted && !_isTouching) setState(() {});
       });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMessage = e.toString();
-        });
-      }
+
+      _startOverlayTimeout();
+    } catch (_) {
+      if (mounted) setState(() => _hasError = true);
     }
   }
 
-  void _startHideTimer() {
-    _controlsTimer?.cancel();
-    _controlsTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted && _controller.value.isPlaying && !_isDragging) {
-        setState(() => _showControls = false);
+  void _startOverlayTimeout() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted && _controller.value.isPlaying && !_isTouching) {
+        setState(() => _showOverlay = false);
       }
     });
-  }
-
-  void _toggleControls() {
-    setState(() => _showControls = !_showControls);
-    if (_showControls) _startHideTimer();
-  }
-
-  void _togglePlayPause() {
-    if (!_isInit) return;
-    setState(() {
-      _controller.value.isPlaying ? _controller.pause() : _controller.play();
-      _showControls = true;
-    });
-    _startHideTimer();
-  }
-
-  void _seekRelative(int seconds) {
-    if (!_isInit) return;
-    final currentPos = _controller.value.position;
-    final totalDur = _controller.value.duration;
-
-    var newPos = currentPos + Duration(seconds: seconds);
-    if (newPos < Duration.zero) newPos = Duration.zero;
-    if (newPos > totalDur) newPos = totalDur;
-
-    _controller.seekTo(newPos);
-    _startHideTimer();
   }
 
   void _cycleScaleMode() {
+    final names = ['FIT (16:9)', 'STRETCH (FULL)', 'ZOOM (CROP)'];
     setState(() {
       _scaleMode = (_scaleMode + 1) % 3;
-      _showControls = true;
+      _toastMessage = names[_scaleMode];
     });
-    _startHideTimer();
+
+    _toastTimer?.cancel();
+    _toastTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _toastMessage = '');
+    });
   }
 
-  void _onVerticalDragUpdate(DragUpdateDetails details, double screenWidth, double screenHeight) {
-    final delta = -details.primaryDelta! / (screenHeight * 0.75);
-
-    if (details.localPosition.dx < screenWidth / 2) {
-      setState(() {
-        _brightness = (_brightness + delta).clamp(0.0, 1.0);
-        _overlayText = '${(_brightness * 100).toInt()}%';
-        _overlayIcon = Icons.brightness_6_rounded;
-        _showOverlayIndicator = true;
-      });
-    } else {
-      setState(() {
-        _volume = (_volume + delta).clamp(0.0, 1.0);
-        _controller.setVolume(_volume);
-        _overlayText = '${(_volume * 100).toInt()}%';
-        _overlayIcon = _volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded;
-        _showOverlayIndicator = true;
-      });
-    }
-
-    _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(milliseconds: 900), () {
-      if (mounted) setState(() => _showOverlayIndicator = false);
+  void _commitSeek(Duration target) {
+    if (!_isInit) return;
+    _controller.seekTo(target).then((_) {
+      if (mounted) {
+        setState(() {
+          _isTouching = false;
+          _seekOffsetSec = 0;
+          _touchDragOffset = 0;
+        });
+        _controller.play();
+        _startOverlayTimeout();
+      }
     });
+  }
+
+  void _onHorizontalDragStart(DragStartDetails details) {
+    if (!_isInit) return;
+    setState(() {
+      _isTouching = true;
+      _touchDragOffset = 0;
+      _targetSeekPos = _controller.value.position;
+      _showOverlay = true;
+    });
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (!_isInit) return;
+    _touchDragOffset += details.primaryDelta ?? 0;
+
+    final seekDeltaSeconds = (_touchDragOffset / 8).round();
+    final dur = _controller.value.duration;
+    Duration calc = _controller.value.position + Duration(seconds: seekDeltaSeconds);
+
+    if (calc < Duration.zero) calc = Duration.zero;
+    if (calc > dur) calc = dur;
+
+    setState(() {
+      _targetSeekPos = calc;
+      _seekOffsetSec = seekDeltaSeconds;
+    });
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    if (!_isInit) return;
+    _commitSeek(_targetSeekPos);
   }
 
   String _formatDuration(Duration d) {
@@ -171,21 +184,18 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
 
   @override
   void dispose() {
-    _controlsTimer?.cancel();
-    _overlayTimer?.cancel();
-    _controller.dispose();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-    ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    WidgetsBinding.instance.removeObserver(this);
+    _hideTimer?.cancel();
+    _toastTimer?.cancel();
+    if (_isInit) {
+      _controller.dispose();
+    }
     super.dispose();
   }
 
-  Widget _buildVideoOutput() {
+  Widget _buildVideoLayer() {
     if (!_isInit) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFFE50914)),
-      );
+      return const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)));
     }
 
     if (_scaleMode == 1) {
@@ -222,308 +232,218 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final scaleNames = ['FIT (16:9)', 'FILL (STRETCH)', 'CROP (ZOOM)'];
-    final size = MediaQuery.of(context).size;
-
-    final Duration activeDisplayPos = _isInit
-        ? (_isDragging
-            ? Duration(milliseconds: _dragValue.toInt())
-            : _controller.value.position)
-        : Duration.zero;
+    final Duration currentPos = _isInit ? _controller.value.position : Duration.zero;
     final Duration totalDur = _isInit ? _controller.value.duration : Duration.zero;
+    final Duration activeDisplayPos = _isTouching ? _targetSeekPos : currentPos;
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        alignment: Alignment.center,
-        children: [
-          _buildVideoOutput(),
-          Container(
-            color: Colors.black.withOpacity((1.0 - _brightness) * 0.75),
-          ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _toggleControls,
-            onVerticalDragUpdate: (details) =>
-                _onVerticalDragUpdate(details, size.width, size.height),
-            child: Container(color: Colors.transparent),
-          ),
-          if (_showOverlayIndicator)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF181818).withOpacity(0.9),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                    color: const Color(0xFFE50914).withOpacity(0.5), width: 1.5),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(_overlayIcon, color: const Color(0xFFE50914), size: 28),
-                  const SizedBox(width: 10),
-                  Text(
-                    _overlayText,
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-          if (_hasError)
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF181818).withOpacity(0.95),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.redAccent.withOpacity(0.6), width: 1.5),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 48),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Stream load nahi ho saki',
-                      style: TextStyle(
-                          color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+    final double progressRatio = totalDur.inMilliseconds > 0
+        ? (activeDisplayPos.inMilliseconds / totalDur.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
+
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (!didPop) _cleanExit();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: GestureDetector(
+          onTap: () {
+            setState(() => _showOverlay = !_showOverlay);
+            if (_showOverlay) _startOverlayTimeout();
+          },
+          onDoubleTap: () {
+            if (_isInit) {
+              if (_controller.value.isPlaying) {
+                _controller.pause();
+              } else {
+                _controller.play();
+              }
+            }
+          },
+          onHorizontalDragStart: _onHorizontalDragStart,
+          onHorizontalDragUpdate: _onHorizontalDragUpdate,
+          onHorizontalDragEnd: _onHorizontalDragEnd,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              _buildVideoLayer(),
+
+              if (_toastMessage.isNotEmpty)
+                Positioned(
+                  top: 30,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF141414).withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white24),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _errorMessage,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      style: const TextStyle(color: Colors.white60, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (_showControls && _isInit)
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black87,
-                    Colors.transparent,
-                    Colors.transparent,
-                    Colors.black87,
-                  ],
-                  stops: [0.0, 0.22, 0.72, 1.0],
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 18,
-                    left: 24,
-                    right: 24,
-                    child: Row(
-                      children: [
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.black45,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white12),
-                            ),
-                            child: const Icon(Icons.arrow_back_ios_new_rounded,
-                                color: Colors.white, size: 18),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Text(
-                            widget.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: _cycleScaleMode,
-                          child: Container(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF181818).withOpacity(0.9),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                  color: const Color(0xFFE50914), width: 1.5),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.aspect_ratio_rounded,
-                                    color: Color(0xFFE50914), size: 16),
-                                const SizedBox(width: 6),
-                                Text(
-                                  scaleNames[_scaleMode],
-                                  style: const TextStyle(
-                                    color: Color(0xFFE50914),
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      _toastMessage,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                   ),
-                  Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        GestureDetector(
-                          onTap: () => _seekRelative(-30),
-                          child: Container(
-                            width: 52,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.black45,
-                              border: Border.all(color: Colors.white24, width: 1.5),
-                            ),
-                            child: const Icon(
-                              Icons.replay_30_rounded,
-                              color: Colors.white,
-                              size: 32,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 40),
-                        GestureDetector(
-                          onTap: _togglePlayPause,
-                          child: Container(
-                            width: 65,
-                            height: 65,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFFE50914).withOpacity(0.85),
-                              border: Border.all(color: Colors.white24, width: 2),
-                            ),
-                            child: Icon(
-                              _controller.value.isPlaying
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              color: Colors.white,
-                              size: 42,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 40),
-                        GestureDetector(
-                          onTap: () => _seekRelative(30),
-                          child: Container(
-                            width: 52,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.black45,
-                              border: Border.all(color: Colors.white24, width: 1.5),
-                            ),
-                            child: const Icon(
-                              Icons.forward_30_rounded,
-                              color: Colors.white,
-                              size: 32,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                ),
+
+              if (_isTouching)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE50914), width: 1.5),
                   ),
-                  Positioned(
-                    bottom: 16,
-                    left: 24,
-                    right: 24,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _seekOffsetSec >= 0 ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatDuration(_targetSeekPos),
+                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '${_seekOffsetSec >= 0 ? "+" : ""}${_seekOffsetSec}s',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+
+              if (_showOverlay && _isInit)
+                Positioned(
+                  top: 14,
+                  left: 16,
+                  right: 16,
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+                        onPressed: _cleanExit,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          widget.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.aspect_ratio_rounded, color: Colors.white),
+                        onPressed: _cycleScaleMode,
+                      ),
+                    ],
+                  ),
+                ),
+
+              if ((_showOverlay || _isTouching) && _isInit)
+                Positioned(
+                  bottom: 16,
+                  left: 20,
+                  right: 20,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            trackHeight: 4,
-                            thumbShape:
-                                const RoundSliderThumbShape(enabledThumbRadius: 7),
-                            overlayShape:
-                                const RoundSliderOverlayShape(overlayRadius: 15),
-                            activeTrackColor: const Color(0xFFE50914),
-                            inactiveTrackColor: Colors.white24,
-                            thumbColor: const Color(0xFFE50914),
-                            overlayColor:
-                                const Color(0xFFE50914).withOpacity(0.3),
-                          ),
-                          child: Slider(
-                            value: _isDragging
-                                ? _dragValue
-                                : (totalDur.inMilliseconds > 0
-                                    ? activeDisplayPos.inMilliseconds
-                                        .clamp(0, totalDur.inMilliseconds)
-                                        .toDouble()
-                                    : 0.0),
-                            min: 0.0,
-                            max: totalDur.inMilliseconds > 0
-                                ? totalDur.inMilliseconds.toDouble()
-                                : 1.0,
-                            onChangeStart: (val) {
-                              _controlsTimer?.cancel();
-                              setState(() {
-                                _isDragging = true;
-                                _dragValue = val;
-                              });
-                            },
-                            onChanged: (val) {
-                              setState(() {
-                                _dragValue = val;
-                              });
-                            },
-                            onChangeEnd: (val) {
-                              _controller.seekTo(
-                                  Duration(milliseconds: val.toInt()));
-                              setState(() {
-                                _isDragging = false;
-                              });
-                              _startHideTimer();
-                            },
-                          ),
+                        LayoutBuilder(
+                          builder: (ctx, constraints) {
+                            final barWidth = constraints.maxWidth;
+                            final thumbLeft = (barWidth * progressRatio).clamp(0.0, barWidth - 14.0);
+
+                            return GestureDetector(
+                              onHorizontalDragUpdate: (details) {
+                                final tapPos = details.localPosition.dx.clamp(0.0, barWidth);
+                                final ratio = tapPos / barWidth;
+                                final targetMs = (totalDur.inMilliseconds * ratio).round();
+                                _commitSeek(Duration(milliseconds: targetMs));
+                              },
+                              child: SizedBox(
+                                height: 20,
+                                child: Stack(
+                                  alignment: Alignment.centerLeft,
+                                  children: [
+                                    Container(
+                                      height: 5,
+                                      width: barWidth,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white24,
+                                        borderRadius: BorderRadius.circular(3),
+                                      ),
+                                    ),
+                                    Container(
+                                      height: 5,
+                                      width: barWidth * progressRatio,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFE50914),
+                                        borderRadius: BorderRadius.circular(3),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      left: thumbLeft,
+                                      child: Container(
+                                        width: 14,
+                                        height: 14,
+                                        decoration: const BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                _formatDuration(activeDisplayPos),
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 12),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _formatDuration(activeDisplayPos),
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                            IconButton(
+                              icon: Icon(
+                                _controller.value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 28,
                               ),
-                              Text(
-                                _formatDuration(totalDur),
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 12),
-                              ),
-                            ],
-                          ),
+                              onPressed: () {
+                                setState(() {
+                                  if (_controller.value.isPlaying) {
+                                    _controller.pause();
+                                  } else {
+                                    _controller.play();
+                                  }
+                                });
+                              },
+                            ),
+                            Text(
+                              _formatDuration(totalDur),
+                              style: const TextStyle(color: Colors.white54, fontSize: 12),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-        ],
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
