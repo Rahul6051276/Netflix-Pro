@@ -571,7 +571,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
-  // ============================================================================
+    // ============================================================================
   // NETFLIX LANDSCAPE ROW WITH DIRECT SEE-ALL INTEGRATION
   // ============================================================================
   Widget _buildNetflixRow(
@@ -590,7 +590,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             title: title,
             baseUrl: baseUrl,
             isTv: isTv,
-            onSelect: (item) => _onTvItemSelect(item),
+            providers: activeProviders,
+            onPlaySaved: () => _loadContinueWatching(),
           ),
         ),
       );
@@ -899,20 +900,22 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 }
 
 // ============================================================================
-// FULL SCREEN VERTICAL GRID SCREEN (SEE ALL WITH LATEST / POPULAR TOGGLE)
+// FULL SCREEN VERTICAL GRID SCREEN (DIRECT DIALOG - NO POP TO HOME)
 // ============================================================================
 class TVCategoryGridScreen extends StatefulWidget {
   final String title;
   final String baseUrl;
   final bool isTv;
-  final Function(dynamic) onSelect;
+  final List<dynamic> providers;
+  final VoidCallback onPlaySaved;
 
   const TVCategoryGridScreen({
     super.key,
     required this.title,
     required this.baseUrl,
     required this.isTv,
-    required this.onSelect,
+    required this.providers,
+    required this.onPlaySaved,
   });
 
   @override
@@ -922,7 +925,7 @@ class TVCategoryGridScreen extends StatefulWidget {
 class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
   var items = [];
   bool isLoading = true;
-  String sortType = 'latest'; // 'latest' or 'popular'
+  String sortType = 'latest';
 
   @override
   void initState() {
@@ -986,6 +989,35 @@ class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
         isLoading = false;
       });
     }
+  }
+
+  void _handleItemClick(dynamic item) {
+    if (item['isTv'] == true) {
+      showDialog(
+        context: context,
+        builder: (ctx) => TvEpisodeDialog(
+          item: item,
+          onSelected: (season, episode) {
+            _showDirectStreamDialog(item, season: season, episode: episode);
+          },
+        ),
+      );
+    } else {
+      _showDirectStreamDialog(item);
+    }
+  }
+
+  void _showDirectStreamDialog(dynamic item, {int? season, int? episode}) {
+    showDialog(
+      context: context,
+      builder: (ctx) => TvStreamDialog(
+        item: item,
+        season: season,
+        episode: episode,
+        providers: widget.providers,
+        onPlaySaved: widget.onPlaySaved,
+      ),
+    );
   }
 
   @override
@@ -1073,15 +1105,21 @@ class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
                 itemBuilder: (ctx, idx) {
                   final item = items[idx];
                   return Focus(
+                    onKey: (node, event) {
+                      if (event is RawKeyDownEvent &&
+                          (event.logicalKey == LogicalKeyboardKey.select ||
+                              event.logicalKey == LogicalKeyboardKey.enter)) {
+                        _handleItemClick(item);
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
                     child: Builder(
                       builder: (context) {
                         final isFocused = Focus.of(context).hasFocus;
                         return InkWell(
                           borderRadius: BorderRadius.circular(6),
-                          onTap: () {
-                            Navigator.pop(context);
-                            widget.onSelect(item);
-                          },
+                          onTap: () => _handleItemClick(item),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 150),
                             decoration: BoxDecoration(
@@ -1150,7 +1188,6 @@ class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
     );
   }
 }
-
 // ============================================================================
 // NETFLIX MINIMAL SIDEBAR ICON
 // ============================================================================
