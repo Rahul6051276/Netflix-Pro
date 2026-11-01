@@ -65,7 +65,7 @@ class MobileCinemaTvApp extends StatelessWidget {
   }
 }
 
-// ----------------- AUTHENTIC NETFLIX ANIMATED SPLASH -----------------
+// ----------------- NETFLIX ANIMATED SPLASH -----------------
 class MobileSplashScreen extends StatefulWidget {
   const MobileSplashScreen({super.key});
 
@@ -76,8 +76,8 @@ class MobileSplashScreen extends StatefulWidget {
 class _MobileSplashScreenState extends State<MobileSplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _scale;
-  late Animation<double> _opacity;
+  late Animation _scale;
+  late Animation _opacity;
 
   @override
   void initState() {
@@ -86,16 +86,16 @@ class _MobileSplashScreenState extends State<MobileSplashScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1600),
     );
-    _scale = Tween<double>(begin: 0.75, end: 1.15).animate(
+    _scale = Tween(begin: 0.75, end: 1.15).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
     );
-    _opacity = TweenSequence<double>([
+    _opacity = TweenSequence([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeIn)),
+        tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeIn)),
         weight: 50,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeOut)),
+        tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeOut)),
         weight: 50,
       ),
     ]).animate(_controller);
@@ -210,21 +210,21 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   int _bottomNavIndex = 0;
-  List<dynamic> activeProviders = [];
-  List> continueWatchingList = [];
+  var activeProviders = [];
+  var continueWatchingList = [];
 
-  List> heroBanners = [];
+  var heroBanners = [];
   int currentHeroIndex = 0;
   final PageController _heroController = PageController(viewportFraction: 0.78);
   Timer? _heroTimer;
 
-  List> hindiWebSeries = [];
-  List> bollywoodLatest = [];
-  List> hollywoodHindiDubbed = [];
-  List> southHindiDubbed = [];
-  List> netflixSeries = [];
-  List> amazonSeries = [];
-  List> hollywoodHindiSeries = [];
+  var hindiWebSeries = [];
+  var bollywoodLatest = [];
+  var hollywoodHindiDubbed = [];
+  var southHindiDubbed = [];
+  var netflixSeries = [];
+  var amazonSeries = [];
+  var hollywoodHindiSeries = [];
 
   bool isLoading = true;
 
@@ -277,7 +277,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       if (raw != null && raw.isNotEmpty) {
         if (mounted) {
           setState(() {
-            continueWatchingList = List>.from(jsonDecode(raw));
+            continueWatchingList = jsonDecode(raw) as List;
           });
         }
       }
@@ -294,7 +294,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     } catch (_) {}
   }
 
-  // 100% UNCHANGED ORIGINAL TMDB QUERIES (CINEMA HQ LOGIC)
   Future<void> _fetchTmdbContent() async {
     try {
       final bollyRes = await http.get(Uri.parse(
@@ -345,8 +344,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     } catch (_) {}
   }
 
-  List> _parseResults(dynamic list, {bool isTv = false}) {
-    List> res = [];
+  List _parseResults(dynamic list, {bool isTv = false}) {
+    var res = [];
     final currentYear = DateTime.now().year.toString();
     for (var m in (list ?? [])) {
       if (m['poster_path'] == null && m['backdrop_path'] == null) continue;
@@ -369,7 +368,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     return res;
   }
 
-  void _onItemTapped(Map<String, dynamic> item) {
+  void _onItemTapped(dynamic item) {
     if (item['isTv'] == true) {
       showDialog(
         context: context,
@@ -385,7 +384,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     }
   }
 
-  void _showQualitySheet(Map<String, dynamic> item, {int? season, int? episode}) {
+  void _showQualitySheet(dynamic item, {int? season, int? episode}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -649,7 +648,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  Widget _buildContinueWatchingRow(List> items) {
+  Widget _buildContinueWatchingRow(dynamic items) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -719,7 +718,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  Widget _buildNetflixRow(String title, List> items) {
+  Widget _buildNetflixRow(String title, dynamic items) {
     if (items.isEmpty) return const SizedBox.shrink();
 
     return Column(
@@ -838,9 +837,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 }
 
-// ----------------- TMDB SEARCH DELEGATE (ORIGINAL LOGIC) -----------------
+// ----------------- TMDB SEARCH DELEGATE -----------------
 class TmdbSearchDelegate extends SearchDelegate {
-  final Function(Map<String, dynamic>) onItemTapped;
+  final Function(dynamic) onItemTapped;
   TmdbSearchDelegate({required this.onItemTapped});
 
   @override
@@ -885,13 +884,13 @@ class TmdbSearchDelegate extends SearchDelegate {
     if (query.trim().isEmpty) {
       return const Center(child: Text('Search movies & series...', style: TextStyle(color: Colors.white54)));
     }
-    return FutureBuilder<List>>(
+    return FutureBuilder(
       future: _performSearch(query.trim()),
       builder: (ctx, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)));
         }
-        final list = snapshot.data!;
+        final list = (snapshot.data as List?) ?? [];
         if (list.isEmpty) {
           return const Center(child: Text('No results found.', style: TextStyle(color: Colors.white54)));
         }
@@ -924,14 +923,14 @@ class TmdbSearchDelegate extends SearchDelegate {
     );
   }
 
-  Future<List>> _performSearch(String q) async {
+  Future<List> _performSearch(String q) async {
     try {
       final url = '${AppConfig.tmdbBase}/search/multi?api_key=${AppConfig.tmdbKey}&query=${Uri.encodeComponent(q)}';
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        final results = data['results'] as List<dynamic>? ?? [];
-        List> parsed = [];
+        final results = (data['results'] as List?) ?? [];
+        var parsed = [];
         for (var m in results) {
           final type = m['media_type'];
           if (type != 'movie' && type != 'tv') continue;
@@ -953,12 +952,12 @@ class TmdbSearchDelegate extends SearchDelegate {
   }
 }
 
-// ----------------- 100+ TITLES VERTICAL SCROLL CATALOG (100% ORIGINAL WORKING CODE) -----------------
+// ----------------- CATALOG GRID VIEW -----------------
 class MobileCatalogGridView extends StatefulWidget {
   final String categoryType;
   final String title;
-  final List<dynamic> providers;
-  final Function(Map<String, dynamic>) onItemTapped;
+  final List providers;
+  final Function(dynamic) onItemTapped;
 
   const MobileCatalogGridView({
     super.key,
@@ -973,7 +972,7 @@ class MobileCatalogGridView extends StatefulWidget {
 }
 
 class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
-  List> itemsList = [];
+  var itemsList = [];
   bool isLoading = true;
 
   @override
@@ -984,7 +983,9 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
 
   Future<void> _fetch100Titles() async {
     final bool isTv = widget.categoryType == 'hindi_series' || widget.categoryType == 'english_series';
-    var fetched = [];    for (int page = 1; page <= 5; page++) {
+    var fetched = [];
+
+    for (int page = 1; page <= 5; page++) {
       String url = '';
 
       if (widget.categoryType == 'bollywood') {
@@ -1003,7 +1004,7 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
         final res = await http.get(Uri.parse(url));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
-          final rawResults = data['results'] ?? [];
+          final rawResults = (data['results'] as List?) ?? [];
           for (var m in rawResults) {
             if (m['poster_path'] == null && m['backdrop_path'] == null) continue;
             final t = (m['title'] ?? m['name'] ?? 'Untitled').toString();
@@ -1120,9 +1121,9 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
   }
 }
 
-// ----------------- EPISODE SELECTOR DIALOG (ORIGINAL LOGIC) -----------------
+// ----------------- EPISODE SELECTOR DIALOG -----------------
 class MobileEpisodeSelectorDialog extends StatefulWidget {
-  final Map<String, dynamic> item;
+  final dynamic item;
   final Function(int season, int episode) onSelected;
 
   const MobileEpisodeSelectorDialog({
@@ -1138,7 +1139,7 @@ class MobileEpisodeSelectorDialog extends StatefulWidget {
 class _MobileEpisodeSelectorDialogState extends State<MobileEpisodeSelectorDialog> {
   int selectedSeason = 1;
   int episodeCount = 10;
-  List<int> availableSeasons = [1, 2, 3];
+  var availableSeasons = [1, 2, 3];
   bool loadingSeasons = true;
 
   @override
@@ -1153,7 +1154,7 @@ class _MobileEpisodeSelectorDialogState extends State<MobileEpisodeSelectorDialo
           '${AppConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${AppConfig.tmdbKey}'));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        final seasons = data['seasons'] as List<dynamic>?;
+        final seasons = (data['seasons'] as List?);
         if (seasons != null && seasons.isNotEmpty) {
           final valid = seasons
               .where((s) => (s['season_number'] ?? 0) > 0)
@@ -1211,7 +1212,7 @@ class _MobileEpisodeSelectorDialogState extends State<MobileEpisodeSelectorDialo
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                       ),
-                      onPressed: () => _onSeasonChanged(s),
+                      onPressed: () => _onSeasonChanged(s as int),
                       child: Text('Season $s', style: const TextStyle(fontSize: 12)),
                     ),
                   );
@@ -1255,12 +1256,12 @@ class _MobileEpisodeSelectorDialogState extends State<MobileEpisodeSelectorDialo
   }
 }
 
-// ----------------- MOBILE QUALITY SELECTOR SHEET (100% UNCHANGED ORIGINAL ENGINE) -----------------
+// ----------------- QUALITY SELECTOR SHEET -----------------
 class MobileQualitySelectorSheet extends StatefulWidget {
-  final Map<String, dynamic> item;
+  final dynamic item;
   final int? season;
   final int? episode;
-  final List<dynamic> providers;
+  final List providers;
   final VoidCallback onPlaySaved;
 
   const MobileQualitySelectorSheet({
@@ -1277,7 +1278,7 @@ class MobileQualitySelectorSheet extends StatefulWidget {
 }
 
 class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet> {
-  List> streams = [];
+  var streams = [];
   bool loading = true;
 
   @override
@@ -1339,8 +1340,8 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
               final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_series';
               final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
               if (xtreamRes.statusCode == 200) {
-                final List<dynamic> seriesList = jsonDecode(xtreamRes.body);
-                List<dynamic> candidates = [];
+                final seriesList = (jsonDecode(xtreamRes.body) as List?) ?? [];
+                var candidates = [];
 
                 for (var s in seriesList) {
                   final sTmdb = (s['tmdb_id'] ?? s['tmdb'] ?? '').toString();
@@ -1374,7 +1375,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
                   if (infoRes.statusCode == 200) {
                     final infoData = jsonDecode(infoRes.body);
                     final episodesMap = infoData['episodes'] as Map<String, dynamic>? ?? {};
-                    final epList = episodesMap['$targetSeason'] as List<dynamic>? ?? [];
+                    final epList = (episodesMap['$targetSeason'] as List?) ?? [];
 
                     dynamic matchedEp;
                     if (epList.isNotEmpty) {
@@ -1404,8 +1405,8 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
               final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_vod_streams';
               final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
               if (xtreamRes.statusCode == 200) {
-                final List<dynamic> streamList = jsonDecode(xtreamRes.body);
-                List<dynamic> candidates = [];
+                final streamList = (jsonDecode(xtreamRes.body) as List?) ?? [];
+                var candidates = [];
 
                 for (var m in streamList) {
                   final mTmdb = (m['tmdb_id'] ?? m['tmdb'] ?? '').toString();
@@ -1467,7 +1468,8 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
           final res = await http.get(Uri.parse(streamPath)).timeout(const Duration(seconds: 4));
           if (res.statusCode == 200) {
             final data = jsonDecode(res.body);
-            for (var s in (data['streams'] ?? [])) {
+            final sList = (data['streams'] as List?) ?? [];
+            for (var s in sList) {
               final titleStr = (s['title'] ?? s['name'] ?? '').toString();
               if (titleStr.toLowerCase().contains('donation') ||
                   titleStr.toLowerCase().contains('discord') ||
@@ -1514,8 +1516,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
       final raw = prefs.getString('continue_watching_mobile');
       var current = [];
       if (raw != null && raw.isNotEmpty) {
-        final List<dynamic> decoded = jsonDecode(raw);
-        current = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+        current = jsonDecode(raw) as List;
       }
 
       current.removeWhere((c) => c['tmdb_id'].toString() == widget.item['tmdb_id'].toString());
