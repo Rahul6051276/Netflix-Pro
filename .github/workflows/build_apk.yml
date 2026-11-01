@@ -1,4 +1,4 @@
-Name: Build and Release Netflix Pro APK
+name: Build and Release Netflix Pro APK
 
 on:
   workflow_dispatch:
@@ -46,11 +46,8 @@ jobs:
           sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET" />\n<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' netflix_build_temp/android/app/src/main/AndroidManifest.xml
           sed -i 's/<application/<application android:usesCleartextTraffic="true"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
           
-          # --- ANDROID TV SUPPORT FLAGS (D-PAD REMOTE & TV LAUNCHER) ---
-          # 1. Touchscreen requirement false (Android TV Remote ke liye zaroori)
+          # Android TV Flags (Leanback & Remote Support)
           sed -i '/<application/i <uses-feature android:name="android.hardware.touchscreen" android:required="false" />\n<uses-feature android:name="android.software.leanback" android:required="false" />' netflix_build_temp/android/app/src/main/AndroidManifest.xml
-          
-          # 2. Leanback Launcher Intent (Taaki TV ki screen par icon dikhe)
           sed -i '/android.intent.category.LAUNCHER/a <category android:name="android.intent.category.LEANBACK_LAUNCHER" />' netflix_build_temp/android/app/src/main/AndroidManifest.xml
           
           cd netflix_build_temp
