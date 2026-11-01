@@ -65,7 +65,6 @@ class MediaItem {
   final bool isTv;
   final String endpoint;
   dynamic xtreamStreamId;
-  List<dynamic>? genres;
 
   MediaItem({
     required this.tmdbId,
@@ -78,18 +77,16 @@ class MediaItem {
     required this.isTv,
     required this.endpoint,
     this.xtreamStreamId,
-    this.genres,
   });
 
   factory MediaItem.fromTmdb(Map<String, dynamic> json, {bool isTv = false, String endpoint = ''}) {
-    final currentYear = DateTime.now().year.toString();
-    final releaseDate = json['release_date'] ?? json['first_air_date'] ?? currentYear;
+    final releaseDate = json['release_date'] ?? json['first_air_date'] ?? '2026';
     final yearParsed = releaseDate.toString().split('-')[0];
 
     return MediaItem(
       tmdbId: json['id'],
       title: json['title'] ?? json['name'] ?? 'Untitled',
-      year: yearParsed.isNotEmpty ? yearParsed : currentYear,
+      year: yearParsed.isNotEmpty ? yearParsed : '2026',
       rating: json['vote_average'] != null ? (json['vote_average'] as num).toStringAsFixed(1) : '7.5',
       backdrop: json['backdrop_path'] != null
           ? '${TVConfig.backdropBase}${json['backdrop_path']}'
@@ -97,10 +94,9 @@ class MediaItem {
       poster: json['poster_path'] != null
           ? '${TVConfig.imgBase}${json['poster_path']}'
           : (json['backdrop_path'] != null ? '${TVConfig.backdropBase}${json['backdrop_path']}' : ''),
-      overview: json['overview'] ?? 'No overview available for this title.',
+      overview: json['overview'] ?? 'No description available for this title.',
       isTv: isTv,
       endpoint: endpoint,
-      genres: json['genre_ids'] as List<dynamic>?,
     );
   }
 }
@@ -109,13 +105,11 @@ class XtreamServerInfo {
   final String serverUrl;
   final String username;
   final String password;
-  final String status;
 
   XtreamServerInfo({
     required this.serverUrl,
     required this.username,
     required this.password,
-    this.status = 'Active',
   });
 
   factory XtreamServerInfo.fromJson(Map<String, dynamic> json) {
@@ -127,39 +121,16 @@ class XtreamServerInfo {
       serverUrl: s,
       username: (json['username'] ?? json['user'] ?? '').toString().trim(),
       password: (json['password'] ?? json['pass'] ?? '').toString().trim(),
-      status: (json['status'] ?? 'Active').toString(),
     );
   }
 
-  String buildVodStreamUrl(dynamic streamId, {String extension = 'mp4'}) {
-    return '$serverUrl/movie/$username/$password/$streamId.$extension';
+  String buildVodStreamUrl(dynamic streamId) {
+    return '$serverUrl/movie/$username/$password/$streamId.mp4';
   }
 
-  String buildSeriesStreamUrl(dynamic streamId, int season, int episode, {String extension = 'mp4'}) {
-    return '$serverUrl/series/$username/$password/$streamId/$season/$episode.$extension';
+  String buildSeriesStreamUrl(dynamic streamId, int season, int episode) {
+    return '$serverUrl/series/$username/$password/$streamId/$season/$episode.mp4';
   }
-
-  String buildVodActionUrl() {
-    return '$serverUrl/player_api.php?username=$username&password=$password&action=get_vod_streams';
-  }
-
-  String buildSeriesActionUrl() {
-    return '$serverUrl/player_api.php?username=$username&password=$password&action=get_series';
-  }
-}
-
-class StremioStreamResult {
-  final String title;
-  final String url;
-  final String? quality;
-  final String source;
-
-  StremioStreamResult({
-    required this.title,
-    required this.url,
-    this.quality,
-    required this.source,
-  });
 }
 
 // ============================================================================
@@ -167,11 +138,10 @@ class StremioStreamResult {
 // ============================================================================
 class XtreamStremioEngine {
   static List<XtreamServerInfo> servers = [];
-  static Map<String, dynamic> xtreamVodCache = {};
-  static Map<String, dynamic> xtreamSeriesCache = {};
-  static bool isXtreamSyncing = false;
+  static bool isInitialized = false;
 
   static Future<void> initEngine() async {
+    if (isInitialized) return;
     try {
       final res = await http.get(Uri.parse(TVConfig.gistUrl)).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
@@ -193,63 +163,9 @@ class XtreamStremioEngine {
             }
           }
         }
+        isInitialized = true;
       }
     } catch (_) {}
-
-    if (servers.isNotEmpty) {
-      syncXtreamIndexes();
-    }
-  }
-
-  static Future<void> syncXtreamIndexes() async {
-    if (servers.isEmpty || isXtreamSyncing) return;
-    isXtreamSyncing = true;
-
-    for (var srv in servers) {
-      try {
-        final vodRes = await http.get(Uri.parse(srv.buildVodActionUrl())).timeout(const Duration(seconds: 10));
-        if (vodRes.statusCode == 200) {
-          final vodList = jsonDecode(vodRes.body);
-          if (vodList is List) {
-            for (var item in vodList) {
-              if (item is Map<String, dynamic>) {
-                final streamId = item['stream_id'];
-                final name = (item['name'] ?? '').toString().toLowerCase();
-                final tmdb = item['tmdb_id'] ?? item['custom_sid'];
-                if (tmdb != null) {
-                  xtreamVodCache['tmdb_$tmdb'] = streamId;
-                }
-                if (name.isNotEmpty) {
-                  xtreamVodCache['name_$name'] = streamId;
-                }
-              }
-            }
-          }
-        }
-
-        final serRes = await http.get(Uri.parse(srv.buildSeriesActionUrl())).timeout(const Duration(seconds: 10));
-        if (serRes.statusCode == 200) {
-          final serList = jsonDecode(serRes.body);
-          if (serList is List) {
-            for (var item in serList) {
-              if (item is Map<String, dynamic>) {
-                final seriesId = item['series_id'];
-                final name = (item['name'] ?? '').toString().toLowerCase();
-                final tmdb = item['tmdb_id'];
-                if (tmdb != null) {
-                  xtreamSeriesCache['tmdb_$tmdb'] = seriesId;
-                }
-                if (name.isNotEmpty) {
-                  xtreamSeriesCache['name_$name'] = seriesId;
-                }
-              }
-            }
-          }
-        }
-        break;
-      } catch (_) {}
-    }
-    isXtreamSyncing = false;
   }
 
   static Future<String?> resolveStreamUrl(MediaItem item, {int season = 1, int episode = 1}) async {
@@ -257,56 +173,18 @@ class XtreamStremioEngine {
     if (servers.isEmpty) return null;
 
     final primaryServer = servers.first;
-    dynamic resolvedId = item.xtreamStreamId;
+    final id = item.xtreamStreamId ?? item.tmdbId;
 
     if (item.isTv) {
-      resolvedId ??= xtreamSeriesCache['tmdb_${item.tmdbId}'];
-      resolvedId ??= xtreamSeriesCache['name_${item.title.toLowerCase()}'];
-      resolvedId ??= item.tmdbId;
-
-      return primaryServer.buildSeriesStreamUrl(resolvedId, season, episode);
+      return primaryServer.buildSeriesStreamUrl(id, season, episode);
     } else {
-      resolvedId ??= xtreamVodCache['tmdb_${item.tmdbId}'];
-      resolvedId ??= xtreamVodCache['name_${item.title.toLowerCase()}'];
-      resolvedId ??= item.tmdbId;
-
-      return primaryServer.buildVodStreamUrl(resolvedId);
+      return primaryServer.buildVodStreamUrl(id);
     }
-  }
-
-  static Future<List<StremioStreamResult>> fetchStremioStreams(MediaItem item, {int season = 1, int episode = 1}) async {
-    List<StremioStreamResult> results = [];
-    final idParam = item.isTv ? 'tt_${item.tmdbId}:$season:$episode' : 'tt_${item.tmdbId}';
-
-    for (var addon in TVConfig.stremioAddons) {
-      try {
-        final type = item.isTv ? 'series' : 'movie';
-        final url = '$addon/stream/$type/$idParam.json';
-        final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 4));
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
-          final streams = data['streams'] as List<dynamic>? ?? [];
-          for (var st in streams) {
-            if (st['url'] != null) {
-              results.add(
-                StremioStreamResult(
-                  title: st['title'] ?? st['name'] ?? 'Stream Server',
-                  url: st['url'],
-                  quality: st['name'],
-                  source: 'Stremio Engine',
-                ),
-              );
-            }
-          }
-        }
-      } catch (_) {}
-    }
-    return results;
   }
 }
 
 // ============================================================================
-// 1. AUTHENTIC NETFLIX "TA-DUM" INTRO SPLASH SCREEN
+// 1. SPLASH SCREEN
 // ============================================================================
 class TVSplashScreen extends StatefulWidget {
   const TVSplashScreen({super.key});
@@ -320,18 +198,16 @@ class _TVSplashScreenState extends State<TVSplashScreen>
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
-  late Animation<double> _glowAnimation;
 
   @override
   void initState() {
     super.initState();
-
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.15).animate(
+    _scaleAnimation = Tween<double>(begin: 0.6, end: 1.15).animate(
       CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
     );
 
@@ -342,16 +218,9 @@ class _TVSplashScreenState extends State<TVSplashScreen>
       ),
     );
 
-    _glowAnimation = Tween<double>(begin: 20.0, end: 60.0).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: const Interval(0.3, 1.0, curve: Curves.easeInOut),
-      ),
-    );
-
     _animController.forward();
 
-    Timer(const Duration(milliseconds: 2500), () {
+    Timer(const Duration(milliseconds: 2400), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
@@ -388,14 +257,14 @@ class _TVSplashScreenState extends State<TVSplashScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 120,
-                      height: 160,
+                      width: 110,
+                      height: 150,
                       decoration: BoxDecoration(
                         color: Colors.transparent,
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFE50914).withOpacity(0.6),
-                            blurRadius: _glowAnimation.value,
+                            color: const Color(0xFFE50914).withOpacity(0.55),
+                            blurRadius: 45,
                             spreadRadius: 8,
                           ),
                         ],
@@ -405,22 +274,21 @@ class _TVSplashScreenState extends State<TVSplashScreen>
                           'N',
                           style: TextStyle(
                             color: Color(0xFFE50914),
-                            fontSize: 140,
+                            fontSize: 130,
                             fontWeight: FontWeight.w900,
-                            fontFamily: 'Helvetica',
-                            letterSpacing: -5,
+                            letterSpacing: -4,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
                     const Text(
                       'NETFLIX PRO',
                       style: TextStyle(
                         color: Colors.white,
                         letterSpacing: 8,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
@@ -435,7 +303,7 @@ class _TVSplashScreenState extends State<TVSplashScreen>
 }
 
 // ============================================================================
-// 2. MAIN TV HOME SCREEN
+// 2. MAIN TV HOME SCREEN (6 TOP HINDI OTT HUBS)
 // ============================================================================
 class TVHomeScreen extends StatefulWidget {
   const TVHomeScreen({super.key});
@@ -448,15 +316,13 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
   int _selectedSidebarIndex = 1;
   MediaItem? activeBillboardItem;
 
-  List<MediaItem> netflixSeriesList = [];
-  List<MediaItem> netflixMoviesList = [];
-  List<MediaItem> primeSeriesList = [];
-  List<MediaItem> primeMoviesList = [];
-  List<MediaItem> sonyLivSeriesList = [];
-  List<MediaItem> zee5List = [];
-  List<MediaItem> bollywoodMoviesList = [];
-  List<MediaItem> southHindiList = [];
-  List<MediaItem> hollywoodHindiList = [];
+  // 6 Primary Hindi OTT Platforms
+  List<MediaItem> netflixHubList = [];
+  List<MediaItem> primeHubList = [];
+  List<MediaItem> hotstarHubList = [];
+  List<MediaItem> sonyLivHubList = [];
+  List<MediaItem> zee5HubList = [];
+  List<MediaItem> bollywoodHubList = [];
 
   bool isLoading = true;
 
@@ -466,50 +332,56 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     _loadInitialContent();
   }
 
+  // Fast Instant Render (No Network Freezing)
   Future<void> _loadInitialContent() async {
     try {
+      // Step 1: Pehle 2 main rows instant load karein taaki screen turant show ho jaye
       final quickResults = await Future.wait([
-        _fetchCategory('/discover/tv?with_networks=213&sort_by=popularity.desc', isTv: true),
-        _fetchCategory('/discover/movie?with_watch_providers=8&watch_region=IN&sort_by=popularity.desc'),
+        // 1. Netflix Hindi Hub
+        _fetchCategory('/discover/movie?with_watch_providers=8&watch_region=IN&with_original_language=hi&sort_by=popularity.desc'),
+        // 2. Amazon Prime Hindi Hub
+        _fetchCategory('/discover/movie?with_watch_providers=119&watch_region=IN&with_original_language=hi&sort_by=popularity.desc'),
       ]);
 
       if (mounted) {
         setState(() {
-          netflixSeriesList = quickResults[0];
-          netflixMoviesList = quickResults[1];
-          if (netflixSeriesList.isNotEmpty) {
-            activeBillboardItem = netflixSeriesList.first;
+          netflixHubList = quickResults[0];
+          primeHubList = quickResults[1];
+
+          if (netflixHubList.isNotEmpty) {
+            activeBillboardItem = netflixHubList.first;
           }
-          isLoading = false;
+          isLoading = false; // Screen instant open ho jayegi
         });
       }
 
-      _fetchRemainingRows();
+      // Step 2: Baaki 4 OTT Hubs background me smooth fetch honge
+      _fetchRemainingHubs();
+
+      // Step 3: Provider sync in background
       XtreamStremioEngine.initEngine();
-    } catch (e) {
+    } catch (_) {
       if (mounted) setState(() => isLoading = false);
     }
   }
 
-  Future<void> _fetchRemainingRows() async {
+  Future<void> _fetchRemainingHubs() async {
     try {
-      final pSeries = await _fetchCategory('/discover/tv?with_watch_providers=119&watch_region=IN&sort_by=popularity.desc', isTv: true);
-      final pMovies = await _fetchCategory('/discover/movie?with_watch_providers=119&watch_region=IN&sort_by=popularity.desc');
-      final sLiv = await _fetchCategory('/discover/tv?with_original_language=hi&with_watch_providers=237&watch_region=IN', isTv: true);
-      final z5 = await _fetchCategory('/discover/movie?with_original_language=hi&with_watch_providers=232&watch_region=IN');
-      final bWood = await _fetchCategory('/discover/movie?with_original_language=hi&sort_by=popularity.desc');
-      final south = await _fetchCategory('/discover/movie?with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc');
-      final hWood = await _fetchCategory('/discover/movie?with_original_language=en&sort_by=popularity.desc');
+      // 3. Disney+ Hotstar Specials & Movies
+      final hotstar = await _fetchCategory('/discover/movie?with_watch_providers=122&watch_region=IN&sort_by=popularity.desc');
+      // 4. SonyLIV Originals & Drama
+      final sony = await _fetchCategory('/discover/tv?with_watch_providers=237&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', isTv: true);
+      // 5. Zee5 Originals & Cinema
+      final zee = await _fetchCategory('/discover/movie?with_watch_providers=232&watch_region=IN&with_original_language=hi&sort_by=popularity.desc');
+      // 6. Bollywood Blockbusters
+      final bolly = await _fetchCategory('/discover/movie?with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10');
 
       if (mounted) {
         setState(() {
-          primeSeriesList = pSeries;
-          primeMoviesList = pMovies;
-          sonyLivSeriesList = sLiv;
-          zee5List = z5;
-          bollywoodMoviesList = bWood;
-          southHindiList = south;
-          hollywoodHindiList = hWood;
+          hotstarHubList = hotstar;
+          sonyLivHubList = sony;
+          zee5HubList = zee;
+          bollywoodHubList = bolly;
         });
       }
     } catch (_) {}
@@ -539,7 +411,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     if (streamUrl == null || streamUrl.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No active Xtream stream link resolved.')),
+        const SnackBar(content: Text('Stream link resolving failed.')),
       );
       return;
     }
@@ -573,6 +445,9 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
+  // --------------------------------------------------------------------------
+  // TV HERO BILLBOARD
+  // --------------------------------------------------------------------------
   Widget _buildTVBillboard() {
     final item = activeBillboardItem;
     if (item == null) return const SizedBox.shrink();
@@ -631,7 +506,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
                   const Text('N', style: TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 22)),
                   const SizedBox(width: 8),
                   Text(
-                    item.isTv ? 'S E R I E S' : 'F I L M',
+                    item.isTv ? 'S E R I E S' : 'H I N D I   B L O C K B U S T E R',
                     style: const TextStyle(color: Colors.white70, letterSpacing: 4, fontSize: 11, fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -659,7 +534,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(border: Border.all(color: Colors.white30), borderRadius: BorderRadius.circular(3)),
-                    child: const Text('5.1 Audio', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                    child: const Text('Hindi Audio', style: TextStyle(color: Colors.white70, fontSize: 10)),
                   ),
                 ],
               ),
@@ -671,48 +546,24 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Focus(
-                    child: Builder(
-                      builder: (context) {
-                        final isFocused = Focus.of(context).hasFocus;
-                        return ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                            side: isFocused ? const BorderSide(color: Color(0xFFE50914), width: 3) : BorderSide.none,
-                          ),
-                          icon: const Icon(Icons.play_arrow, size: 26),
-                          label: const Text('Play', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          onPressed: () => _playMedia(item),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Focus(
-                    child: Builder(
-                      builder: (context) {
-                        final isFocused = Focus.of(context).hasFocus;
-                        return OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: Colors.white.withOpacity(0.12),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            side: isFocused ? const BorderSide(color: Colors.white, width: 2) : BorderSide.none,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                          ),
-                          icon: const Icon(Icons.info_outline, size: 22),
-                          label: const Text('Episodes & Info', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                          onPressed: () => _showMediaDetailsModal(item),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+              Focus(
+                child: Builder(
+                  builder: (context) {
+                    final isFocused = Focus.of(context).hasFocus;
+                    return ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        side: isFocused ? const BorderSide(color: Color(0xFFE50914), width: 3) : BorderSide.none,
+                      ),
+                      icon: const Icon(Icons.play_arrow, size: 26),
+                      label: const Text('Play Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      onPressed: () => _playMedia(item),
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -721,6 +572,9 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
+  // --------------------------------------------------------------------------
+  // TV HORIZONTAL ROW + "SEE ALL (200+ TITLES)"
+  // --------------------------------------------------------------------------
   Widget _buildTVRow(String title, List<MediaItem> items, String endpoint, bool isTv) {
     if (items.isEmpty) return const SizedBox.shrink();
 
@@ -751,6 +605,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
             itemCount: items.length + 1,
             itemBuilder: (ctx, idx) {
               if (idx == items.length) {
+                // SEE ALL CARD (Loads 200+ Titles)
                 return Container(
                   width: 190,
                   margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -865,6 +720,9 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
+  // --------------------------------------------------------------------------
+  // AUTHENTIC CLEAN SLIM SIDEBAR
+  // --------------------------------------------------------------------------
   Widget _buildTVSidebar() {
     return Container(
       width: 58,
@@ -875,16 +733,15 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
           _sidebarItem(0, Icons.search, 'Search', onTap: () {}),
           const SizedBox(height: 20),
           _sidebarItem(1, Icons.home_filled, 'Home'),
-          _sidebarItem(2, Icons.tv, 'TV Series', onTap: () {
-            _openFullGridView('All TV Series', netflixSeriesList, '/discover/tv?with_networks=213&sort_by=first_air_date.desc', true);
+          _sidebarItem(2, Icons.tv, 'Hotstar & SonyLIV', onTap: () {
+            _openFullGridView('Hotstar & SonyLIV Hindi Hub', hotstarHubList, '/discover/movie?with_watch_providers=122&watch_region=IN', false);
           }),
-          _sidebarItem(3, Icons.movie_creation_outlined, 'Movies', onTap: () {
-            _openFullGridView('All Movies', bollywoodMoviesList, '/discover/movie?with_original_language=hi&sort_by=primary_release_date.desc', false);
+          _sidebarItem(3, Icons.movie_creation_outlined, 'Netflix & Prime', onTap: () {
+            _openFullGridView('Netflix & Prime Hindi Hub', netflixHubList, '/discover/movie?with_watch_providers=8&watch_region=IN&with_original_language=hi', false);
           }),
-          _sidebarItem(4, Icons.video_library_outlined, 'OTT Hub', onTap: () {
-            _openFullGridView('SonyLIV & Zee5 Hub', sonyLivSeriesList, '/discover/tv?with_watch_providers=237&watch_region=IN', true);
+          _sidebarItem(4, Icons.video_library_outlined, 'Zee5 & Cinema', onTap: () {
+            _openFullGridView('Zee5 Cinema Hub', zee5HubList, '/discover/movie?with_watch_providers=232&watch_region=IN&with_original_language=hi', false);
           }),
-          _sidebarItem(5, Icons.history, 'History', onTap: () {}),
         ],
       ),
     );
@@ -935,98 +792,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
     );
   }
 
-  void _showMediaDetailsModal(MediaItem item) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1B1B1B),
-      isScrollControlled: true,
-      builder: (ctx) {
-        return FractionallySizedBox(
-          heightFactor: 0.75,
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(item.poster, width: 100, height: 145, fit: BoxFit.cover),
-                    ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(item.title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 6),
-                          Text('${item.year}  •  ${item.rating} ★ Match  •  ${item.isTv ? "TV Series" : "Movie"}',
-                              style: const TextStyle(color: Colors.white70, fontSize: 14)),
-                          const SizedBox(height: 10),
-                          Text(item.overview, style: const TextStyle(color: Colors.white60, fontSize: 13), maxLines: 4),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                const Divider(color: Colors.white24),
-                const Text('Available Stream Engines & Mirrors', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: FutureBuilder<List<StremioStreamResult>>(
-                    future: XtreamStremioEngine.fetchStremioStreams(item),
-                    builder: (context, snapshot) {
-                      final stremioStreams = snapshot.data ?? [];
-                      return ListView(
-                        children: [
-                          ListTile(
-                            leading: const Icon(Icons.flash_on, color: Color(0xFFE50914)),
-                            title: const Text('Xtream Fast Direct Stream (Primary Server)'),
-                            subtitle: const Text('Ultra HD 4K / 1080p Direct Engine'),
-                            trailing: ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)),
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                _playMedia(item);
-                              },
-                              child: const Text('Play'),
-                            ),
-                          ),
-                          ...stremioStreams.map((st) {
-                            return ListTile(
-                              leading: const Icon(Icons.cloud_download, color: Colors.blueAccent),
-                              title: Text(st.title),
-                              subtitle: Text('${st.source} • ${st.quality ?? "HD"}'),
-                              trailing: ElevatedButton(
-                                onPressed: () {
-                                  Navigator.pop(ctx);
-                                  AndroidIntent(
-                                    action: 'action_view',
-                                    data: st.url,
-                                    type: 'video/*',
-                                    flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
-                                  ).launch();
-                                },
-                                child: const Text('Stream'),
-                              ),
-                            );
-                          }),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1042,15 +807,12 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildTVBillboard(),
-                        _buildTVRow('Only on Netflix (Original Series)', netflixSeriesList, '/discover/tv?with_networks=213&sort_by=first_air_date.desc', true),
-                        _buildTVRow('Netflix Blockbuster Movies', netflixMoviesList, '/discover/movie?with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc', false),
-                        _buildTVRow('Amazon Prime Video Originals', primeSeriesList, '/discover/tv?with_watch_providers=119&watch_region=IN&sort_by=first_air_date.desc', true),
-                        _buildTVRow('Amazon Prime Blockbuster Movies', primeMoviesList, '/discover/movie?with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc', false),
-                        _buildTVRow('SonyLIV Originals & Drama Series', sonyLivSeriesList, '/discover/tv?with_original_language=hi&with_watch_providers=237&watch_region=IN', true),
-                        _buildTVRow('Zee5 Originals & Cinema', zee5List, '/discover/movie?with_original_language=hi&with_watch_providers=232&watch_region=IN', false),
-                        _buildTVRow('Bollywood Blockbusters', bollywoodMoviesList, '/discover/movie?with_original_language=hi&sort_by=primary_release_date.desc', false),
-                        _buildTVRow('South Action Hits (Hindi Dubbed)', southHindiList, '/discover/movie?with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc', false),
-                        _buildTVRow('Hollywood Hits (Hindi Dubbed)', hollywoodHindiList, '/discover/movie?with_original_language=en&sort_by=popularity.desc', false),
+                        _buildTVRow('Netflix Originals & Hindi Hits', netflixHubList, '/discover/movie?with_watch_providers=8&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', false),
+                        _buildTVRow('Amazon Prime Video Hindi Hub', primeHubList, '/discover/movie?with_watch_providers=119&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', false),
+                        _buildTVRow('Disney+ Hotstar Hindi Specials & Blockbusters', hotstarHubList, '/discover/movie?with_watch_providers=122&watch_region=IN&sort_by=popularity.desc', false),
+                        _buildTVRow('SonyLIV Pure Desi Hindi Drama', sonyLivHubList, '/discover/tv?with_watch_providers=237&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', true),
+                        _buildTVRow('Zee5 Hindi Cinema & Originals', zee5HubList, '/discover/movie?with_watch_providers=232&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', false),
+                        _buildTVRow('Bollywood Latest Blockbusters', bollywoodHubList, '/discover/movie?with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10', false),
                         const SizedBox(height: 40),
                       ],
                     ),
@@ -1091,7 +853,7 @@ class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
   void initState() {
     super.initState();
     allItems = List.from(widget.initialItems);
-    _loadDeepPages();
+    _loadDeepPages(); // 200+ Titles Deep Fetch
   }
 
   Future<void> _loadDeepPages() async {
