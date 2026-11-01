@@ -984,9 +984,7 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
 
   Future<void> _fetch100Titles() async {
     final bool isTv = widget.categoryType == 'hindi_series' || widget.categoryType == 'english_series';
-    List> fetched = [];
-
-    for (int page = 1; page <= 5; page++) {
+    var fetched = [];    for (int page = 1; page <= 5; page++) {
       String url = '';
 
       if (widget.categoryType == 'bollywood') {
@@ -1306,7 +1304,7 @@ class _MobileQualitySelectorSheetState extends State<MobileQualitySelectorSheet>
   }
 
   Future<void> _fetchDirectStreams() async {
-    List> resolved = [];
+    var resolved = [];
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
     final movieTitle = widget.item['title'] ?? '';
