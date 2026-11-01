@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version_tag:
-        description: 'Release Tag (e.g. v1.0.29)'
+        description: 'Release Tag (e.g. v1.0.30)'
         required: true
-        default: 'v1.0.29'
+        default: 'v1.0.30'
 
 permissions:
   contents: write
@@ -36,7 +36,7 @@ jobs:
         run: |
           flutter create --org com.netflixpro --project-name netflix_pro netflix_build_temp
           
-          # Pehle dummy lib delete karenge aur apna asli lib seedha copy karenge
+          # Delete dummy lib and copy source files
           rm -rf netflix_build_temp/lib
           cp -r lib netflix_build_temp/
           
@@ -50,22 +50,30 @@ jobs:
           sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET" />\n<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' netflix_build_temp/android/app/src/main/AndroidManifest.xml
           sed -i 's/<application/<application android:usesCleartextTraffic="true"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
           
-          # Android TV Flags (Leanback & Remote Support)
-          sed -i '/<application/i <uses-feature android:name="android.hardware.touchscreen" android:required="false" />\n<uses-feature android:name="android.software.leanback" android:required="false" />' netflix_build_temp/android/app/src/main/AndroidManifest.xml
-          sed -i '/android.intent.category.LAUNCHER/a <category android:name="android.intent.category.LEANBACK_LAUNCHER" />' netflix_build_temp/android/app/src/main/AndroidManifest.xml
-          
           cd netflix_build_temp
           flutter pub get
           dart run flutter_launcher_icons
 
-          # Debug: Verify files structure
-          ls -R lib/
-
-          # 1. Build Mobile APK
+          # -------------------------------------------------------------
+          # 1. BUILD MOBILE APK (Portrait default)
+          # -------------------------------------------------------------
+          flutter clean
           flutter build apk --release -t lib/mobile/main.dart
           cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-Mobile.apk
 
-          # 2. Build TV APK
+          # -------------------------------------------------------------
+          # 2. CONFIGURE & BUILD TV APK (Force Landscape & Leanback TV)
+          # -------------------------------------------------------------
+          # TV Feature Declarations
+          sed -i '/<application/i <uses-feature android:name="android.hardware.touchscreen" android:required="false" />\n<uses-feature android:name="android.software.leanback" android:required="true" />' android/app/src/main/AndroidManifest.xml
+          
+          # Force TV Banner & LEANBACK_LAUNCHER
+          sed -i '/android.intent.category.LAUNCHER/a <category android:name="android.intent.category.LEANBACK_LAUNCHER" />' android/app/src/main/AndroidManifest.xml
+          
+          # Force Screen Orientation to Landscape for TV
+          sed -i 's/<activity/<activity android:screenOrientation="landscape" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"/' android/app/src/main/AndroidManifest.xml
+
+          flutter clean
           flutter build apk --release -t lib/tv/main.dart
           cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-TV.apk
 
@@ -77,7 +85,7 @@ jobs:
           body: |
             ## Netflix Pro ${{ github.event.inputs.version_tag }}
             * **Netflix-Pro-Mobile.apk**: Mobile Touch UI & Gesture Player
-            * **Netflix-Pro-TV.apk**: Android TV Leanback UI & D-pad Just Player
+            * **Netflix-Pro-TV.apk**: Android TV Official Leanback UI (16:9 Landscape & Sidebar Rail)
           files: |
             Netflix-Pro-Mobile.apk
             Netflix-Pro-TV.apk
