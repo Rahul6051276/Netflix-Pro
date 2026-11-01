@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 
-// TV ka SSL Certificate bypass karne ke liye
+// Android TV ke SSL Certificate handshake ko bypass karne ke liye
 class TVHttpOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
@@ -36,11 +36,6 @@ class TVConfig {
   static const String tmdbBase = 'https://api.themoviedb.org/3';
   static const String imgBase = 'https://image.tmdb.org/t/p/w500';
   static const String backdropBase = 'https://image.tmdb.org/t/p/original';
-
-  static const List<String> stremioAddons = [
-    'https://v3-cinemeta.strem.io',
-    'https://torrentio.strem.fun',
-  ];
 }
 
 class NetflixProTVApp extends StatelessWidget {
@@ -161,7 +156,7 @@ class XtreamServerInfo {
 }
 
 // ============================================================================
-// XTREAM STREAM ENGINE
+// XTREAM RESOLVER ENGINE
 // ============================================================================
 class XtreamStremioEngine {
   static List<XtreamServerInfo> servers = [];
@@ -247,7 +242,7 @@ class _TVSplashScreenState extends State<TVSplashScreen>
 
     _animController.forward();
 
-    Timer(const Duration(milliseconds: 2400), () {
+    Timer(const Duration(milliseconds: 2200), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
@@ -255,7 +250,7 @@ class _TVSplashScreenState extends State<TVSplashScreen>
             transitionsBuilder: (_, animation, __, child) {
               return FadeTransition(opacity: animation, child: child);
             },
-            transitionDuration: const Duration(milliseconds: 600),
+            transitionDuration: const Duration(milliseconds: 500),
           ),
         );
       }
@@ -330,7 +325,7 @@ class _TVSplashScreenState extends State<TVSplashScreen>
 }
 
 // ============================================================================
-// 2. MAIN TV HOME SCREEN (6 TOP HINDI OTT HUBS)
+// 2. MAIN TV HOME SCREEN (LATEST RELEASES ONLY)
 // ============================================================================
 class TVHomeScreen extends StatefulWidget {
   const TVHomeScreen({super.key});
@@ -343,14 +338,22 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
   int _selectedSidebarIndex = 1;
   MediaItem? activeBillboardItem;
 
-  List<MediaItem> netflixHubList = [];
-  List<MediaItem> primeHubList = [];
-  List<MediaItem> hotstarHubList = [];
-  List<MediaItem> sonyLivHubList = [];
-  List<MediaItem> zee5HubList = [];
-  List<MediaItem> bollywoodHubList = [];
+  List<MediaItem> netflixLatestList = [];
+  List<MediaItem> primeLatestList = [];
+  List<MediaItem> hotstarLatestList = [];
+  List<MediaItem> sonyLivLatestList = [];
+  List<MediaItem> zee5LatestList = [];
+  List<MediaItem> bollywoodLatestList = [];
 
   bool isLoading = true;
+
+  // Endpoints with latest release sorting and Hindi+English mix
+  final String netflixEp = '/discover/tv?with_watch_providers=8&watch_region=IN&sort_by=first_air_date.desc&vote_count.gte=5';
+  final String primeEp = '/discover/movie?with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc&vote_count.gte=5';
+  final String hotstarEp = '/discover/tv?with_watch_providers=122&watch_region=IN&sort_by=first_air_date.desc&vote_count.gte=2';
+  final String sonyEp = '/discover/tv?with_watch_providers=237&watch_region=IN&sort_by=first_air_date.desc&vote_count.gte=2';
+  final String zeeEp = '/discover/movie?with_watch_providers=232&watch_region=IN&sort_by=primary_release_date.desc&vote_count.gte=2';
+  final String bollyEp = '/discover/movie?with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10';
 
   @override
   void initState() {
@@ -361,17 +364,19 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
   Future<void> _loadInitialContent() async {
     try {
       final quickResults = await Future.wait([
-        _fetchCategory('/discover/movie?with_watch_providers=8&watch_region=IN&with_original_language=hi&sort_by=popularity.desc'),
-        _fetchCategory('/discover/movie?with_watch_providers=119&watch_region=IN&with_original_language=hi&sort_by=popularity.desc'),
+        _fetchCategory(netflixEp, isTv: true),
+        _fetchCategory(primeEp, isTv: false),
       ]);
 
       if (mounted) {
         setState(() {
-          netflixHubList = quickResults[0];
-          primeHubList = quickResults[1];
+          netflixLatestList = quickResults[0];
+          primeLatestList = quickResults[1];
 
-          if (netflixHubList.isNotEmpty) {
-            activeBillboardItem = netflixHubList.first;
+          if (netflixLatestList.isNotEmpty) {
+            activeBillboardItem = netflixLatestList.first;
+          } else if (primeLatestList.isNotEmpty) {
+            activeBillboardItem = primeLatestList.first;
           }
           isLoading = false;
         });
@@ -386,17 +391,17 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
 
   Future<void> _fetchRemainingHubs() async {
     try {
-      final hotstar = await _fetchCategory('/discover/movie?with_watch_providers=122&watch_region=IN&sort_by=popularity.desc');
-      final sony = await _fetchCategory('/discover/tv?with_watch_providers=237&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', isTv: true);
-      final zee = await _fetchCategory('/discover/movie?with_watch_providers=232&watch_region=IN&with_original_language=hi&sort_by=popularity.desc');
-      final bolly = await _fetchCategory('/discover/movie?with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10');
+      final hotstar = await _fetchCategory(hotstarEp, isTv: true);
+      final sony = await _fetchCategory(sonyEp, isTv: true);
+      final zee = await _fetchCategory(zeeEp, isTv: false);
+      final bolly = await _fetchCategory(bollyEp, isTv: false);
 
       if (mounted) {
         setState(() {
-          hotstarHubList = hotstar;
-          sonyLivHubList = sony;
-          zee5HubList = zee;
-          bollywoodHubList = bolly;
+          hotstarLatestList = hotstar;
+          sonyLivLatestList = sony;
+          zee5LatestList = zee;
+          bollywoodLatestList = bolly;
         });
       }
     } catch (_) {}
@@ -524,7 +529,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
                   const Text('N', style: TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 22)),
                   const SizedBox(width: 8),
                   Text(
-                    item.isTv ? 'S E R I E S' : 'H I N D I   B L O C K B U S T E R',
+                    item.isTv ? 'L A T E S T   S E R I E S' : 'L A T E S T   M O V I E',
                     style: const TextStyle(color: Colors.white70, letterSpacing: 4, fontSize: 11, fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -552,7 +557,7 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(border: Border.all(color: Colors.white30), borderRadius: BorderRadius.circular(3)),
-                    child: const Text('Hindi Audio', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                    child: const Text('Multi Audio', style: TextStyle(color: Colors.white70, fontSize: 10)),
                   ),
                 ],
               ),
@@ -782,13 +787,13 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
           const SizedBox(height: 20),
           _sidebarItem(1, Icons.home_filled, 'Home'),
           _sidebarItem(2, Icons.tv, 'Hotstar & SonyLIV', onTap: () {
-            _openFullGridView('Hotstar & SonyLIV Hindi Hub', hotstarHubList, '/discover/movie?with_watch_providers=122&watch_region=IN', false);
+            _openFullGridView('Hotstar & SonyLIV Latest', hotstarLatestList, hotstarEp, true);
           }),
           _sidebarItem(3, Icons.movie_creation_outlined, 'Netflix & Prime', onTap: () {
-            _openFullGridView('Netflix & Prime Hindi Hub', netflixHubList, '/discover/movie?with_watch_providers=8&watch_region=IN&with_original_language=hi', false);
+            _openFullGridView('Netflix & Prime Latest', netflixLatestList, netflixEp, true);
           }),
           _sidebarItem(4, Icons.video_library_outlined, 'Zee5 & Cinema', onTap: () {
-            _openFullGridView('Zee5 Cinema Hub', zee5HubList, '/discover/movie?with_watch_providers=232&watch_region=IN&with_original_language=hi', false);
+            _openFullGridView('Zee5 Cinema Latest', zee5LatestList, zeeEp, false);
           }),
         ],
       ),
@@ -855,12 +860,12 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildTVBillboard(),
-                        _buildTVRow('Netflix Originals & Hindi Hits', netflixHubList, '/discover/movie?with_watch_providers=8&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', false),
-                        _buildTVRow('Amazon Prime Video Hindi Hub', primeHubList, '/discover/movie?with_watch_providers=119&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', false),
-                        _buildTVRow('Disney+ Hotstar Hindi Specials & Blockbusters', hotstarHubList, '/discover/movie?with_watch_providers=122&watch_region=IN&sort_by=popularity.desc', false),
-                        _buildTVRow('SonyLIV Pure Desi Hindi Drama', sonyLivHubList, '/discover/tv?with_watch_providers=237&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', true),
-                        _buildTVRow('Zee5 Hindi Cinema & Originals', zee5HubList, '/discover/movie?with_watch_providers=232&watch_region=IN&with_original_language=hi&sort_by=popularity.desc', false),
-                        _buildTVRow('Bollywood Latest Blockbusters', bollywoodHubList, '/discover/movie?with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10', false),
+                        _buildTVRow('Latest Netflix Releases', netflixLatestList, netflixEp, true),
+                        _buildTVRow('Latest Prime Video Hits', primeLatestList, primeEp, false),
+                        _buildTVRow('Latest Disney+ Hotstar Specials', hotstarLatestList, hotstarEp, true),
+                        _buildTVRow('Latest SonyLIV Originals', sonyLivLatestList, sonyEp, true),
+                        _buildTVRow('Latest Zee5 Cinema & Originals', zee5LatestList, zeeEp, false),
+                        _buildTVRow('Latest Bollywood Blockbusters', bollywoodLatestList, bollyEp, false),
                         const SizedBox(height: 40),
                       ],
                     ),
