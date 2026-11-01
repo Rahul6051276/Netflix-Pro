@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO TV - CINEMA HQ HYBRID EDITION (200+ CATALOG & STREAM RESOLVER)
+// NETFLIX PRO TV - CINEMA HQ HYBRID EDITION (HINDI + ENGLISH LATEST MIX)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -86,25 +86,25 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   final FocusNode _watchNowFocusNode = FocusNode();
 
   List<dynamic> activeProviders = [];
-  List> continueWatchingList = [];
-  Map<String, dynamic>? activeShowcaseItem;
+  List<dynamic> continueWatchingList = [];
+  dynamic activeShowcaseItem;
 
   // Home Fast Lists
-  List> homeBollywoodList = [];
-  List> homeSouthList = [];
-  List> homeHollywoodList = [];
-  List> homeHindiSeriesList = [];
-  List> homeEnglishSeriesList = [];
+  List<dynamic> homeNetflixList = [];
+  List<dynamic> homePrimeList = [];
+  List<dynamic> homeHotstarList = [];
+  List<dynamic> homeHindiSeriesList = [];
+  List<dynamic> homeEnglishSeriesList = [];
 
   // Dedicated Movies Section (200+ Items Each)
-  List> allBollywoodMovies = [];
-  List> allSouthMovies = [];
-  List> allHollywoodMovies = [];
+  List<dynamic> allBollywoodMovies = [];
+  List<dynamic> allSouthMovies = [];
+  List<dynamic> allHollywoodMovies = [];
 
   // Dedicated Web Series Section (200+ Items Each)
-  List> allHindiSeries = [];
-  List> allEnglishSeries = [];
-  List> allSouthSeries = [];
+  List<dynamic> allHindiSeries = [];
+  List<dynamic> allEnglishSeries = [];
+  List<dynamic> allSouthSeries = [];
 
   bool isLoading = true;
   String _catalogSortType = 'latest';
@@ -151,7 +151,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       final raw = prefs.getString('continue_watching_tv');
       if (raw != null && raw.isNotEmpty && mounted) {
         setState(() {
-          continueWatchingList = List>.from(jsonDecode(raw));
+          continueWatchingList = jsonDecode(raw) as List<dynamic>;
         });
       }
     } catch (_) {}
@@ -166,35 +166,41 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     } catch (_) {}
   }
 
+  // Mobile jaise direct latest release endpoints (Hindi + English Mix)
   Future<void> _fetchHomeCatalogContent() async {
     try {
-      final bollyRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5')).timeout(const Duration(seconds: 8));
-      if (bollyRes.statusCode == 200) {
-        homeBollywoodList = _parseTvList(jsonDecode(bollyRes.body)['results']);
-        if (homeBollywoodList.isNotEmpty) activeShowcaseItem = homeBollywoodList.first;
+      // 1. Netflix Latest (Movies in IN region - Hindi + English)
+      final netflixRes = await http.get(Uri.parse(
+          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
+      if (netflixRes.statusCode == 200) {
+        homeNetflixList = _parseTvList(jsonDecode(netflixRes.body)['results']);
+        if (homeNetflixList.isNotEmpty) activeShowcaseItem = homeNetflixList.first;
       }
 
-      final southRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&vote_count.gte=10')).timeout(const Duration(seconds: 8));
-      if (southRes.statusCode == 200) {
-        homeSouthList = _parseTvList(jsonDecode(southRes.body)['results']);
+      // 2. Prime Video Latest (Movies in IN region - Hindi + English)
+      final primeRes = await http.get(Uri.parse(
+          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
+      if (primeRes.statusCode == 200) {
+        homePrimeList = _parseTvList(jsonDecode(primeRes.body)['results']);
       }
 
-      final hollyRes = await http.get(Uri.parse(
+      // 3. Hotstar & Disney Specials (Latest Releases)
+      final hotstarRes = await http.get(Uri.parse(
           '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 8));
-      if (hollyRes.statusCode == 200) {
-        homeHollywoodList = _parseTvList(jsonDecode(hollyRes.body)['results']);
+      if (hotstarRes.statusCode == 200) {
+        homeHotstarList = _parseTvList(jsonDecode(hotstarRes.body)['results']);
       }
 
+      // 4. Hindi Web Series (Latest)
       final hindiTvRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=first_air_date.desc&vote_count.gte=2')).timeout(const Duration(seconds: 8));
+          '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=first_air_date.desc')).timeout(const Duration(seconds: 8));
       if (hindiTvRes.statusCode == 200) {
         homeHindiSeriesList = _parseTvList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
             .where((item) => !isSoapShow(item['title'] ?? ''))
             .toList();
       }
 
+      // 5. Global Web Series (Trending Hits)
       final engTvRes = await http.get(Uri.parse(
           '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 8));
       if (engTvRes.statusCode == 200) {
@@ -214,16 +220,16 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
     // 1. Bollywood Movies (200+)
     _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&sort_by=$sortQuery&vote_count.gte=5',
+      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&sort_by=$sortQuery',
       isTv: false,
       onDone: (list) {
         if (mounted) setState(() => allBollywoodMovies = list);
       },
     );
 
-    // 2. South Movies (200+ Hindi Dubbed Priority)
+    // 2. South Movies (200+)
     _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=$sortQuery&vote_count.gte=10',
+      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=$sortQuery',
       isTv: false,
       onDone: (list) {
         if (mounted) setState(() => allSouthMovies = list);
@@ -232,7 +238,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
     // 3. Hollywood Movies (200+)
     _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&sort_by=$sortQuery&vote_count.gte=20',
+      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&sort_by=$sortQuery',
       isTv: false,
       onDone: (list) {
         if (mounted) setState(() => allHollywoodMovies = list);
@@ -241,7 +247,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
     // 4. Hindi Web Series (200+)
     _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=$sortTvQuery&vote_count.gte=2',
+      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=$sortTvQuery',
       isTv: true,
       onDone: (list) {
         if (mounted) {
@@ -252,7 +258,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
     // 5. English & Global Web Series (200+)
     _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&sort_by=$sortTvQuery&vote_count.gte=15',
+      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&sort_by=$sortTvQuery',
       isTv: true,
       onDone: (list) {
         if (mounted) setState(() => allEnglishSeries = list);
@@ -261,7 +267,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
     // 6. South Web Series (200+)
     _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml&sort_by=$sortTvQuery&vote_count.gte=2',
+      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml&sort_by=$sortTvQuery',
       isTv: true,
       onDone: (list) {
         if (mounted) setState(() => allSouthSeries = list);
@@ -272,9 +278,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   Future<void> _fetchPages({
     required String baseUrl,
     required bool isTv,
-    required Function(List>) onDone,
+    required Function(List<dynamic>) onDone,
   }) async {
-    List> accumulated = [];
+    var accumulated = [];
     for (int p = 1; p <= 10; p++) {
       try {
         final res = await http.get(Uri.parse('$baseUrl&page=$p')).timeout(const Duration(seconds: 6));
@@ -297,8 +303,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     });
   }
 
-  List> _parseTvList(dynamic list, {bool isTv = false}) {
-    List> res = [];
+  List<dynamic> _parseTvList(dynamic list, {bool isTv = false}) {
+    var res = [];
     final currentYear = DateTime.now().year.toString();
     for (var m in (list ?? [])) {
       if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
@@ -320,7 +326,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     return res;
   }
 
-  void _onTvItemSelect(Map<String, dynamic> item) {
+  void _onTvItemSelect(dynamic item) {
     if (item['isTv'] == true) {
       showDialog(
         context: context,
@@ -336,7 +342,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     }
   }
 
-  void _showTvStreamDialog(Map<String, dynamic> item, {int? season, int? episode}) {
+  void _showTvStreamDialog(dynamic item, {int? season, int? episode}) {
     showDialog(
       context: context,
       builder: (ctx) => TvStreamDialog(
@@ -403,7 +409,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   // ============================================================================
   // NETFLIX BILLBOARD SHOWCASE
   // ============================================================================
-  Widget _buildNetflixBillboard(Map<String, dynamic> item) {
+  Widget _buildNetflixBillboard(dynamic item) {
     return SizedBox(
       height: 340,
       width: double.infinity,
@@ -561,7 +567,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   // ============================================================================
   // NETFLIX LANDSCAPE ROW (16:9 RATIO)
   // ============================================================================
-  Widget _buildNetflixRow(String title, List> items, {bool isFirstRow = false}) {
+  Widget _buildNetflixRow(String title, List<dynamic> items, {bool isFirstRow = false}) {
     if (items.isEmpty) return const SizedBox.shrink();
 
     return Column(
@@ -688,18 +694,18 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // TAB 2: MAIN HOME
+                        // TAB 2: MAIN HOME (LATEST MIX)
                         if (_selectedNavIndex == 2 || _selectedNavIndex <= 1) ...[
                           if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
                           if (continueWatchingList.isNotEmpty)
                             _buildNetflixRow('Continue Watching', continueWatchingList, isFirstRow: true),
-                          if (homeBollywoodList.isNotEmpty)
-                            _buildNetflixRow('Latest Bollywood Releases', homeBollywoodList,
+                          if (homeNetflixList.isNotEmpty)
+                            _buildNetflixRow('Latest Netflix Blockbusters (Hindi + Global)', homeNetflixList,
                                 isFirstRow: continueWatchingList.isEmpty),
-                          if (homeSouthList.isNotEmpty)
-                            _buildNetflixRow('South Blockbusters (Hindi Dubbed)', homeSouthList),
-                          if (homeHollywoodList.isNotEmpty)
-                            _buildNetflixRow('Latest Hollywood Cinema (Dubbed & Global)', homeHollywoodList),
+                          if (homePrimeList.isNotEmpty)
+                            _buildNetflixRow('Amazon Prime Video Hits', homePrimeList),
+                          if (homeHotstarList.isNotEmpty)
+                            _buildNetflixRow('Disney+ Hotstar & Cinema Specials', homeHotstarList),
                           if (homeHindiSeriesList.isNotEmpty)
                             _buildNetflixRow('Latest Hindi Web Series', homeHindiSeriesList),
                           if (homeEnglishSeriesList.isNotEmpty)
@@ -712,16 +718,16 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
                           _buildNetflixRow(
                             'Bollywood Hit Movies',
-                            allBollywoodMovies.isNotEmpty ? allBollywoodMovies : homeBollywoodList,
+                            allBollywoodMovies.isNotEmpty ? allBollywoodMovies : homeNetflixList,
                             isFirstRow: true,
                           ),
                           _buildNetflixRow(
                             'South Indian Blockbusters (Hindi Dubbed)',
-                            allSouthMovies.isNotEmpty ? allSouthMovies : homeSouthList,
+                            allSouthMovies.isNotEmpty ? allSouthMovies : homePrimeList,
                           ),
                           _buildNetflixRow(
                             'Hollywood Blockbusters (Hindi Dubbed & Global)',
-                            allHollywoodMovies.isNotEmpty ? allHollywoodMovies : homeHollywoodList,
+                            allHollywoodMovies.isNotEmpty ? allHollywoodMovies : homeHotstarList,
                           ),
                         ],
 
@@ -747,9 +753,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         // TAB 5: EXPLORE ALL
                         if (_selectedNavIndex == 5) ...[
                           _buildCategoryHeader('Explore All Collections'),
-                          _buildNetflixRow('Bollywood Top Rated', homeBollywoodList, isFirstRow: true),
-                          _buildNetflixRow('South Indian Hits', homeSouthList),
-                          _buildNetflixRow('Hollywood Dubbed Hits', homeHollywoodList),
+                          _buildNetflixRow('Bollywood Top Rated', homeNetflixList, isFirstRow: true),
+                          _buildNetflixRow('South Indian Hits', homePrimeList),
+                          _buildNetflixRow('Hollywood Dubbed Hits', homeHotstarList),
                           _buildNetflixRow('Hindi Originals', homeHindiSeriesList),
                           _buildNetflixRow('Global Shows', homeEnglishSeriesList),
                         ],
@@ -842,7 +848,7 @@ class _NetflixSidebarIconState extends State<NetflixSidebarIcon> {
 // ============================================================================
 class NetflixCard extends StatefulWidget {
   final FocusNode? focusNode;
-  final Map<String, dynamic> item;
+  final dynamic item;
   final bool isFirstInRow;
   final VoidCallback onLeftBoundaryHit;
   final VoidCallback onFocusGained;
@@ -954,7 +960,7 @@ class _NetflixCardState extends State<NetflixCard> {
 // TV EPISODE DIALOG
 // ============================================================================
 class TvEpisodeDialog extends StatefulWidget {
-  final Map<String, dynamic> item;
+  final dynamic item;
   final Function(int s, int ep) onSelected;
 
   const TvEpisodeDialog({super.key, required this.item, required this.onSelected});
@@ -1066,7 +1072,7 @@ class _TvEpisodeDialogState extends State<TvEpisodeDialog> {
 // TV STREAM RESOLVER DIALOG
 // ============================================================================
 class TvStreamDialog extends StatefulWidget {
-  final Map<String, dynamic> item;
+  final dynamic item;
   final int? season;
   final int? episode;
   final List<dynamic> providers;
@@ -1086,7 +1092,7 @@ class TvStreamDialog extends StatefulWidget {
 }
 
 class _TvStreamDialogState extends State<TvStreamDialog> {
-  List> streams = [];
+  var streams = [];
   bool loading = true;
 
   @override
@@ -1108,7 +1114,7 @@ class _TvStreamDialogState extends State<TvStreamDialog> {
   String _clean(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
 
   Future<void> _fetchDirectStreams() async {
-    List> resolved = [];
+    var resolved = [];
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
     final movieTitle = widget.item['title'] ?? '';
@@ -1143,8 +1149,8 @@ class _TvStreamDialogState extends State<TvStreamDialog> {
               final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_series';
               final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
               if (xtreamRes.statusCode == 200) {
-                final List<dynamic> seriesList = jsonDecode(xtreamRes.body);
-                List<dynamic> candidates = [];
+                final seriesList = jsonDecode(xtreamRes.body) as List<dynamic>;
+                var candidates = [];
 
                 for (var s in seriesList) {
                   final sTmdb = (s['tmdb_id'] ?? s['tmdb'] ?? '').toString();
@@ -1187,8 +1193,8 @@ class _TvStreamDialogState extends State<TvStreamDialog> {
               final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_vod_streams';
               final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
               if (xtreamRes.statusCode == 200) {
-                final List<dynamic> streamList = jsonDecode(xtreamRes.body);
-                List<dynamic> candidates = [];
+                final streamList = jsonDecode(xtreamRes.body) as List<dynamic>;
+                var candidates = [];
 
                 for (var m in streamList) {
                   final mTmdb = (m['tmdb_id'] ?? m['tmdb'] ?? '').toString();
@@ -1275,9 +1281,9 @@ class _TvStreamDialogState extends State<TvStreamDialog> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       final raw = prefs.getString('continue_watching_tv');
-      List> curr = [];
+      var curr = [];
       if (raw != null && raw.isNotEmpty) {
-        curr = List>.from(jsonDecode(raw));
+        curr = jsonDecode(raw) as List<dynamic>;
       }
       curr.removeWhere((c) => c['tmdb_id'].toString() == widget.item['tmdb_id'].toString());
       curr.insert(0, {
@@ -1288,7 +1294,9 @@ class _TvStreamDialogState extends State<TvStreamDialog> {
         'rating': widget.item['rating'] ?? '8.0',
         'isTv': widget.item['isTv'] ?? false,
       });
-      if (curr.length > 15) curr = curr.sublist(0, 15);
+      if (curr.length > 15) {
+        curr = curr.sublist(0, 15);
+      }
       await prefs.setString('continue_watching_tv', jsonEncode(curr));
       widget.onPlaySaved();
     } catch (_) {}
