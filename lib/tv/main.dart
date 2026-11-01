@@ -1,24 +1,30 @@
-// ============================================================================
-// NETFLIX PRO - OFFICIAL ANDROID TV EDITION (LEANBACK UI & DPAD CONTROLLER)
-// ============================================================================
-import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
-import 'package:video_player/video_player.dart';
-import './internal_player.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const NetflixProTvApp());
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+  runApp(const NetflixProTVApp());
 }
 
-class NetflixProTvApp extends StatelessWidget {
-  const NetflixProTvApp({super.key});
+class TVConfig {
+  static const String gistUrl =
+      'https://gist.githubusercontent.com/Rahul6051276/f5240bc75ad4aa0499d21799a9cf5c66/raw/netflix_providers.json';
+  static const String tmdbKey = '81a303644f1e5828271032db9a35e4d5';
+  static const String tmdbBase = 'https://api.themoviedb.org/3';
+  static const String imgBase = 'https://image.tmdb.org/t/p/w500';
+  static const String backdropBase = 'https://image.tmdb.org/t/p/original';
+}
+
+class NetflixProTVApp extends StatelessWidget {
+  const NetflixProTVApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -28,57 +34,157 @@ class NetflixProTvApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF141414),
+        primaryColor: const Color(0xFFE50914),
       ),
-      home: const TvHomeScreen(),
+      home: const TVSplashScreen(),
     );
   }
 }
-class TvConfig {
-  static const String gistUrl =
-      'https://gist.githubusercontent.com/Rahul6051276/239654d65b2124bffd0ea21b5251dc02/raw/providers.json';
-  static const String tmdbKey = 'b7cd3340a794e5a2f35e3abb820b497f';
-  static const String tmdbBase = 'https://api.themoviedb.org/3';
-  static const String imgBase = 'https://image.tmdb.org/t/p/w500';
-  static const String backdropBase = 'https://image.tmdb.org/t/p/w1280';
-}
 
-bool isSoapShow(String title) {
-  final t = title.toLowerCase();
-  const blocked = [
-    'c.i.d.', 'cid', 'bhabiji', 'balika vadhu', 'kapil sharma', 'roadies',
-    'pavitra rishta', 'kumkum bhagya', 'jhanak', 'kundali bhagya',
-    'ye rishta', 'yrkkh', 'taarak mehta', 'tmkoc', 'kasautii', 'ishqbaaaz',
-    'anupamaa', 'bigg boss', 'khatron ke khiladi', 'splitsvilla',
-    'crime patrol', 'savdhaan india', 'diya aur baati', 'qubool hai',
-    'jamai raja', 'tujhse hai raabta', 'radhakrishn', 'koffee with karan'
-  ];
-  return blocked.any((b) => t.contains(b));
-}
-
-// ----------------------------------------------------------------------------
-// TV HOME SCREEN
-// ----------------------------------------------------------------------------
-class TvHomeScreen extends StatefulWidget {
-  const TvHomeScreen({super.key});
+// ============================================================================
+// 1. NETFLIX "TA-DUM" INTRO SPLASH SCREEN
+// ============================================================================
+class TVSplashScreen extends StatefulWidget {
+  const TVSplashScreen({super.key});
 
   @override
-  State<TvHomeScreen> createState() => _TvHomeScreenState();
+  State<TVSplashScreen> createState() => _TVSplashScreenState();
 }
 
-class _TvHomeScreenState extends State<TvHomeScreen> {
-  int _selectedNavIndex = 1; // Default to Home
-  final List<FocusNode> _sidebarFocusNodes = List.generate(5, (_) => FocusNode());
-  final FocusNode _firstContentCardFocus = FocusNode();
-  final FocusNode _watchNowFocusNode = FocusNode();
+class _TVSplashScreenState extends State<TVSplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    );
+
+    _scaleAnimation = Tween<double>(begin: 0.6, end: 1.15).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
+    );
+
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.0, 0.65, curve: Curves.easeIn),
+      ),
+    );
+
+    _animController.forward();
+
+    Future.delayed(const Duration(milliseconds: 2800), () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const TVHomeScreen(),
+            transitionsBuilder: (_, animation, __, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+            transitionDuration: const Duration(milliseconds: 700),
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: AnimatedBuilder(
+          animation: _animController,
+          builder: (context, child) {
+            return Opacity(
+              opacity: _opacityAnimation.value,
+              child: Transform.scale(
+                scale: _scaleAnimation.value,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 110,
+                      height: 150,
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFE50914).withOpacity(0.55),
+                            blurRadius: 45,
+                            spreadRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'N',
+                          style: TextStyle(
+                            color: Color(0xFFE50914),
+                            fontSize: 130,
+                            fontWeight: FontWeight.w900,
+                            fontFamily: 'Helvetica',
+                            letterSpacing: -4,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'NETFLIX PRO',
+                      style: TextStyle(
+                        color: Colors.white,
+                        letterSpacing: 8,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 2. MAIN TV HOME SCREEN (HERO BILLBOARD + HORIZONTAL ROWS)
+// ============================================================================
+class TVHomeScreen extends StatefulWidget {
+  const TVHomeScreen({super.key});
+
+  @override
+  State<TVHomeScreen> createState() => _TVHomeScreenState();
+}
+
+class _TVHomeScreenState extends State<TVHomeScreen> {
+  int _selectedSidebarIndex = 1; // 1 = Home
+  bool _sidebarExpanded = false;
 
   List<dynamic> activeProviders = [];
-  List<dynamic> continueWatchingList = [];
-  Map<String, dynamic>? activeShowcaseItem;
+  Map<String, dynamic>? activeBillboardItem;
 
-  // Netflix Ordered Rows
+  // Catalogs (Har category me 200+ deep fetch)
   List<dynamic> netflixSeriesList = [];
   List<dynamic> netflixMoviesList = [];
-  List<dynamic> hindiWebSeriesList = [];
+  List<dynamic> primeSeriesList = [];
+  List<dynamic> primeMoviesList = [];
+  List<dynamic> sonyLivSeriesList = [];
+  List<dynamic> zee5List = [];
   List<dynamic> bollywoodMoviesList = [];
   List<dynamic> southHindiList = [];
   List<dynamic> hollywoodHindiList = [];
@@ -88,409 +194,468 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAllTvData();
+    _loadAllTVData();
   }
 
-  @override
-  void dispose() {
-    for (var node in _sidebarFocusNodes) {
-      node.dispose();
-    }
-    _firstContentCardFocus.dispose();
-    _watchNowFocusNode.dispose();
-    super.dispose();
-  }
-
-  void _jumpFocusToSidebar() {
-    final activeIndex = _selectedNavIndex.clamp(0, _sidebarFocusNodes.length - 1);
-    _sidebarFocusNodes[activeIndex].requestFocus();
-  }
-
-  void _jumpFocusToContent() {
-    _firstContentCardFocus.requestFocus();
-  }
-
-  Future<void> _loadAllTvData() async {
+  Future<void> _loadAllTVData() async {
     await Future.wait([
       _fetchProviders(),
-      _loadContinueWatching(),
-      _fetchNetflixTvCatalogs(),
+      _fetchDeepCatalogs(),
     ]);
-    if (mounted) setState(() => isLoading = false);
+    if (mounted) {
+      setState(() => isLoading = false);
+    }
   }
 
-  Future<void> _loadContinueWatching() async {
+  Future<void> _fetchProviders() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload();
-      final raw = prefs.getString('continue_watching_tv');
-      if (raw != null && raw.isNotEmpty && mounted) {
+      final res = await http.get(Uri.parse(TVConfig.gistUrl));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        activeProviders = data['active_providers'] ?? [];
+      }
+    } catch (_) {}
+  }
+
+  // Deep Pagination Helper (Pages 1 to 10 fetch karega = 200+ items)
+  Future<List<dynamic>> _fetchDeepCategory(String endpoint, {bool isTv = false, int pages = 8}) async {
+    List<dynamic> aggregated = [];
+    final currentYear = DateTime.now().year.toString();
+
+    for (int page = 1; page <= pages; page++) {
+      try {
+        final separator = endpoint.contains('?') ? '&' : '?';
+        final url = '${TVConfig.tmdbBase}$endpoint${separator}api_key=${TVConfig.tmdbKey}&page=$page';
+        final res = await http.get(Uri.parse(url));
+
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          final results = data['results'] as List<dynamic>? ?? [];
+
+          for (var m in results) {
+            if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
+            aggregated.add({
+              'tmdb_id': m['id'],
+              'title': m['title'] ?? m['name'] ?? 'Untitled',
+              'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
+              'rating': m['vote_average']?.toStringAsFixed(1) ?? '7.8',
+              'backdrop': m['backdrop_path'] != null
+                  ? '${TVConfig.backdropBase}${m['backdrop_path']}'
+                  : '${TVConfig.imgBase}${m['poster_path']}',
+              'poster': m['poster_path'] != null
+                  ? '${TVConfig.imgBase}${m['poster_path']}'
+                  : '${TVConfig.backdropBase}${m['backdrop_path']}',
+              'overview': m['overview'] ?? 'No synopsis available.',
+              'isTv': isTv,
+            });
+          }
+        }
+      } catch (_) {
+        break;
+      }
+    }
+    return aggregated;
+  }
+
+  Future<void> _fetchDeepCatalogs() async {
+    try {
+      final results = await Future.wait([
+        // 1. Netflix Series (Provider: 213)
+        _fetchDeepCategory('/discover/tv?with_networks=213&sort_by=first_air_date.desc&vote_count.gte=10', isTv: true),
+        // 2. Netflix Movies (Provider ID 8)
+        _fetchDeepCategory('/discover/movie?with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc&vote_count.gte=8'),
+        // 3. Amazon Prime Series (Provider ID 119/9)
+        _fetchDeepCategory('/discover/tv?with_watch_providers=119&watch_region=IN&sort_by=first_air_date.desc&vote_count.gte=8', isTv: true),
+        // 4. Amazon Prime Movies
+        _fetchDeepCategory('/discover/movie?with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc&vote_count.gte=8'),
+        // 5. SonyLIV Originals & Indian Drama Series
+        _fetchDeepCategory('/discover/tv?with_original_language=hi&with_watch_providers=237&watch_region=IN&sort_by=first_air_date.desc&vote_count.gte=5', isTv: true),
+        // 6. Zee5 Originals & Regional Movies
+        _fetchDeepCategory('/discover/movie?with_original_language=hi&with_watch_providers=232&watch_region=IN&sort_by=primary_release_date.desc&vote_count.gte=5'),
+        // 7. Bollywood Blockbusters (Latest first)
+        _fetchDeepCategory('/discover/movie?with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=15'),
+        // 8. South Action Hits (Hindi Dubbed)
+        _fetchDeepCategory('/discover/movie?with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&vote_count.gte=15'),
+        // 9. Hollywood Hits
+        _fetchDeepCategory('/discover/movie?with_original_language=en&sort_by=popularity.desc&vote_count.gte=100'),
+      ]);
+
+      if (mounted) {
         setState(() {
-          continueWatchingList = List<dynamic>.from(jsonDecode(raw));
+          netflixSeriesList = results[0];
+          netflixMoviesList = results[1];
+          primeSeriesList = results[2];
+          primeMoviesList = results[3];
+          sonyLivSeriesList = results[4];
+          zee5List = results[5];
+          bollywoodMoviesList = results[6];
+          southHindiList = results[7];
+          hollywoodHindiList = results[8];
+
+          if (netflixSeriesList.isNotEmpty) {
+            activeBillboardItem = netflixSeriesList.first;
+          }
         });
       }
     } catch (_) {}
   }
 
-  Future<void> _fetchProviders() async {
-    try {
-      final res = await http.get(Uri.parse(TvConfig.gistUrl));
-      if (res.statusCode == 200) {
-        activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _fetchNetflixTvCatalogs() async {
-    try {
-      // 1. Only on Netflix Originals (Series)
-      final netflixTvRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=20'));
-      if (netflixTvRes.statusCode == 200) {
-        netflixSeriesList = _parseTvList(jsonDecode(netflixTvRes.body)['results'], isTv: true);
-        if (netflixSeriesList.isNotEmpty) {
-          activeShowcaseItem = netflixSeriesList.first;
-        }
-      }
-
-      // 2. Netflix Blockbuster Movies (Provider 8)
-      final netflixMovieRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc&vote_count.gte=10'));
-      if (netflixMovieRes.statusCode == 200) {
-        netflixMoviesList = _parseTvList(jsonDecode(netflixMovieRes.body)['results']);
-      }
-
-      // 3. Trending Indian Web Series
-      final hindiTvRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=vote_count.desc&vote_count.gte=10'));
-      if (hindiTvRes.statusCode == 200) {
-        hindiWebSeriesList = _parseTvList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
-            .where((item) => !isSoapShow(item['title'] ?? ''))
-            .toList();
-      }
-
-      // 4. Bollywood Movies
-      final bollyRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&sort_by=popularity.desc&vote_count.gte=10'));
-      if (bollyRes.statusCode == 200) {
-        bollywoodMoviesList = _parseTvList(jsonDecode(bollyRes.body)['results']);
-      }
-
-      // 5. South Indian Hindi Dubbed
-      final southRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&vote_count.gte=20'));
-      if (southRes.statusCode == 200) {
-        southHindiList = _parseTvList(jsonDecode(southRes.body)['results']);
-      }
-
-      // 6. Hollywood Hindi Dubbed
-      final hollyRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&vote_count.gte=80'));
-      if (hollyRes.statusCode == 200) {
-        hollywoodHindiList = _parseTvList(jsonDecode(hollyRes.body)['results']);
-      }
-    } catch (_) {}
-  }
-
-  List<dynamic> _parseTvList(dynamic list, {bool isTv = false}) {
-    List<dynamic> res = [];
-    final currentYear = DateTime.now().year.toString();
-    for (var m in (list ?? [])) {
-      if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
-      res.add({
-        'tmdb_id': m['id'],
-        'title': m['title'] ?? m['name'] ?? 'Untitled',
-        'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
-        'rating': m['vote_average']?.toString() ?? '8.0',
-        'backdrop': m['backdrop_path'] != null
-            ? '${TvConfig.backdropBase}${m['backdrop_path']}'
-            : '${TvConfig.imgBase}${m['poster_path']}',
-        'poster': m['poster_path'] != null
-            ? '${TvConfig.imgBase}${m['poster_path']}'
-            : '${TvConfig.backdropBase}${m['backdrop_path']}',
-        'overview': m['overview'] ?? '',
-        'isTv': isTv,
-      });
-    }
-    return res;
-  }
-
-  void _onTvItemSelect(Map<String, dynamic> item) {
-    if (item['isTv'] == true) {
-      showDialog(
-        context: context,
-        builder: (ctx) => TvEpisodeDialog(
-          item: item,
-          onSelected: (season, episode) {
-            _showTvStreamDialog(item, season: season, episode: episode);
-          },
+  void _openFullGridView(String categoryTitle, List<dynamic> fullCatalog) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TVCategoryGridScreen(
+          title: categoryTitle,
+          items: fullCatalog,
+          activeProviders: activeProviders,
         ),
+      ),
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // STREAM INTENT & PLAYER LAUNCH
+  // --------------------------------------------------------------------------
+  void _playStreamDirectly(Map<String, dynamic> item) {
+    if (activeProviders.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active servers available.')),
       );
-    } else {
-      _showTvStreamDialog(item);
+      return;
+    }
+
+    final provider = activeProviders.first;
+    final server = provider['server'] ?? '';
+    final username = provider['username'] ?? '';
+    final password = provider['password'] ?? '';
+    final tmdbId = item['tmdb_id'];
+
+    String streamUrl = item['isTv'] == true
+        ? '$server/series/$username/$password/$tmdbId/1/1.mp4'
+        : '$server/movie/$username/$password/$tmdbId.mp4';
+
+    try {
+      final intent = AndroidIntent(
+        action: 'action_view',
+        data: streamUrl,
+        type: 'video/*',
+        flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+      );
+      intent.launch();
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not launch video player.')),
+      );
     }
   }
 
-  void _showTvStreamDialog(Map<String, dynamic> item, {int? season, int? episode}) {
-    showDialog(
-      context: context,
-      builder: (ctx) => TvStreamDialog(
-        item: item,
-        season: season,
-        episode: episode,
-        providers: activeProviders,
-        onPlaySaved: () => _loadContinueWatching(),
-      ),
-    );
-  }
+  // --------------------------------------------------------------------------
+  // TV BILLBOARD HERO BANNER
+  // --------------------------------------------------------------------------
+  Widget _buildTVBillboard() {
+    final item = activeBillboardItem;
+    if (item == null) return const SizedBox.shrink();
 
-  // --------------------------------------------------------------------------
-  // NETFLIX LEANBACK SIDEBAR
-  // --------------------------------------------------------------------------
-  Widget _buildNetflixSidebar() {
-    final icons = [
-      Icons.search_rounded,
-      Icons.home_filled,
-      Icons.movie_creation_outlined,
-      Icons.tv_rounded,
-      Icons.history_rounded,
-    ];
-
-    return Container(
-      width: 64,
-      color: Colors.transparent,
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Column(
-        children: [
-          // Netflix Red Brand Mark
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE50914),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text(
-              'N',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 16,
-              ),
-            ),
+    return Stack(
+      children: [
+        // Backdrop Image
+        SizedBox(
+          height: 380,
+          width: double.infinity,
+          child: Image.network(
+            item['backdrop'] ?? '',
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1B1B1B)),
           ),
-          const SizedBox(height: 36),
-          Expanded(
-            child: ListView.separated(
-              itemCount: icons.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 18),
-              itemBuilder: (ctx, i) {
-                return NetflixSidebarIcon(
-                  focusNode: _sidebarFocusNodes[i],
-                  icon: icons[i],
-                  isSelected: _selectedNavIndex == i,
-                  onRightArrow: _jumpFocusToContent,
-                  onTap: () {
-                    setState(() => _selectedNavIndex = i);
-                    _jumpFocusToContent();
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --------------------------------------------------------------------------
-  // TOP DYNAMIC CINEMATIC BILLBOARD
-  // --------------------------------------------------------------------------
-  Widget _buildNetflixBillboard(Map<String, dynamic> item) {
-    return SizedBox(
-      height: 340,
-      width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned.fill(
-            child: ShaderMask(
-              shaderCallback: (rect) {
-                return const LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [Colors.transparent, Colors.black],
-                  stops: [0.0, 0.40],
-                ).createShader(rect);
-              },
-              blendMode: BlendMode.dstIn,
-              child: Image.network(
-                item['backdrop'],
-                fit: BoxFit.cover,
-                alignment: Alignment.topRight,
-                errorBuilder: (_, __, ___) => Container(color: const Color(0xFF141414)),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Color(0x66141414), Color(0xFF141414)],
-                  stops: [0.15, 0.65, 1.0],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 20,
-            top: 24,
-            right: 340,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE50914),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                      child: const Text('N', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      item['isTv'] == true ? 'SERIES' : 'FILM',
-                      style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  item['title'].toString().toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 34,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Text('98% Match', style: TextStyle(color: Color(0xFF46D369), fontWeight: FontWeight.bold, fontSize: 12)),
-                    const SizedBox(width: 10),
-                    Text(item['year'], style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(border: Border.all(color: Colors.white38), borderRadius: BorderRadius.circular(2)),
-                      child: const Text('U/A 16+', style: TextStyle(color: Colors.white70, fontSize: 10)),
-                    ),
-                    const SizedBox(width: 10),
-                    const Text('Ultra HD 4K', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  (item['overview'] ?? '').toString().isNotEmpty
-                      ? item['overview']
-                      : 'Watch high-speed HD streams without commitments directly on your Android TV.',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.35),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Focus(
-                      focusNode: _watchNowFocusNode,
-                      onKey: (node, event) {
-                        if (event is RawKeyDownEvent &&
-                            (event.logicalKey == LogicalKeyboardKey.select ||
-                                event.logicalKey == LogicalKeyboardKey.enter)) {
-                          _onTvItemSelect(item);
-                          return KeyEventResult.handled;
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      child: Builder(builder: (c) {
-                        final focused = Focus.of(c).hasFocus;
-                        return ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: focused ? Colors.white : Colors.white24,
-                            foregroundColor: focused ? Colors.black : Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                            side: BorderSide(
-                              color: focused ? Colors.white : Colors.transparent,
-                              width: 1.8,
-                            ),
-                          ),
-                          onPressed: () => _onTvItemSelect(item),
-                          icon: const Icon(Icons.play_arrow_rounded, size: 22),
-                          label: const Text('Play', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
-                        );
-                      }),
-                    ),
-                  ],
-                ),
+        ),
+        // Vignette Gradients
+        Container(
+          height: 380,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                Color(0x33141414),
+                Color(0xCC141414),
+                Color(0xFF141414),
               ],
             ),
           ),
-        ],
-      ),
+        ),
+        Container(
+          height: 380,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                Color(0xFF141414),
+                Color(0xB3141414),
+                Colors.transparent,
+              ],
+              stops: [0.0, 0.45, 1.0],
+            ),
+          ),
+        ),
+        // Meta Text & Direct Play
+        Positioned(
+          top: 70,
+          left: 45,
+          width: 580,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text('N', style: TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 20)),
+                  const SizedBox(width: 8),
+                  Text(
+                    item['isTv'] == true ? 'S E R I E S' : 'F I L M',
+                    style: const TextStyle(color: Colors.white70, letterSpacing: 4, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                item['title'] ?? '',
+                style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Text('${item['rating']} ★ Match', style: const TextStyle(color: Color(0xFF46D369), fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(width: 14),
+                  Text(item['year'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                  const SizedBox(width: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(border: Border.all(color: Colors.white54), borderRadius: BorderRadius.circular(3)),
+                    child: const Text('Ultra HD 4K', style: TextStyle(color: Colors.white, fontSize: 10)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                item['overview'] ?? '',
+                style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                ),
+                icon: const Icon(Icons.play_arrow, size: 26),
+                label: const Text('Play', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                onPressed: () => _playStreamDirectly(item),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
-    // --------------------------------------------------------------------------
-  // NETFLIX LANDSCAPE ROW (16:9 RATIO)
   // --------------------------------------------------------------------------
-  Widget _buildNetflixRow(String title, List<dynamic> items, {bool isFirstRow = false}) {
+  // TV HORIZONTAL ROW WITH "SEE ALL" BUTTON
+  // --------------------------------------------------------------------------
+  Widget _buildTVRow(String title, List<dynamic> items) {
     if (items.isEmpty) return const SizedBox.shrink();
+
+    // Home screen par shuruat ke 15 latest items dikhayenge
+    final previewItems = items.take(15).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-          child: Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
-            ),
+          padding: const EdgeInsets.symmetric(horizontal: 45, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              Text(
+                'Total ${items.length}+ Titles',
+                style: const TextStyle(fontSize: 12, color: Colors.white38),
+              ),
+            ],
           ),
         ),
         SizedBox(
-          height: 155,
+          height: 140,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: items.length,
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            itemCount: previewItems.length + 1, // +1 for See All card
             itemBuilder: (ctx, idx) {
-              return NetflixTvCard(
-                focusNode: (isFirstRow && idx == 0) ? _firstContentCardFocus : null,
-                item: items[idx],
-                isFirstInRow: idx == 0,
-                onLeftBoundaryHit: _jumpFocusToSidebar,
-                onFocusGained: () {
-                  setState(() => activeShowcaseItem = items[idx]);
-                },
-                onTap: () => _onTvItemSelect(items[idx]),
+              if (idx == previewItems.length) {
+                // Last Card: SEE ALL
+                return Container(
+                  width: 200,
+                  margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => _openFullGridView(title, items),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF222222),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.white24, width: 1.5),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.grid_view_rounded, color: Color(0xFFE50914), size: 36),
+                          const SizedBox(height: 8),
+                          const Text('See All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text('(${items.length}+ Titles)', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              final item = previewItems[idx];
+              return Container(
+                width: 230,
+                margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Focus(
+                  onFocusChange: (focused) {
+                    if (focused && mounted) {
+                      setState(() => activeBillboardItem = item);
+                    }
+                  },
+                  child: Builder(
+                    builder: (context) {
+                      final isFocused = Focus.of(context).hasFocus;
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(6),
+                        onTap: () => _playStreamDirectly(item),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: isFocused ? Colors.white : Colors.transparent,
+                              width: isFocused ? 3.0 : 0.0,
+                            ),
+                            boxShadow: isFocused
+                                ? [BoxShadow(color: Colors.white.withOpacity(0.5), blurRadius: 10, spreadRadius: 2)]
+                                : [],
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                item['backdrop'] ?? '',
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(color: Colors.grey[900]),
+                              ),
+                              Positioned(
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                  decoration: const BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.bottomCenter,
+                                      end: Alignment.topCenter,
+                                      colors: [Colors.black87, Colors.transparent],
+                                    ),
+                                  ),
+                                  child: Text(
+                                    item['title'] ?? '',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               );
             },
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 18),
       ],
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // TV LEFT SLIM RAIL
+  // --------------------------------------------------------------------------
+  Widget _buildTVSidebar() {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      width: _sidebarExpanded ? 180 : 56,
+      color: Colors.black.withOpacity(0.92),
+      child: Column(
+        children: [
+          const SizedBox(height: 25),
+          const Icon(Icons.search, color: Colors.white, size: 24),
+          const SizedBox(height: 35),
+          _sidebarItem(1, Icons.home_filled, 'Home'),
+          _sidebarItem(2, Icons.tv, 'TV Series', onTap: () => _openFullGridView('All TV Series', [...netflixSeriesList, ...primeSeriesList, ...sonyLivSeriesList])),
+          _sidebarItem(3, Icons.movie, 'Movies', onTap: () => _openFullGridView('All Blockbuster Movies', [...netflixMoviesList, ...primeMoviesList, ...bollywoodMoviesList])),
+          _sidebarItem(4, Icons.category, 'OTT Hub', onTap: () => _openFullGridView('SonyLIV & Zee5 Hub', [...sonyLivSeriesList, ...zee5List])),
+          const Spacer(),
+          IconButton(
+            icon: Icon(_sidebarExpanded ? Icons.arrow_back_ios : Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onPressed: () => setState(() => _sidebarExpanded = !_sidebarExpanded),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _sidebarItem(int index, IconData icon, String label, {VoidCallback? onTap}) {
+    final isSelected = _selectedSidebarIndex == index;
+    return InkWell(
+      onTap: () {
+        setState(() => _selectedSidebarIndex = index);
+        if (onTap != null) onTap();
+      },
+      child: Container(
+        height: 50,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            Icon(icon, color: isSelected ? const Color(0xFFE50914) : Colors.white60, size: 24),
+            if (_sidebarExpanded) ...[
+              const SizedBox(width: 14),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.white60,
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -500,41 +665,25 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       backgroundColor: const Color(0xFF141414),
       body: Row(
         children: [
-          _buildNetflixSidebar(),
+          _buildTVSidebar(),
           Expanded(
             child: isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
                 : SingleChildScrollView(
-                    padding: const EdgeInsets.only(bottom: 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
-
-                        if (continueWatchingList.isNotEmpty)
-                          _buildNetflixRow('Continue Watching for You', continueWatchingList, isFirstRow: true),
-
-                        // 1. NETFLIX ORIGINAL SERIES
-                        _buildNetflixRow(
-                          'Only on Netflix (Original Series)',
-                          netflixSeriesList,
-                          isFirstRow: continueWatchingList.isEmpty,
-                        ),
-
-                        // 2. NETFLIX BLOCKBUSTER MOVIES
-                        _buildNetflixRow('Netflix Blockbuster Movies', netflixMoviesList),
-
-                        // 3. TRENDING INDIAN WEB SERIES
-                        _buildNetflixRow('Trending Indian Web Series', hindiWebSeriesList),
-
-                        // 4. BOLLYWOOD BLOCKBUSTERS
-                        _buildNetflixRow('Bollywood Blockbusters', bollywoodMoviesList),
-
-                        // 5. SOUTH ACTION HINDI DUBBED
-                        _buildNetflixRow('South Action Hits (Hindi Dubbed)', southHindiList),
-
-                        // 6. HOLLYWOOD HITS
-                        _buildNetflixRow('Hollywood Hits (Hindi Dubbed)', hollywoodHindiList),
+                        _buildTVBillboard(),
+                        _buildTVRow('Only on Netflix (Original Series)', netflixSeriesList),
+                        _buildTVRow('Netflix Blockbuster Movies', netflixMoviesList),
+                        _buildTVRow('Amazon Prime Video Originals', primeSeriesList),
+                        _buildTVRow('Amazon Prime Blockbuster Movies', primeMoviesList),
+                        _buildTVRow('SonyLIV Originals & Drama Series', sonyLivSeriesList),
+                        _buildTVRow('Zee5 Originals & Cinema', zee5List),
+                        _buildTVRow('Bollywood Blockbusters', bollywoodMoviesList),
+                        _buildTVRow('South Action Hits (Hindi Dubbed)', southHindiList),
+                        _buildTVRow('Hollywood Hits (Hindi Dubbed)', hollywoodHindiList),
+                        const SizedBox(height: 40),
                       ],
                     ),
                   ),
@@ -545,1085 +694,154 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 }
 
-// ----------------------------------------------------------------------------
-// SIDEBAR ICON WIDGET
-// ----------------------------------------------------------------------------
-class NetflixSidebarIcon extends StatefulWidget {
-  final FocusNode focusNode;
-  final IconData icon;
-  final bool isSelected;
-  final VoidCallback onRightArrow;
-  final VoidCallback onTap;
+// ============================================================================
+// 3. DEDICATED TV VERTICAL GRID SCREEN (SEE ALL VIEW - 200+ TITLES)
+// ============================================================================
+class TVCategoryGridScreen extends StatelessWidget {
+  final String title;
+  final List<dynamic> items;
+  final List<dynamic> activeProviders;
 
-  const NetflixSidebarIcon({
+  const TVCategoryGridScreen({
     super.key,
-    required this.focusNode,
-    required this.icon,
-    required this.isSelected,
-    required this.onRightArrow,
-    required this.onTap,
+    required this.title,
+    required this.items,
+    required this.activeProviders,
   });
 
-  @override
-  State<NetflixSidebarIcon> createState() => _NetflixSidebarIconState();
-}
-
-class _NetflixSidebarIconState extends State<NetflixSidebarIcon> {
-  bool _isFocused = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Focus(
-      focusNode: widget.focusNode,
-      onFocusChange: (f) => setState(() => _isFocused = f),
-      onKey: (node, event) {
-        if (event is RawKeyDownEvent) {
-          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-            widget.onRightArrow();
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.select ||
-              event.logicalKey == LogicalKeyboardKey.enter) {
-            widget.onTap();
-            return KeyEventResult.handled;
-          }
-        }
-        return KeyEventResult.ignored;
-      },
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: _isFocused ? const Color(0xFFE50914) : Colors.transparent,
-            border: Border.all(
-              color: _isFocused ? Colors.white : Colors.transparent,
-              width: 1.5,
-            ),
-          ),
-          child: Icon(
-            widget.icon,
-            color: _isFocused
-                ? Colors.white
-                : widget.isSelected
-                    ? Colors.white
-                    : Colors.white38,
-            size: 22,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ----------------------------------------------------------------------------
-// NETFLIX TV CARD WITH DPAD HIGHLIGHT
-// ----------------------------------------------------------------------------
-class NetflixTvCard extends StatefulWidget {
-  final FocusNode? focusNode;
-  final Map<String, dynamic> item;
-  final bool isFirstInRow;
-  final VoidCallback onLeftBoundaryHit;
-  final VoidCallback onFocusGained;
-  final VoidCallback onTap;
-
-  const NetflixTvCard({
-    super.key,
-    this.focusNode,
-    required this.item,
-    this.isFirstInRow = false,
-    required this.onLeftBoundaryHit,
-    required this.onFocusGained,
-    required this.onTap,
-  });
-
-  @override
-  State<NetflixTvCard> createState() => _NetflixTvCardState();
-}
-
-class _NetflixTvCardState extends State<NetflixTvCard> {
-  bool _isFocused = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Focus(
-      focusNode: widget.focusNode,
-      onFocusChange: (f) {
-        setState(() => _isFocused = f);
-        if (f) widget.onFocusGained();
-      },
-      onKey: (node, event) {
-        if (event is RawKeyDownEvent) {
-          if (event.logicalKey == LogicalKeyboardKey.arrowLeft && widget.isFirstInRow) {
-            widget.onLeftBoundaryHit();
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.select ||
-              event.logicalKey == LogicalKeyboardKey.enter) {
-            widget.onTap();
-            return KeyEventResult.handled;
-          }
-        }
-        return KeyEventResult.ignored;
-      },
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _isFocused ? 1.08 : 1.0,
-          duration: const Duration(milliseconds: 180),
-          child: Container(
-            width: 180,
-            margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: _isFocused ? Colors.white : Colors.transparent,
-                width: 2.2,
-              ),
-              boxShadow: _isFocused
-                  ? [
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.4),
-                        blurRadius: 14,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : [],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    widget.item['backdrop'],
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1E1E1E)),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                      color: Colors.black87,
-                      child: Text(
-                        widget.item['title'],
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ----------------------------------------------------------------------------
-// TV EPISODE SELECTOR DIALOG
-// ----------------------------------------------------------------------------
-class TvEpisodeDialog extends StatefulWidget {
-  final Map<String, dynamic> item;
-  final Function(int s, int ep) onSelected;
-
-  const TvEpisodeDialog({super.key, required this.item, required this.onSelected});
-
-  @override
-  State<TvEpisodeDialog> createState() => _TvEpisodeDialogState();
-}
-
-class _TvEpisodeDialogState extends State<TvEpisodeDialog> {
-  int selectedSeason = 1;
-  int episodeCount = 10;
-  List<int> seasons = [1];
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchDetails();
-  }
-
-  Future<void> _fetchDetails() async {
-    try {
-      final res = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${TvConfig.tmdbKey}'));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final raw = (data['seasons'] as List<dynamic>? ?? [])
-            .where((s) => (s['season_number'] ?? 0) > 0)
-            .map((s) => s['season_number'] as int)
-            .toList();
-        if (raw.isNotEmpty && mounted) {
-          setState(() {
-            seasons = raw;
-            selectedSeason = raw.first;
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: const Color(0xFF181818),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        width: 500,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.item['title'],
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 14),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: seasons.map((s) {
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: s == selectedSeason ? const Color(0xFFE50914) : Colors.white12,
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: () => setState(() => selectedSeason = s),
-                      child: Text('Season $s'),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              height: 180,
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 5,
-                  childAspectRatio: 1.5,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemCount: episodeCount,
-                itemBuilder: (ctx, i) {
-                  final ep = i + 1;
-                  return ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white12,
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.zero,
-                    ),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      widget.onSelected(selectedSeason, ep);
-                    },
-                    child: Text('EP $ep', style: const TextStyle(fontSize: 12)),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// // ----------------------------------------------------------------------------
-// // TV STREAM RESOLVER DIALOG
-// // ----------------------------------------------------------------------------
-class TvStreamDialog extends StatefulWidget {
-  final Map<String, dynamic> item;
-  final int? season;
-  final int? episode;
-  final List<dynamic> providers;
-  final VoidCallback onPlaySaved;
-
-  const TvStreamDialog({
-    super.key,
-    required this.item,
-    this.season,
-    this.episode,
-    required this.providers,
-    required this.onPlaySaved,
-  });
-
-  @override
-  State<TvStreamDialog> createState() => _TvStreamDialogState();
-}
-
-class _TvStreamDialogState extends State<TvStreamDialog> {
-  List<dynamic> streams = [];
-  bool loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchStreams();
-  }
-
-  String _clean(String input) {
-    return input
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
-
-  Future<void> _fetchStreams() async {
-    List<dynamic> resolved = [];
-
-    try {
-      final isTvShow = widget.item['media_type'] == 'tv' || widget.item['is_tv'] == true;
-      final movieTitle = widget.item['title'] ?? widget.item['name'] ?? '';
-      final targetSeason = widget.season ?? widget.item['season'] ?? 1;
-      final targetEpisode = widget.episode ?? widget.item['episode'] ?? 1;
-
-      for (var prov in widget.providers) {
-        final host = prov['host']?.toString().replaceAll(RegExp(r'/+$'), '');
-        final user = prov['username'];
-        final pass = prov['password'];
-
-        if (host == null || user == null || pass == null) continue;
-
-        if (isTvShow) {
-          final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_series';
-          final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
-
-          if (xtreamRes.statusCode == 200) {
-            final List<dynamic> seriesList = jsonDecode(xtreamRes.body);
-            List<dynamic> candidates = [];
-
-            for (var s in seriesList) {
-              final sTmdb = (s['tmdb_id'] ?? s['tmdb'] ?? '').toString();
-              final rawName = (s['name'] ?? '').toString();
-              final categoryName = (s['category_name'] ?? '').toString();
-              final sClean = _clean(rawName);
-              final queryClean = _clean(movieTitle);
-
-              bool isHindi = rawName.toLowerCase().contains('hindi') || categoryName.toLowerCase().contains('hindi');
-
-              if (sTmdb.isNotEmpty && sTmdb == widget.item['tmdb_id'].toString()) {
-                candidates.add({'series_id': s['series_id'], 'is_hindi_detected': isHindi});
-              } else if (sClean.contains(queryClean) || queryClean.contains(sClean)) {
-                candidates.add({'series_id': s['series_id'], 'is_hindi_detected': isHindi});
-              }
-            }
-
-            for (var bestSeries in candidates.take(2)) {
-              final sid = bestSeries['series_id'];
-              final infoApi = '$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=$sid';
-              final infoRes = await http.get(Uri.parse(infoApi)).timeout(const Duration(seconds: 8));
-
-              if (infoRes.statusCode == 200) {
-                final epMap = jsonDecode(infoRes.body)['episodes'] as Map<String, dynamic>? ?? {};
-                final epList = epMap['$targetSeason'] as List<dynamic>? ?? [];
-                final match = epList.firstWhere(
-                  (e) => (e['episode_num'] ?? 0) == targetEpisode,
-                  orElse: () => null,
-                );
-
-                if (match != null) {
-                  final isHindi = bestSeries['is_hindi_detected'] == true;
-                  resolved.add({
-                    'server': prov['name'] ?? 'LiveBox Xtream IPTV',
-                    'title': isHindi
-                        ? '$movieTitle (Hindi Audio) S$targetSeason:E$targetEpisode'
-                        : '$movieTitle S$targetSeason:E$targetEpisode',
-                    'url': '$host/series/$user/$pass/${match['id']}.${match['container_extension'] ?? "mp4"}',
-                    'isHindi': isHindi,
-                  });
-                }
-              }
-            }
-          }
-        } else {
-          final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_vod_streams';
-          final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
-
-          if (xtreamRes.statusCode == 200) {
-            final List<dynamic> streamList = jsonDecode(xtreamRes.body);
-            List<dynamic> candidates = [];
-
-            for (var m in streamList) {
-              final mTmdb = (m['tmdb_id'] ?? m['tmdb'] ?? '').toString();
-              final rawName = (m['name'] ?? '').toString();
-              final categoryName = (m['category_name'] ?? '').toString();
-              final mClean = _clean(rawName);
-              final queryClean = _clean(movieTitle);
-
-              bool isHindi = rawName.toLowerCase().contains('hindi') || categoryName.toLowerCase().contains('hindi');
-
-              if (mTmdb.isNotEmpty && mTmdb == widget.item['tmdb_id'].toString()) {
-                candidates.add({
-                  'stream_id': m['stream_id'],
-                  'ext': m['container_extension'] ?? 'mp4',
-                  'is_hindi_detected': isHindi,
-                });
-              } else if (mClean.contains(queryClean) || queryClean.contains(mClean)) {
-                candidates.add({
-                  'stream_id': m['stream_id'],
-                  'ext': m['container_extension'] ?? 'mp4',
-                  'is_hindi_detected': isHindi,
-                });
-              }
-            }
-
-            for (var c in candidates.take(3)) {
-              final isHindi = c['is_hindi_detected'] == true;
-              resolved.add({
-                'server': prov['name'] ?? 'LiveBox Xtream IPTV',
-                'title': isHindi ? '$movieTitle (Hindi Audio)' : movieTitle,
-                'url': '$host/movie/$user/$pass/${c['stream_id']}.${c['ext']}',
-                'isHindi': isHindi,
-              });
-            }
-          }
-        }
-      }
-
-      resolved.sort((a, b) {
-        if (a['isHindi'] == true && b['isHindi'] != true) return -1;
-        if (a['isHindi'] != true && b['isHindi'] == true) return 1;
-        return 0;
-      });
-
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('continue_watching_tv');
-      List<dynamic> curr = [];
-      if (raw != null) {
-        curr = List<dynamic>.from(jsonDecode(raw));
-      }
-
-      curr.removeWhere((c) => c['tmdb_id'].toString() == widget.item['tmdb_id'].toString());
-      curr.insert(0, {
-        'tmdb_id': widget.item['tmdb_id'],
-        'title': widget.item['title'] ?? 'Untitled',
-        'backdrop': widget.item['backdrop'] ?? '',
-        'year': widget.item['year'] ?? '',
-        'rating': widget.item['rating'] ?? '8.0',
-        'isTv': widget.item['isTv'] ?? false,
-      });
-
-      if (curr.length > 15) curr = curr.sublist(0, 15);
-      await prefs.setString('continue_watching_tv', jsonEncode(curr));
-      widget.onPlaySaved();
-    } catch (_) {}
-
-    if (mounted) {
-      setState(() {
-        streams = resolved;
-        loading = false;
-      });
+  void _playStreamDirectly(BuildContext context, Map<String, dynamic> item) {
+    if (activeProviders.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active servers available.')),
+      );
+      return;
     }
-  }
 
-  void _playStream(String url, bool isExternal) {
-    if (!mounted) return;
-    Navigator.pop(context);
+    final provider = activeProviders.first;
+    final server = provider['server'] ?? '';
+    final username = provider['username'] ?? '';
+    final password = provider['password'] ?? '';
+    final tmdbId = item['tmdb_id'];
 
-    final cleanUrl = url.trim();
-    final playTitle = widget.item['title'] ?? widget.item['name'] ?? 'Playing Video';
+    String streamUrl = item['isTv'] == true
+        ? '$server/series/$username/$password/$tmdbId/1/1.mp4'
+        : '$server/movie/$username/$password/$tmdbId.mp4';
 
-    if (isExternal) {
+    try {
       final intent = AndroidIntent(
         action: 'action_view',
-        data: cleanUrl,
+        data: streamUrl,
         type: 'video/*',
         flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
       );
       intent.launch();
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => InternalPlayerScreen(
-            streamUrl: cleanUrl,
-            title: playTitle,
-          ),
-        ),
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not launch video player.')),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: const Color(0xFF181818),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        width: 580,
-        height: 340,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      backgroundColor: const Color(0xFF141414),
+      appBar: AppBar(
+        backgroundColor: Colors.black.withOpacity(0.8),
+        title: Row(
           children: [
-            Text(
-              widget.season != null
-                  ? '${widget.item['title'] ?? widget.item['name']} - S${widget.season} E${widget.episode}'
-                  : (widget.item['title'] ?? widget.item['name'] ?? 'Select Stream'),
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(color: const Color(0xFFE50914), borderRadius: BorderRadius.circular(4)),
+              child: Text('${items.length}+ Titles', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             ),
-            const SizedBox(height: 12),
-            if (loading)
-              const Expanded(child: Center(child: CircularProgressIndicator(color: Color(0xFFE50914))))
-            else if (streams.isEmpty)
-              const Expanded(child: Center(child: Text('No active streams found on server.', style: TextStyle(color: Colors.white54))))
-            else
-              Expanded(
-                child: ListView.builder(
-                  itemCount: streams.length,
-                  itemBuilder: (ctx, i) {
-                    final s = streams[i];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF242424),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            s['isHindi'] == true ? Icons.translate : Icons.play_circle_fill,
-                            color: const Color(0xFFE50914),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  s['title'] ?? '',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  s['server'] ?? '',
-                                  style: const TextStyle(color: Colors.white54, fontSize: 12),
-                                ),
-                              ],
-                            ),
-                          ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)),
-                            onPressed: () => _playStream(s['url'] ?? '', false),
-                            child: const Text('Play', style: TextStyle(color: Colors.white)),
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white24)),
-                            onPressed: () => _playStream(s['url'] ?? '', true),
-                            child: const Text('External', style: TextStyle(color: Colors.white70)),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
           ],
         ),
       ),
-    );
-  }
-}
-
-// ============================================================================
-// TV INTERNAL VIDEO PLAYER (FULL EMBEDDED DPAD CONTROLLER)
-// ============================================================================
-class InternalPlayerScreen extends StatefulWidget {
-  final String streamUrl;
-  final String title;
-
-  InternalPlayerScreen({
-    super.key,
-    String? videoUrl,
-    String? streamUrl,
-    required this.title,
-  }) : streamUrl = (streamUrl != null && streamUrl.isNotEmpty)
-            ? streamUrl
-            : (videoUrl ?? '');
-
-  @override
-  State<InternalPlayerScreen> createState() => _InternalPlayerScreenState();
-}
-
-class _InternalPlayerScreenState extends State<InternalPlayerScreen>
-    with WidgetsBindingObserver {
-  late VideoPlayerController _controller;
-  bool _isInit = false;
-  bool _hasError = false;
-  String _errorMsg = '';
-
-  bool _showOverlay = false;
-  Timer? _hideTimer;
-
-  int _scaleMode = 0; // 0: FIT, 1: FILL, 2: CROP
-  String _ratioToast = '';
-  Timer? _ratioToastTimer;
-
-  Timer? _holdSeekTimer;
-  int _seekOffsetSec = 0;
-  bool _isHoldingSeek = false;
-  int _seekMultiplier = 10;
-  Duration _targetSeekPos = Duration.zero;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _initVideo();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached) {
-      _cleanExitToHome();
-    }
-  }
-
-  void _cleanExitToHome() {
-    _hideTimer?.cancel();
-    _holdSeekTimer?.cancel();
-    _ratioToastTimer?.cancel();
-    if (_isInit) {
-      _controller.pause();
-      _controller.dispose();
-      _isInit = false;
-    }
-    if (mounted && Navigator.canPop(context)) {
-      Navigator.pop(context);
-    }
-  }
-
-  Future<void> _initVideo() async {
-    try {
-      _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.streamUrl),
-        httpHeaders: const {
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': '*/*',
-          'Connection': 'keep-alive',
-        },
-      );
-
-      await _controller.initialize();
-      _controller.play();
-
-      if (mounted) setState(() => _isInit = true);
-
-      _controller.addListener(() {
-        if (mounted && !_isHoldingSeek) setState(() {});
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMsg = e.toString();
-        });
-      }
-    }
-  }
-
-  void _triggerOverlay() {
-    setState(() => _showOverlay = true);
-    _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted && _controller.value.isPlaying && !_isHoldingSeek) {
-        setState(() => _showOverlay = false);
-      }
-    });
-  }
-
-  void _cycleScaleMode() {
-    final names = ['FIT (16:9)', 'FILL (STRETCH)', 'CROP (ZOOM)'];
-    setState(() {
-      _scaleMode = (_scaleMode + 1) % 3;
-      _ratioToast = names[_scaleMode];
-    });
-
-    _ratioToastTimer?.cancel();
-    _ratioToastTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _ratioToast = '');
-    });
-  }
-
-  void _commitSeek() {
-    if (!_isInit) return;
-    _controller.seekTo(_targetSeekPos).then((_) {
-      if (mounted) {
-        setState(() {
-          _isHoldingSeek = false;
-          _seekOffsetSec = 0;
-          _seekMultiplier = 10;
-        });
-        _controller.play();
-        _triggerOverlay();
-      }
-    });
-  }
-
-  void _onDpadKeyDown(LogicalKeyboardKey key) {
-    if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.backspace) {
-      _cleanExitToHome();
-      return;
-    }
-
-    _triggerOverlay();
-
-    if (key == LogicalKeyboardKey.select ||
-        key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.mediaPlayPause) {
-      if (_isHoldingSeek) {
-        _holdSeekTimer?.cancel();
-        _commitSeek();
-      } else if (_isInit) {
-        if (_controller.value.isPlaying) {
-          _controller.pause();
-        } else {
-          _controller.play();
-        }
-      }
-      return;
-    }
-
-    if (key == LogicalKeyboardKey.arrowUp) {
-      _cycleScaleMode();
-      return;
-    }
-
-    if (key == LogicalKeyboardKey.arrowRight && _holdSeekTimer == null) {
-      if (!_isHoldingSeek && _isInit) {
-        _targetSeekPos = _controller.value.position;
-      }
-      _isHoldingSeek = true;
-      _seekMultiplier = 10;
-      int count = 0;
-
-      _holdSeekTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
-        count++;
-        if (count > 16) {
-          _seekMultiplier = 60;
-        } else if (count > 6) {
-          _seekMultiplier = 30;
-        } else {
-          _seekMultiplier = 10;
-        }
-
-        final dur = _controller.value.duration;
-        _targetSeekPos = (_targetSeekPos + Duration(seconds: _seekMultiplier)) > dur
-            ? dur
-            : _targetSeekPos + Duration(seconds: _seekMultiplier);
-
-        setState(() {
-          _seekOffsetSec += _seekMultiplier;
-        });
-      });
-      return;
-    }
-
-    if (key == LogicalKeyboardKey.arrowLeft && _holdSeekTimer == null) {
-      if (!_isHoldingSeek && _isInit) {
-        _targetSeekPos = _controller.value.position;
-      }
-      _isHoldingSeek = true;
-      _seekMultiplier = 10;
-      int count = 0;
-
-      _holdSeekTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
-        count++;
-        if (count > 16) {
-          _seekMultiplier = 60;
-        } else if (count > 6) {
-          _seekMultiplier = 30;
-        } else {
-          _seekMultiplier = 10;
-        }
-
-        _targetSeekPos = (_targetSeekPos - Duration(seconds: _seekMultiplier)) < Duration.zero
-            ? Duration.zero
-            : _targetSeekPos - Duration(seconds: _seekMultiplier);
-
-        setState(() {
-          _seekOffsetSec -= _seekMultiplier;
-        });
-      });
-      return;
-    }
-  }
-
-  void _onDpadKeyUp(LogicalKeyboardKey key) {
-    if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.arrowLeft) {
-      _holdSeekTimer?.cancel();
-      _holdSeekTimer = null;
-
-      Future.delayed(const Duration(milliseconds: 900), () {
-        if (_isHoldingSeek && _holdSeekTimer == null) {
-          _commitSeek();
-        }
-      });
-    }
-  }
-
-  String _formatDuration(Duration d) {
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    final h = d.inHours;
-    return h > 0 ? '$h:$m:$s' : '$m:$s';
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _hideTimer?.cancel();
-    _holdSeekTimer?.cancel();
-    _ratioToastTimer?.cancel();
-    if (_isInit) {
-      _controller.dispose();
-    }
-    super.dispose();
-  }
-
-  Widget _buildVideoOutput() {
-    if (!_isInit) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)));
-    }
-
-    if (_scaleMode == 1) {
-      return SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.fill,
-          child: SizedBox(
-            width: _controller.value.size.width,
-            height: _controller.value.size.height,
-            child: VideoPlayer(_controller),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: GridView.builder(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 5, // TV par 5 columns ka balanced poster layout
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 18,
+            childAspectRatio: 0.68,
           ),
-        ),
-      );
-    } else if (_scaleMode == 2) {
-      return SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: _controller.value.size.width,
-            height: _controller.value.size.height,
-            child: VideoPlayer(_controller),
-          ),
-        ),
-      );
-    }
-
-    return Center(
-      child: AspectRatio(
-        aspectRatio: _controller.value.aspectRatio,
-        child: VideoPlayer(_controller),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final Duration currentPos = _isInit ? _controller.value.position : Duration.zero;
-    final Duration totalDur = _isInit ? _controller.value.duration : Duration.zero;
-    final Duration activeDisplayPos = _isHoldingSeek ? _targetSeekPos : currentPos;
-
-    final double progressRatio = totalDur.inMilliseconds > 0
-        ? (activeDisplayPos.inMilliseconds / totalDur.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
-
-    return PopScope(
-      canPop: false,
-      onPopInvoked: (didPop) {
-        if (!didPop) _cleanExitToHome();
-      },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Focus(
-          autofocus: true,
-          onKey: (node, event) {
-            if (event is RawKeyDownEvent) {
-              _onDpadKeyDown(event.logicalKey);
-            } else if (event is RawKeyUpEvent) {
-              _onDpadKeyUp(event.logicalKey);
-            }
-            return KeyEventResult.handled;
-          },
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              _buildVideoOutput(),
-
-              if (_ratioToast.isNotEmpty)
-                Positioned(
-                  top: 40,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF141414).withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white30, width: 1.2),
-                    ),
-                    child: Text(
-                      _ratioToast,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                  ),
-                ),
-
-              if (_isHoldingSeek)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.black87,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE50914), width: 1.5),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _seekOffsetSec > 0 ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
-                        color: Colors.white,
-                        size: 36,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _formatDuration(_targetSeekPos),
-                        style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        '${_seekOffsetSec > 0 ? "+" : ""}${_seekOffsetSec}s (Press OK to Play)',
-                        style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-
-              if ((_showOverlay || _isHoldingSeek) && _isInit)
-                Positioned(
-                  bottom: 24,
-                  left: 40,
-                  right: 40,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.title,
-                          maxLines: 1,
-                          style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+          itemCount: items.length,
+          itemBuilder: (ctx, idx) {
+            final item = items[idx];
+            return Focus(
+              child: Builder(
+                builder: (context) {
+                  final isFocused = Focus.of(context).hasFocus;
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => _playStreamDirectly(context, item),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isFocused ? Colors.white : Colors.transparent,
+                          width: isFocused ? 3.0 : 0.0,
                         ),
-                        const SizedBox(height: 12),
-                        LayoutBuilder(
-                          builder: (ctx, constraints) {
-                            final barWidth = constraints.maxWidth;
-                            final thumbLeft = (barWidth * progressRatio).clamp(0.0, barWidth - 14.0);
-
-                            return SizedBox(
-                              height: 16,
-                              child: Stack(
-                                alignment: Alignment.centerLeft,
+                        boxShadow: isFocused
+                            ? [BoxShadow(color: Colors.white.withOpacity(0.6), blurRadius: 12, spreadRadius: 2)]
+                            : [],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            item['poster'] ?? '',
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(color: Colors.grey[900]),
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                  colors: [Colors.black, Colors.transparent],
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Container(
-                                    height: _isHoldingSeek ? 8 : 5,
-                                    width: barWidth,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white24,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
+                                  Text(
+                                    item['title'] ?? '',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                                   ),
-                                  Container(
-                                    height: _isHoldingSeek ? 8 : 5,
-                                    width: barWidth * progressRatio,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFE50914),
-                                      borderRadius: BorderRadius.circular(4),
-                                      boxShadow: _isHoldingSeek
-                                          ? [
-                                              BoxShadow(
-                                                color: const Color(0xFFE50914).withOpacity(0.8),
-                                                blurRadius: 8,
-                                              ),
-                                            ]
-                                          : [],
-                                    ),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('${item['rating']} ★', style: const TextStyle(color: Colors.greenAccent, fontSize: 11)),
+                                      Text(item['year'] ?? '', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                                    ],
                                   ),
-                                  if (_isHoldingSeek)
-                                    Positioned(
-                                      left: thumbLeft,
-                                      child: Container(
-                                        width: 16,
-                                        height: 16,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: Colors.white,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.white.withOpacity(0.8),
-                                              blurRadius: 10,
-                                              spreadRadius: 2,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
                                 ],
                               ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _formatDuration(activeDisplayPos),
-                              style: TextStyle(
-                                color: _isHoldingSeek ? Colors.white : Colors.white70,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
                             ),
-                            Text(
-                              _formatDuration(totalDur),
-                              style: const TextStyle(color: Colors.white54, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
-            ],
-          ),
+                  );
+                },
+              ),
+            );
+          },
         ),
       ),
     );
