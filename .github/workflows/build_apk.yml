@@ -35,8 +35,11 @@ jobs:
       - name: Setup & Build Netflix Pro App
         run: |
           flutter create --org com.netflixpro --project-name netflix_pro netflix_build_temp
+          
+          # Pehle dummy lib delete karenge aur apna asli lib seedha copy karenge
           rm -rf netflix_build_temp/lib
-          cp -r lib netflix_build_temp/lib
+          cp -r lib netflix_build_temp/
+          
           cp pubspec.yaml netflix_build_temp/pubspec.yaml
           cp icon.png netflix_build_temp/icon.png
           
@@ -54,6 +57,9 @@ jobs:
           cd netflix_build_temp
           flutter pub get
           dart run flutter_launcher_icons
+
+          # Debug: Verify files structure
+          ls -R lib/
 
           # 1. Build Mobile APK
           flutter build apk --release -t lib/mobile/main.dart
