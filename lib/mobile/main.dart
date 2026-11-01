@@ -576,16 +576,16 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   if (activeBillboardItem != null) _buildBillboard(activeBillboardItem!),
                   if (continueWatchingList.isNotEmpty)
                     _buildMovieRow('Continue Watching for You', continueWatchingList),
-                                        if (homeNetflixList.isNotEmpty)
+                                                if (homeNetflixList.isNotEmpty)
                         _buildMovieRow('Latest Netflix Blockbusters', homeNetflixList),
                       if (homePrimeList.isNotEmpty)
                         _buildMovieRow('Amazon Prime Video Hits', homePrimeList),
                       if (homeHotstarList.isNotEmpty)
                         _buildMovieRow('Disney+ Hotstar Specials', homeHotstarList),
                       if (homeSonyLivList.isNotEmpty)
-                        _buildMovieRow('SonyLIV Originals & Series', homeSonyLivList, isTv: true),
+                        _buildMovieRow('SonyLIV Originals & Series', homeSonyLivList),
                       if (homeZee5List.isNotEmpty)
-                        _buildMovieRow('ZEE5 Premium Specials', homeZee5List, isTv: true),
+                        _buildMovieRow('ZEE5 Premium Specials', homeZee5List),
                   const SizedBox(height: 20),
                 ],
               ),
