@@ -576,7 +576,45 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
   // TV HORIZONTAL ROW + "SEE ALL (200+ TITLES)"
   // --------------------------------------------------------------------------
   Widget _buildTVRow(String title, List<MediaItem> items, String endpoint, bool isTv) {
-    if (items.isEmpty) return const SizedBox.shrink();
+    // Agar data khali hai ya fetch fail hua, toh black screen mat chhodo, status dikhao
+    if (items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 45, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: 70,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Row(
+                children: const [
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFE50914)),
+                  ),
+                  SizedBox(width: 14),
+                  Text(
+                    'Connecting to TMDb Catalog...',
+                    style: TextStyle(color: Colors.white60, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -719,7 +757,6 @@ class _TVHomeScreenState extends State<TVHomeScreen> {
       ],
     );
   }
-
   // --------------------------------------------------------------------------
   // AUTHENTIC CLEAN SLIM SIDEBAR
   // --------------------------------------------------------------------------
