@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version_tag:
-        description: 'Release Tag (e.g. v1.0.26)'
+        description: 'Release Tag (e.g. v1.0.28)'
         required: true
-        default: 'v1.0.26'
+        default: 'v1.0.28'
 
 permissions:
   contents: write
@@ -37,16 +37,18 @@ jobs:
           flutter create --org com.netflixpro --project-name netflix_pro netflix_build_temp
           cp -r lib netflix_build_temp/
           cp pubspec.yaml netflix_build_temp/pubspec.yaml
+          cp icon.png netflix_build_temp/icon.png
           
           # Clean App Name set karein
           sed -i 's/android:label="[^"]*"/android:label="Netflix Pro"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
           
-          # Internet & Cleartext HTTP fix (Cinema HQ working fix)
+          # Internet & Cleartext HTTP fix
           sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET" />\n<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' netflix_build_temp/android/app/src/main/AndroidManifest.xml
           sed -i 's/<application/<application android:usesCleartextTraffic="true"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
           
           cd netflix_build_temp
           flutter pub get
+          dart run flutter_launcher_icons
           flutter build apk --release
 
       - name: Create GitHub Release
@@ -56,8 +58,9 @@ jobs:
           name: "Netflix Pro ${{ github.event.inputs.version_tag }}"
           body: |
             ## Netflix Pro ${{ github.event.inputs.version_tag }}
-            * Authentic Netflix Mobile UI
-            * Cinema HQ Rock-Solid Resolver Engine
+            * Custom App Icon added
+            * Touch Drag Seekbar Added in Player
+            * Landscape Backdrop & Authentic Netflix UI
           files: |
             netflix_build_temp/build/app/outputs/flutter-apk/app-release.apk
         env:
