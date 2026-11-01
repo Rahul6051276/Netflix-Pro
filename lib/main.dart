@@ -215,14 +215,14 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   var heroBanners = [];
   int currentHeroIndex = 0;
-  final PageController _heroController = PageController(viewportFraction: 0.78);
+  final PageController _heroController = PageController(viewportFraction: 0.88);
   Timer? _heroTimer;
 
+  var netflixSeries = [];
   var hindiWebSeries = [];
   var bollywoodLatest = [];
   var hollywoodHindiDubbed = [];
   var southHindiDubbed = [];
-  var netflixSeries = [];
   var amazonSeries = [];
   var hollywoodHindiSeries = [];
 
@@ -296,13 +296,17 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   Future<void> _fetchTmdbContent() async {
     try {
-      final bollyRes = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=popularity.desc&vote_count.gte=10'));
-      if (bollyRes.statusCode == 200) {
-        bollywoodLatest = _parseResults(jsonDecode(bollyRes.body)['results']);
-        if (bollywoodLatest.isNotEmpty) heroBanners = bollywoodLatest.take(6).toList();
+      // 1. NETFLIX ORIGINALS (Network 213)
+      final netflixRes = await http.get(Uri.parse(
+          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=20'));
+      if (netflixRes.statusCode == 200) {
+        netflixSeries = _parseResults(jsonDecode(netflixRes.body)['results'], isTv: true);
+        if (netflixSeries.isNotEmpty) {
+          heroBanners = netflixSeries.take(6).toList(); // NETFLIX ORIGINALS IN HERO BANNER
+        }
       }
 
+      // 2. HINDI WEB SERIES
       final hindiTvRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=vote_count.desc&vote_count.gte=10'));
       if (hindiTvRes.statusCode == 200) {
@@ -312,30 +316,38 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             .toList();
       }
 
+      // 3. BOLLYWOOD MOVIES
+      final bollyRes = await http.get(Uri.parse(
+          '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=popularity.desc&vote_count.gte=10'));
+      if (bollyRes.statusCode == 200) {
+        bollywoodLatest = _parseResults(jsonDecode(bollyRes.body)['results']);
+        if (heroBanners.isEmpty && bollywoodLatest.isNotEmpty) {
+          heroBanners = bollywoodLatest.take(6).toList();
+        }
+      }
+
+      // 4. HOLLYWOOD HINDI DUBBED
       final hollyRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&vote_count.gte=100'));
       if (hollyRes.statusCode == 200) {
         hollywoodHindiDubbed = _parseResults(jsonDecode(hollyRes.body)['results']);
       }
 
+      // 5. SOUTH INDIAN DUBBED
       final southRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=popularity.desc&vote_count.gte=20'));
       if (southRes.statusCode == 200) {
         southHindiDubbed = _parseResults(jsonDecode(southRes.body)['results']);
       }
 
-      final netflixRes = await http.get(Uri.parse(
-          '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=20'));
-      if (netflixRes.statusCode == 200) {
-        netflixSeries = _parseResults(jsonDecode(netflixRes.body)['results'], isTv: true);
-      }
-
+      // 6. AMAZON ORIGINALS
       final amazonRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=1024&sort_by=popularity.desc&vote_count.gte=20'));
       if (amazonRes.statusCode == 200) {
         amazonSeries = _parseResults(jsonDecode(amazonRes.body)['results'], isTv: true);
       }
 
+      // 7. HOLLYWOOD SERIES
       final hollySeriesRes = await http.get(Uri.parse(
           '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_original_language=en&sort_by=popularity.desc&vote_count.gte=30'));
       if (hollySeriesRes.statusCode == 200) {
@@ -450,10 +462,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 ),
               ),
               const SizedBox(height: 12),
+              _categorySheetItem('Netflix Originals', () => _openCatalog('Netflix Originals', 'netflix_originals')),
+              _categorySheetItem('Hindi Web Series', () => _openCatalog('Hindi Web Series', 'hindi_series')),
               _categorySheetItem('Bollywood Movies', () => _openCatalog('Bollywood Movies', 'bollywood')),
               _categorySheetItem('South Indian (Hindi Dubbed)', () => _openCatalog('South Indian Movies', 'south')),
               _categorySheetItem('Hollywood Movies (Hindi Dubbed)', () => _openCatalog('Hollywood Movies', 'hollywood_movies')),
-              _categorySheetItem('Hindi Web Series', () => _openCatalog('Hindi Web Series', 'hindi_series')),
               _categorySheetItem('English Web Series', () => _openCatalog('English Web Series', 'english_series')),
             ],
           ),
@@ -528,13 +541,14 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
+  // ----------------- HERO CAROUSEL (WIDE LANDSCAPE BACKDROP) -----------------
   Widget _buildHeroCarousel() {
     if (heroBanners.isEmpty) return const SizedBox.shrink();
 
     return Column(
       children: [
         SizedBox(
-          height: 390,
+          height: 250, // Perfect wide 16:9 banner proportion for mobile
           child: PageView.builder(
             controller: _heroController,
             itemCount: heroBanners.length,
@@ -545,14 +559,14 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
-                margin: EdgeInsets.symmetric(horizontal: 8, vertical: isCurrent ? 0 : 14),
+                margin: EdgeInsets.symmetric(horizontal: 6, vertical: isCurrent ? 0 : 8),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.6),
+                      color: Colors.black.withOpacity(0.7),
                       blurRadius: 10,
-                      offset: const Offset(0, 6),
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
@@ -564,7 +578,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       fit: StackFit.expand,
                       children: [
                         Image.network(
-                          item['poster'],
+                          item['backdrop'], // WIDE HD LANDSCAPE BACKDROP
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1E1E1E)),
                         ),
@@ -574,7 +588,22 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [Colors.transparent, Colors.transparent, Colors.black87],
-                              stops: [0.0, 0.55, 1.0],
+                              stops: [0.0, 0.45, 1.0],
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 10,
+                          left: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE50914),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: const Text(
+                              'NETFLIX ORIGINAL',
+                              style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900),
                             ),
                           ),
                         ),
@@ -582,40 +611,40 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           bottom: 12,
                           left: 12,
                           right: 12,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
+                          child: Row(
                             children: [
-                              Text(
-                                item['title'],
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w900,
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      item['title'],
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${item['year']} • ⭐ ${item['rating']}',
+                                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${item['year']} • ⭐ ${item['rating']}',
-                                style: const TextStyle(color: Colors.white70, fontSize: 11),
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                                    ),
-                                    onPressed: () => _onItemTapped(item),
-                                    icon: const Icon(Icons.play_arrow, color: Colors.black, size: 22),
-                                    label: const Text('Play', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
-                                  ),
-                                ],
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                ),
+                                onPressed: () => _onItemTapped(item),
+                                icon: const Icon(Icons.play_arrow, color: Colors.black, size: 20),
+                                label: const Text('Play', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
                               ),
                             ],
                           ),
@@ -628,7 +657,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             },
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(
@@ -653,9 +682,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 10),
           child: Text(
-            'Continue Watching',
+            'Continue Watching for You',
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ),
@@ -725,7 +754,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
           child: Text(
             title,
             style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
@@ -799,6 +828,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
+  // ----------------- NETFLIX ROW ORDER -----------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -811,16 +841,18 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 CustomScrollView(
                   slivers: [
                     const SliverToBoxAdapter(child: SizedBox(height: 80)),
-                    SliverToBoxAdapter(child: _buildHeroCarousel()),
+                    SliverToBoxAdapter(child: _buildHeroCarousel()), // NETFLIX ORIGINALS SPOTLIGHT
                     if (continueWatchingList.isNotEmpty)
                       SliverToBoxAdapter(child: _buildContinueWatchingRow(continueWatchingList)),
-                    SliverToBoxAdapter(child: _buildNetflixRow('Bollywood Latest Movies', bollywoodLatest)),
-                    SliverToBoxAdapter(child: _buildNetflixRow('South Indian Movies (Hindi Dubbed)', southHindiDubbed)),
-                    SliverToBoxAdapter(child: _buildNetflixRow('Hindi Web Series (Indian Originals)', hindiWebSeries)),
-                    SliverToBoxAdapter(child: _buildNetflixRow('Hollywood Movies (Hindi Dubbed)', hollywoodHindiDubbed)),
-                    SliverToBoxAdapter(child: _buildNetflixRow('Netflix Specials & Series', netflixSeries)),
-                    SliverToBoxAdapter(child: _buildNetflixRow('Amazon Prime Originals', amazonSeries)),
-                    SliverToBoxAdapter(child: _buildNetflixRow('Hollywood Web Series', hollywoodHindiSeries)),
+                    
+                    // NETFLIX PRIORITY LAYOUT
+                    SliverToBoxAdapter(child: _buildNetflixRow('Only on Netflix (Original Series)', netflixSeries)),
+                    SliverToBoxAdapter(child: _buildNetflixRow('Trending Indian Web Series', hindiWebSeries)),
+                    SliverToBoxAdapter(child: _buildNetflixRow('Bollywood Blockbusters', bollywoodLatest)),
+                    SliverToBoxAdapter(child: _buildNetflixRow('Hollywood Hits (Hindi Dubbed)', hollywoodHindiDubbed)),
+                    SliverToBoxAdapter(child: _buildNetflixRow('South Action Hits (Hindi Dubbed)', southHindiDubbed)),
+                    SliverToBoxAdapter(child: _buildNetflixRow('Amazon Prime Specials', amazonSeries)),
+                    SliverToBoxAdapter(child: _buildNetflixRow('Global Web Series', hollywoodHindiSeries)),
                     const SliverToBoxAdapter(child: SizedBox(height: 80)),
                   ],
                 ),
@@ -982,13 +1014,15 @@ class _MobileCatalogGridViewState extends State<MobileCatalogGridView> {
   }
 
   Future<void> _fetch100Titles() async {
-    final bool isTv = widget.categoryType == 'hindi_series' || widget.categoryType == 'english_series';
+    final bool isTv = widget.categoryType == 'hindi_series' || widget.categoryType == 'english_series' || widget.categoryType == 'netflix_originals';
     var fetched = [];
 
     for (int page = 1; page <= 5; page++) {
       String url = '';
 
-      if (widget.categoryType == 'bollywood') {
+      if (widget.categoryType == 'netflix_originals') {
+        url = '${AppConfig.tmdbBase}/discover/tv?api_key=${AppConfig.tmdbKey}&with_networks=213&sort_by=popularity.desc&vote_count.gte=20&page=$page';
+      } else if (widget.categoryType == 'bollywood') {
         url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=10&page=$page';
       } else if (widget.categoryType == 'south') {
         url = '${AppConfig.tmdbBase}/discover/movie?api_key=${AppConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=primary_release_date.desc&vote_count.gte=15&page=$page';
