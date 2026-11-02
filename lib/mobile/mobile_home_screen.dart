@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -17,6 +18,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   List<dynamic> activeProviders = [];
   List<dynamic> continueWatchingList = [];
   dynamic billboardItem;
+  int _billboardIndex = 0;
+  Timer? _billboardTimer;
 
   List<dynamic> homeNetflixList = [];
   List<dynamic> homePrimeList = [];
@@ -34,11 +37,33 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     _loadAllMobileData();
   }
 
+  @override
+  void dispose() {
+    _billboardTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startBillboardTimer() {
+    _billboardTimer?.cancel();
+    // Har 7 second me banner apne aap agle movie par change hoga
+    _billboardTimer = Timer.periodic(const Duration(seconds: 7), (timer) {
+      if (homeNetflixList.isNotEmpty && mounted) {
+        setState(() {
+          _billboardIndex = (_billboardIndex + 1) % homeNetflixList.length;
+          billboardItem = homeNetflixList[_billboardIndex];
+        });
+      }
+    });
+  }
+
   Future<void> _loadAllMobileData() async {
     _loadContinueWatching();
     _fetchProviders();
     await _fetchHomeCatalogContent();
-    if (mounted) setState(() => isLoading = false);
+    if (mounted) {
+      setState(() => isLoading = false);
+      _startBillboardTimer();
+    }
   }
 
   Future<void> _loadContinueWatching() async {
@@ -69,7 +94,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
       if (netflixRes.statusCode == 200) {
         homeNetflixList = _parseList(jsonDecode(netflixRes.body)['results']);
-        if (homeNetflixList.isNotEmpty) billboardItem = homeNetflixList.first;
+        if (homeNetflixList.isNotEmpty) {
+          billboardItem = homeNetflixList.first;
+        }
       }
     } catch (_) {}
 
@@ -211,6 +238,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
+  // Animated Switching Billboard Banner
   Widget _buildMobileBillboard(dynamic item) {
     if (item == null) return const SizedBox.shrink();
 
@@ -224,15 +252,20 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (imgUrl.isNotEmpty)
-            Image.network(
-              imgUrl,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1F1F1F)),
-            )
-          else
-            Container(color: const Color(0xFF1F1F1F)),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 700),
+            child: imgUrl.isNotEmpty
+                ? Image.network(
+                    imgUrl,
+                    key: ValueKey<String>(imgUrl),
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                    alignment: Alignment.topCenter,
+                    errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1F1F1F)),
+                  )
+                : Container(key: const ValueKey('empty'), color: const Color(0xFF1F1F1F)),
+          ),
 
           Container(
             decoration: const BoxDecoration(
@@ -484,13 +517,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 ? homePrimeList.first
                 : (homeSouthHindiList.isNotEmpty
                     ? homeSouthHindiList.first
-                    : {
-                        'title': 'The Dark Knight',
-                        'backdrop': 'https://image.tmdb.org/t/p/w1280/nMKdUUepR0i5zn0y1T4CsSB5chy.jpg',
-                        'poster': 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
-                        'tmdb_id': 155,
-                        'isTv': false,
-                      })));
+                    : null)));
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
@@ -498,7 +525,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
           : Stack(
               children: [
-                // Scrollable Content
                 RefreshIndicator(
                   color: const Color(0xFFE50914),
                   backgroundColor: const Color(0xFF202020),
@@ -509,7 +535,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildMobileBillboard(activeItem),
+                        if (activeItem != null) _buildMobileBillboard(activeItem),
                         const SizedBox(height: 10),
 
                         if (continueWatchingList.isNotEmpty)
@@ -567,7 +593,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   ),
                 ),
 
-                // Top Sticky Bar
+                // Top Sticky Bar With Working Search
                 Positioned(
                   top: 0,
                   left: 0,
@@ -608,9 +634,20 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                   constraints: const BoxConstraints(),
                                 ),
                                 const SizedBox(width: 18),
+                                // Working Search Trigger
                                 IconButton(
                                   icon: const Icon(Icons.search, color: Colors.white, size: 24),
-                                  onPressed: () {},
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => MobileSearchScreen(
+                                          providers: activeProviders,
+                                          onPlaySaved: () => _loadContinueWatching(),
+                                        ),
+                                      ),
+                                    );
+                                  },
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                 ),
@@ -660,6 +697,194 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+// ============================================================================
+// MOBILE SEARCH SCREEN (LIVE TMDB QUERY)
+// ============================================================================
+class MobileSearchScreen extends StatefulWidget {
+  final List<dynamic> providers;
+  final VoidCallback onPlaySaved;
+
+  const MobileSearchScreen({super.key, required this.providers, required this.onPlaySaved});
+
+  @override
+  State<MobileSearchScreen> createState() => _MobileSearchScreenState();
+}
+
+class _MobileSearchScreenState extends State<MobileSearchScreen> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  var searchResults = [];
+  bool isSearching = false;
+  Timer? _debounce;
+
+  void _onQueryChanged(String query) {
+    _debounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        searchResults.clear();
+        isSearching = false;
+      });
+      return;
+    }
+
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      _executeSearch(query.trim());
+    });
+  }
+
+  Future<void> _executeSearch(String q) async {
+    setState(() => isSearching = true);
+    final encoded = Uri.encodeComponent(q);
+    final url = '${MobileConfig.tmdbBase}/search/multi?api_key=${MobileConfig.tmdbKey}&query=$encoded&language=en-US';
+
+    try {
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body)['results'];
+        var filtered = [];
+        final currentYear = DateTime.now().year.toString();
+
+        for (var m in (data ?? [])) {
+          final type = m['media_type'];
+          if (type != 'movie' && type != 'tv') continue;
+          if (m['poster_path'] == null && m['backdrop_path'] == null) continue;
+          final title = (m['title'] ?? m['name'] ?? 'Untitled').toString();
+          if (isSoapShow(title)) continue;
+
+          filtered.add({
+            'tmdb_id': m['id'],
+            'title': title,
+            'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
+            'rating': m['vote_average']?.toString() ?? '7.5',
+            'poster': m['poster_path'] != null
+                ? '${MobileConfig.imgBase}${m['poster_path']}'
+                : '${MobileConfig.backdropBase}${m['backdrop_path']}',
+            'backdrop': m['backdrop_path'] != null
+                ? '${MobileConfig.backdropBase}${m['backdrop_path']}'
+                : '${MobileConfig.imgBase}${m['poster_path']}',
+            'isTv': type == 'tv',
+          });
+        }
+
+        if (mounted) {
+          setState(() {
+            searchResults = filtered;
+            isSearching = false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => isSearching = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF141414),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF1F1F1F),
+        title: TextField(
+          controller: _searchCtrl,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+          decoration: const InputDecoration(
+            hintText: 'Search movies, web series...',
+            hintStyle: TextStyle(color: Colors.white54),
+            border: InputBorder.none,
+          ),
+          onChanged: _onQueryChanged,
+        ),
+        actions: [
+          if (_searchCtrl.text.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.clear, color: Colors.white70),
+              onPressed: () {
+                _searchCtrl.clear();
+                _onQueryChanged('');
+              },
+            ),
+        ],
+      ),
+      body: isSearching
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+          : searchResults.isEmpty
+              ? Center(
+                  child: Text(
+                    _searchCtrl.text.isEmpty ? 'Search for your favorite content' : 'No results found',
+                    style: const TextStyle(color: Colors.white54, fontSize: 15),
+                  ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.all(10),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: 0.64,
+                  ),
+                  itemCount: searchResults.length,
+                  itemBuilder: (ctx, idx) {
+                    final item = searchResults[idx];
+                    return InkWell(
+                      onTap: () {
+                        if (item['isTv'] == true) {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (_) => MobileEpisodeSheet(
+                              item: item,
+                              onSelected: (season, ep) {
+                                showModalBottomSheet(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (_) => MobileStreamSheet(
+                                    item: item,
+                                    season: season,
+                                    episode: ep,
+                                    providers: widget.providers,
+                                    onPlaySaved: widget.onPlaySaved,
+                                  ),
+                                );
+                              },
+                            ),
+                          );
+                        } else {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (_) => MobileStreamSheet(
+                              item: item,
+                              providers: widget.providers,
+                              onPlaySaved: widget.onPlaySaved,
+                            ),
+                          );
+                        }
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.network(
+                          item['poster'],
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
+                        ),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
