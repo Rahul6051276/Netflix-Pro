@@ -538,15 +538,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         letterSpacing: -0.3,
                       ),
                     ),
-                    Row(
+                   Row(
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.cast, color: Colors.white, size: 22),
-                          onPressed: () {},
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                        const SizedBox(width: 18),
                         IconButton(
                           icon: const Icon(Icons.download_for_offline_outlined, color: Colors.white, size: 23),
                           onPressed: () {},
@@ -562,8 +555,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         ),
                       ],
                     ),
-                  ],
-                ),
                 const SizedBox(height: 14),
                 Row(
                   children: [
