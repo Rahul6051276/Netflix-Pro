@@ -579,6 +579,111 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         MaterialPageRoute(
                           builder: (_) => MobileCategoryGridScreen(
                             title: 'Movies',
+  // ============================================================================
+  // TOP SPOTLIGHT BILLBOARD WITH FOR RAHUL & PILLS (NO CHROMECAST)
+  // ============================================================================
+  Widget _buildMobileBillboard(dynamic item) {
+    if (item == null) return const SizedBox.shrink();
+
+    final String imgUrl = (item['backdrop'] != null && item['backdrop'].toString().isNotEmpty)
+        ? item['backdrop'].toString()
+        : (item['poster'] != null ? item['poster'].toString() : '');
+
+    return SizedBox(
+      height: 520,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (imgUrl.isNotEmpty)
+            Image.network(
+              imgUrl,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1F1F1F)),
+            )
+          else
+            Container(color: const Color(0xFF1F1F1F)),
+
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black87,
+                  Colors.black38,
+                  Colors.transparent,
+                  Color(0xCC141414),
+                  Color(0xFF141414),
+                ],
+                stops: [0.0, 0.18, 0.45, 0.8, 1.0],
+              ),
+            ),
+          ),
+
+          // TOP STATUS & PILL BUTTONS (Chromecast Removed)
+          Positioned(
+            top: 40,
+            left: 16,
+            right: 16,
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'For Rahul',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.download_for_offline_outlined, color: Colors.white, size: 23),
+                          onPressed: () {},
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 18),
+                        IconButton(
+                          icon: const Icon(Icons.search, color: Colors.white, size: 24),
+                          onPressed: () {},
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _buildTopPill('TV Shows', onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MobileCategoryGridScreen(
+                            title: 'TV Shows',
+                            baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}',
+                            isTv: true,
+                            providers: activeProviders,
+                            onPlaySaved: () => _loadContinueWatching(),
+                          ),
+                        ),
+                      );
+                    }),
+                    const SizedBox(width: 8),
+                    _buildTopPill('Movies', onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MobileCategoryGridScreen(
+                            title: 'Movies',
                             baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}',
                             isTv: false,
                             providers: activeProviders,
