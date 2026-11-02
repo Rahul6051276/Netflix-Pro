@@ -765,7 +765,7 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
           const SizedBox(height: 12),
           GridView.builder(
             shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics),
+            physics: const NeverScrollableScrollPhysics(),
             itemCount: sportsChannels.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
