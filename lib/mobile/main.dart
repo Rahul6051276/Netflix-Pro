@@ -235,22 +235,31 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  // ============================================================================
+    // ============================================================================
   // TOP SPOTLIGHT BILLBOARD
   // ============================================================================
   Widget _buildMobileBillboard(dynamic item) {
+    if (item == null) return const SizedBox.shrink();
+
+    final String imgUrl = (item['backdrop'] != null && item['backdrop'].toString().isNotEmpty)
+        ? item['backdrop'].toString()
+        : (item['poster'] != null ? item['poster'].toString() : '');
+
     return SizedBox(
-      height: 440,
+      height: 460,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            item['poster'],
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            errorBuilder: (_, __, ___) => Container(color: const Color(0xFF141414)),
-          ),
+          if (imgUrl.isNotEmpty)
+            Image.network(
+              imgUrl,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1F1F1F)),
+            )
+          else
+            Container(color: const Color(0xFF1F1F1F)),
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -267,59 +276,25 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             ),
           ),
           Positioned(
-            bottom: 12,
+            bottom: 20,
             left: 16,
             right: 16,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE50914),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                      child: const Text('NETFLIX PRO', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      item['isTv'] == true ? 'SERIES' : 'MOVIE',
-                      style: const TextStyle(color: Colors.white70, fontSize: 11, letterSpacing: 2, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
                 Text(
-                  item['title'].toString().toUpperCase(),
+                  item['title'] ?? item['name'] ?? '',
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.white,
                     fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.8,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('${item['rating']} ★ Match', style: const TextStyle(color: Color(0xFF46D369), fontSize: 12, fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 10),
-                    Text('${item['year']}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(border: Border.all(color: Colors.white38), borderRadius: BorderRadius.circular(3)),
-                      child: const Text('Ultra HD 4K', style: TextStyle(color: Colors.white70, fontSize: 9)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -327,12 +302,24 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                       ),
-                      onPressed: () => _onItemSelect(item),
-                      icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                      label: const Text('Play', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      onPressed: () {},
+                      icon: const Icon(Icons.play_arrow, size: 22),
+                      label: const Text('Play', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white24,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                      ),
+                      onPressed: () {},
+                      icon: const Icon(Icons.info_outline, size: 20),
+                      label: const Text('Info', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -343,7 +330,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       ),
     );
   }
-
   // ============================================================================
   // MOBILE HORIZONTAL ROW (WITH SEE ALL)
   // ============================================================================
@@ -1289,3 +1275,4 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     );
   }
 }
+ 
