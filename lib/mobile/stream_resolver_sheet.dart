@@ -12,7 +12,7 @@ import 'category_grid_screen.dart';
 // FULL SCREEN CATEGORIES OVERLAY MODAL
 // ============================================================================
 void openCategoriesModal(BuildContext context, List<dynamic> providers, VoidCallback onRefresh) {
-  final List> allCategories = [
+  List allCategories = [
     {'title': 'South Action Hits (Hindi Dubbed)', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn', 'isTv': false},
     {'title': 'Hollywood Blockbusters (Hindi Dubbed)', 'url': '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}', 'isTv': false},
     {'title': 'Latest Netflix Blockbusters', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN', 'isTv': false},
@@ -102,7 +102,6 @@ void openCategoriesModal(BuildContext context, List<dynamic> providers, VoidCall
     },
   );
 }
-
 // ============================================================================
 // MOBILE EPISODE SELECTOR BOTTOM SHEET
 // ============================================================================
