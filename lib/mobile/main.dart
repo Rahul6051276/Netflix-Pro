@@ -71,11 +71,117 @@ class NetflixMobileApp extends StatelessWidget {
         primaryColor: const Color(0xFFE50914),
         fontFamily: 'sans-serif',
       ),
-      home: const MobileHomeScreen(),
+              home: const NetflixSplashScreen(),
     );
   }
 }
+// ============================================================================
+// NETFLIX INTRO / SPLASH SCREEN
+// ============================================================================
+class NetflixSplashScreen extends StatefulWidget {
+  const NetflixSplashScreen({super.key});
 
+  @override
+  State<NetflixSplashScreen> createState() => _NetflixSplashScreenState();
+}
+
+class _NetflixSplashScreenState extends State<NetflixSplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+
+    _scaleAnimation = Tween<double>(begin: 0.6, end: 1.25).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.4, curve: Curves.easeIn)),
+    );
+
+    _controller.forward();
+
+    Timer(const Duration(milliseconds: 2200), () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 600),
+            pageBuilder: (_, __, ___) => const MobileHomeScreen(),
+            transitionsBuilder: (_, animation, __, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Opacity(
+              opacity: _opacityAnimation.value,
+              child: Transform.scale(
+                scale: _scaleAnimation.value,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Text(
+                      'N',
+                      style: TextStyle(
+                        color: Color(0xFFE50914),
+                        fontSize: 90,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -2.0,
+                        fontFamily: 'Helvetica Neue',
+                        shadows: [
+                          Shadow(
+                            blurRadius: 25.0,
+                            color: Color(0x99E50914),
+                            offset: Offset(0, 0),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 12),
+                    Text(
+                      'NETFLIX PRO',
+                      style: TextStyle(
+                        color: Color(0xFFE50914),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 4.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
 class MobileHomeScreen extends StatefulWidget {
   const MobileHomeScreen({super.key});
 
@@ -134,18 +240,19 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     } catch (_) {}
   }
 
-    Future<void> _fetchHomeCatalogContent() async {
+  Future<void> _fetchHomeCatalogContent() async {
     try {
       // 1. Netflix Blockbusters (Hindi + Global)
       final netflixRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 8));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
       if (netflixRes.statusCode == 200) {
         homeNetflixList = _parseList(jsonDecode(netflixRes.body)['results']);
+        if (homeNetflixList.isNotEmpty) billboardItem = homeNetflixList.first;
       }
 
       // 2. Prime Video Hits
       final primeRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 8));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
       if (primeRes.statusCode == 200) {
         homePrimeList = _parseList(jsonDecode(primeRes.body)['results']);
       }
@@ -171,19 +278,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           '${MobileConfig.tmdbBase}/tv/on_the_air?api_key=${MobileConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 8));
       if (engTvRes.statusCode == 200) {
         homeEnglishSeriesList = _parseList(jsonDecode(engTvRes.body)['results'], isTv: true);
-      }
-
-      // GUARANTEED BILLBOARD ASSIGNMENT (Fallback Mechanism)
-      if (homeNetflixList.isNotEmpty) {
-        billboardItem = homeNetflixList.first;
-      } else if (homePrimeList.isNotEmpty) {
-        billboardItem = homePrimeList.first;
-      } else if (homeHotstarList.isNotEmpty) {
-        billboardItem = homeHotstarList.first;
-      } else if (homeHindiSeriesList.isNotEmpty) {
-        billboardItem = homeHindiSeriesList.first;
-      } else if (homeEnglishSeriesList.isNotEmpty) {
-        billboardItem = homeEnglishSeriesList.first;
       }
     } catch (_) {}
   }
@@ -247,8 +341,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-      // ============================================================================
-  // TOP SPOTLIGHT BILLBOARD (NETFLIX BRANDED WELCOME ENTRY)
+    // ============================================================================
+  // TOP SPOTLIGHT BILLBOARD
   // ============================================================================
   Widget _buildMobileBillboard(dynamic item) {
     if (item == null) return const SizedBox.shrink();
@@ -258,7 +352,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         : (item['poster'] != null ? item['poster'].toString() : '');
 
     return SizedBox(
-      height: 480,
+      height: 460,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
@@ -278,60 +372,15 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black54,
+                  Colors.transparent,
                   Colors.transparent,
                   Color(0xCC141414),
                   Color(0xFF141414),
                 ],
-                stops: [0.0, 0.25, 0.75, 1.0],
+                stops: [0.0, 0.45, 0.75, 1.0],
               ),
             ),
           ),
-
-          // TOP WELCOME HEADER WITH RED 'N'
-          Positioned(
-            top: 20,
-            left: 16,
-            right: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: const Text(
-                    'N',
-                    style: TextStyle(
-                      color: Color(0xFFE50914),
-                      fontSize: 34,
-                      fontWeight: FontWeight.w900,
-                      fontFamily: 'Helvetica Neue',
-                      letterSpacing: -1.0,
-                    ),
-                  ),
-                ),
-                Row(
-                  children: const [
-                    Text(
-                      'TV Shows',
-                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(width: 18),
-                    Text(
-                      'Movies',
-                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(width: 18),
-                    Text(
-                      'Categories',
-                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // BOTTOM TITLE & ACTION CONTROLS
           Positioned(
             bottom: 20,
             left: 16,
@@ -362,8 +411,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                       ),
-                      onPressed: () => _onItemSelect(item),
-                      icon: const Icon(Icons.play_arrow, size: 24),
+                      onPressed: () {},
+                      icon: const Icon(Icons.play_arrow, size: 22),
                       label: const Text('Play', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
                     const SizedBox(width: 12),
@@ -374,7 +423,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                       ),
-                      onPressed: () => _onItemSelect(item),
+                      onPressed: () {},
                       icon: const Icon(Icons.info_outline, size: 20),
                       label: const Text('Info', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
