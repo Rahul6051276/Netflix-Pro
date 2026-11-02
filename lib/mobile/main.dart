@@ -388,7 +388,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   // FULL SCREEN CATEGORIES OVERLAY MODAL
   // ============================================================================
   void _openCategoriesModal() {
-    final List> allCategories = [
+    final List allCategories = [
       {'title': 'South Action Hits (Hindi Dubbed)', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn', 'isTv': false},
       {'title': 'Hollywood Blockbusters (Hindi Dubbed)', 'url': '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}', 'isTv': false},
       {'title': 'Latest Netflix Blockbusters', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN', 'isTv': false},
