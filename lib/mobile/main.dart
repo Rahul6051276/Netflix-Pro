@@ -1,844 +1,505 @@
-// ============================================================================
-// NETFLIX PRO MOBILE - COMPLETE STANDALONE EDITION
-// ============================================================================
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_intent_plus/android_intent.dart';
-import 'package:android_intent_plus/flag.dart';
 import '../internal_player.dart';
 
-// SSL Handshake Override
-class MobileHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
-  }
-}
-
 void main() {
-  HttpOverrides.global = MobileHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  runApp(const NetflixMobileApp());
+  runApp(const NetflixProMobileApp());
 }
 
-class MobileConfig {
-  static const String gistUrl =
-      'https://gist.githubusercontent.com/Rahul6051276/239654d65b2124bffd0ea21b5251dc02/raw/providers.json';
-  static const String tmdbKey = 'b7cd3340a794e5a2f35e3abb820b497f';
-  static const String tmdbBase = 'https://api.themoviedb.org/3';
-  static const String imgBase = 'https://image.tmdb.org/t/p/w500';
-  static const String backdropBase = 'https://image.tmdb.org/t/p/w1280';
-}
-
-// Strict Daily Soap & TV Serial Filter
-bool isSoapShow(String title) {
-  final t = title.toLowerCase();
-  const blocked = [
-    'c.i.d.', 'cid', 'bhabiji', 'balika vadhu', 'kapil sharma', 'roadies',
-    'pavitra rishta', 'kumkum bhagya', 'jhanak', 'kundali bhagya',
-    'ye rishta', 'yrkkh', 'taarak mehta', 'tmkoc', 'kasautii', 'ishqbaaaz',
-    'anupamaa', 'bigg boss', 'khatron ke khiladi', 'splitsvilla',
-    'crime patrol', 'savdhaan india', 'diya aur baati', 'qubool hai',
-    'jamai raja', 'tujhse hai raabta', 'radhakrishn', 'koffee with karan',
-    'chudail', 'sasural', 'fitoor', 'bhojpuri', 'nagin', 'naagin', 'parineetii',
-    'udaariyaan', 'imlie', 'ghukk', 'shravani', 'suhaagan', 'dharampatnii',
-    'lo chudail', 'chali sasural'
-  ];
-  return blocked.any((b) => t.contains(b));
-}
-
-class NetflixMobileApp extends StatelessWidget {
-  const NetflixMobileApp({super.key});
+class NetflixProMobileApp extends StatelessWidget {
+  const NetflixProMobileApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Netflix Pro',
+      title: 'Netflix Pro Mobile',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF141414),
+        scaffoldBackgroundColor: const Color(0xFF0F1014),
         primaryColor: const Color(0xFFE50914),
-        fontFamily: 'sans-serif',
-      ),
-      home: const NetflixSplashScreen(),
-    );
-  }
-}
-
-// ============================================================================
-// NETFLIX INTRO / SPLASH SCREEN
-// ============================================================================
-class NetflixSplashScreen extends StatefulWidget {
-  const NetflixSplashScreen({super.key});
-
-  @override
-  State<NetflixSplashScreen> createState() => _NetflixSplashScreenState();
-}
-
-class _NetflixSplashScreenState extends State<NetflixSplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _opacityAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.6, end: 1.25).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
-
-    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.4, curve: Curves.easeIn)),
-    );
-
-    _controller.forward();
-
-    Timer(const Duration(milliseconds: 2200), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 600),
-            pageBuilder: (_, __, ___) => const MobileHomeScreen(),
-            transitionsBuilder: (_, animation, __, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-          ),
-        );
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Center(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Opacity(
-              opacity: _opacityAnimation.value,
-              child: Transform.scale(
-                scale: _scaleAnimation.value,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Text(
-                      'N',
-                      style: TextStyle(
-                        color: Color(0xFFE50914),
-                        fontSize: 90,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -2.0,
-                        fontFamily: 'Helvetica Neue',
-                        shadows: [
-                          Shadow(
-                            blurRadius: 25.0,
-                            color: Color(0x99E50914),
-                            offset: Offset(0, 0),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'NETFLIX PRO',
-                      style: TextStyle(
-                        color: Color(0xFFE50914),
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 4.0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFFE50914),
+          secondary: Color(0xFFE50914),
         ),
       ),
+      home: const MobileHomeScreen(),
     );
   }
 }
 
-// ============================================================================
-// MOBILE HOME SCREEN
-// ============================================================================
 class MobileHomeScreen extends StatefulWidget {
-  const MobileHomeScreen({super.key});
+  const MobileHomeScreen({Key? key}) : super(key: key);
 
   @override
   State<MobileHomeScreen> createState() => _MobileHomeScreenState();
 }
 
 class _MobileHomeScreenState extends State<MobileHomeScreen> {
-  List<dynamic> activeProviders = [];
-  List<dynamic> continueWatchingList = [];
-  dynamic billboardItem;
-
-  // Home Categories
-  List<dynamic> homeNetflixList = [];
-  List<dynamic> homePrimeList = [];
-  List<dynamic> homeHotstarList = [];
-  List<dynamic> homeSouthHindiList = [];
-  List<dynamic> homeHollywoodHindiList = [];
-  List<dynamic> homeHindiSeriesList = [];
-  List<dynamic> homeEnglishSeriesList = [];
-
-  bool isLoading = true;
+  int _currentIndex = 0;
+  bool _isLoading = true;
+  Map<String, dynamic> _config = {};
+  
+  List trendingMovies = [];
+  List bollywoodMovies = [];
+  List southMovies = [];
+  List actionMovies = [];
+  List watchlist = [];
+  
+  final String gistConfigUrl =
+      'https://gist.githubusercontent.com/Rahul6051276/5d1dbbe072236fa7c61bf64c9ca4e8df/raw/providers.json';
+  final String tmdbApiKey = 'e69ec06ce3bc891f9b3662d558a5e3df';
 
   @override
   void initState() {
     super.initState();
-    _loadAllMobileData();
+    _loadAllContent();
   }
 
-  Future<void> _loadAllMobileData() async {
-    _loadContinueWatching();
-    _fetchProviders();
-    await _fetchHomeCatalogContent();
-    if (mounted) setState(() => isLoading = false);
+  Future<void> _loadAllContent() async {
+    setState(() => _isLoading = true);
+    await _loadWatchlist();
+    await _fetchGistConfig();
+    await _fetchTMDBContent();
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
-  Future<void> _loadContinueWatching() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload();
-      final raw = prefs.getString('continue_watching_mobile');
-      if (raw != null && raw.isNotEmpty && mounted) {
-        setState(() {
-          continueWatchingList = jsonDecode(raw) as List<dynamic>;
-        });
+  Future<void> _loadWatchlist() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('mobile_watchlist');
+    if (saved != null) {
+      try {
+        watchlist = jsonDecode(saved);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _toggleWatchlist(Map movie) async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = movie['id'];
+    final exists = watchlist.any((item) => item['id'] == id);
+
+    setState(() {
+      if (exists) {
+        watchlist.removeWhere((item) => item['id'] == id);
+      } else {
+        watchlist.add(movie);
       }
-    } catch (_) {}
+    });
+
+    await prefs.setString('mobile_watchlist', jsonEncode(watchlist));
   }
 
-  Future<void> _fetchProviders() async {
+  Future<void> _fetchGistConfig() async {
     try {
-      final res = await http.get(Uri.parse(MobileConfig.gistUrl)).timeout(const Duration(seconds: 6));
+      final res = await http.get(Uri.parse(gistConfigUrl)).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
-        activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
+        _config = jsonDecode(res.body);
       }
     } catch (_) {}
   }
 
-  Future<void> _fetchHomeCatalogContent() async {
-    // 1. Netflix Blockbusters
+  Future<void> _fetchTMDBContent() async {
     try {
-      final netflixRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
-      if (netflixRes.statusCode == 200) {
-        homeNetflixList = _parseList(jsonDecode(netflixRes.body)['results']);
-        if (homeNetflixList.isNotEmpty) billboardItem = homeNetflixList.first;
-        if (mounted) setState(() => isLoading = false);
+      final tRes = await http.get(Uri.parse(
+        'https://api.themoviedb.org/3/trending/movie/week?api_key=$tmdbApiKey',
+      ));
+      if (tRes.statusCode == 200) {
+        final data = jsonDecode(tRes.body);
+        trendingMovies = data['results'] ?? [];
       }
-    } catch (_) {}
 
-    // 2. Prime Video Hits
-    try {
-      final primeRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
-      if (primeRes.statusCode == 200) {
-        homePrimeList = _parseList(jsonDecode(primeRes.body)['results']);
-        billboardItem ??= homePrimeList.isNotEmpty ? homePrimeList.first : null;
-        if (mounted) setState(() {});
+      final bRes = await http.get(Uri.parse(
+        'https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&with_original_language=hi&sort_by=popularity.desc',
+      ));
+      if (bRes.statusCode == 200) {
+        final data = jsonDecode(bRes.body);
+        bollywoodMovies = data['results'] ?? [];
       }
-    } catch (_) {}
 
-    // 3. Disney+ Hotstar Specials
-    try {
-      final hotstarRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 4));
-      if (hotstarRes.statusCode == 200) {
-        homeHotstarList = _parseList(jsonDecode(hotstarRes.body)['results']);
-        billboardItem ??= homeHotstarList.isNotEmpty ? homeHotstarList.first : null;
-        if (mounted) setState(() {});
+      final sRes = await http.get(Uri.parse(
+        'https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&with_original_language=te|ta|ml|kn&sort_by=popularity.desc',
+      ));
+      if (sRes.statusCode == 200) {
+        final data = jsonDecode(sRes.body);
+        southMovies = data['results'] ?? [];
       }
-    } catch (_) {}
 
-    // 4. South Movies (Hindi Dubbed)
-    try {
-      final southRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
-      if (southRes.statusCode == 200) {
-        homeSouthHindiList = _parseList(jsonDecode(southRes.body)['results']);
-        billboardItem ??= homeSouthHindiList.isNotEmpty ? homeSouthHindiList.first : null;
-        if (mounted) setState(() {});
-      }
-    } catch (_) {}
-
-    // 5. Hollywood Blockbusters (Hindi Dubbed)
-    try {
-      final hollywoodRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}&page=1')).timeout(const Duration(seconds: 4));
-      if (hollywoodRes.statusCode == 200) {
-        homeHollywoodHindiList = _parseList(jsonDecode(hollywoodRes.body)['results']);
-        billboardItem ??= homeHollywoodHindiList.isNotEmpty ? homeHollywoodHindiList.first : null;
-        if (mounted) setState(() {});
-      }
-    } catch (_) {}
-
-    // 6. Latest Hindi Web Series
-    try {
-      final hindiTvRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=3')).timeout(const Duration(seconds: 4));
-      if (hindiTvRes.statusCode == 200) {
-        homeHindiSeriesList = _parseList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
-            .where((item) => !isSoapShow(item['title'] ?? ''))
-            .toList();
-        billboardItem ??= homeHindiSeriesList.isNotEmpty ? homeHindiSeriesList.first : null;
-        if (mounted) setState(() {});
-      }
-    } catch (_) {}
-
-    // 7. Global Web Series
-    try {
-      final engTvRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/tv/on_the_air?api_key=${MobileConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 4));
-      if (engTvRes.statusCode == 200) {
-        homeEnglishSeriesList = _parseList(jsonDecode(engTvRes.body)['results'], isTv: true);
-        if (mounted) setState(() {});
+      final aRes = await http.get(Uri.parse(
+        'https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&with_genres=28&sort_by=popularity.desc',
+      ));
+      if (aRes.statusCode == 200) {
+        final data = jsonDecode(aRes.body);
+        actionMovies = data['results'] ?? [];
       }
     } catch (_) {}
   }
 
-  List<dynamic> _parseList(dynamic list, {bool isTv = false}) {
-    var res = [];
-    final currentYear = DateTime.now().year.toString();
-    for (var m in (list ?? [])) {
-      if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
-      final t = (m['title'] ?? m['name'] ?? 'Untitled').toString();
-      if (isTv && isSoapShow(t)) continue;
-
-      res.add({
-        'tmdb_id': m['id'],
-        'title': t,
-        'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
-        'rating': m['vote_average']?.toString() ?? '7.5',
-        'backdrop': m['backdrop_path'] != null
-            ? '${MobileConfig.backdropBase}${m['backdrop_path']}'
-            : '${MobileConfig.imgBase}${m['poster_path']}',
-        'poster': m['poster_path'] != null
-            ? '${MobileConfig.imgBase}${m['poster_path']}'
-            : '${MobileConfig.backdropBase}${m['backdrop_path']}',
-        'overview': m['overview'] ?? '',
-        'isTv': isTv,
-      });
-    }
-    return res;
-  }
-
-  void _onItemSelect(dynamic item) {
-    if (item['isTv'] == true) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) => MobileEpisodeSheet(
-          item: item,
-          onSelected: (season, episode) {
-            _showMobileStreamSheet(item, season: season, episode: episode);
-          },
-        ),
-      );
-    } else {
-      _showMobileStreamSheet(item);
-    }
-  }
-
-  void _showMobileStreamSheet(dynamic item, {int? season, int? episode}) {
+  void _openStreamSheet(Map item) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => MobileStreamSheet(
+      builder: (_) => MobileStreamSheet(
         item: item,
-        season: season,
-        episode: episode,
-        providers: activeProviders,
-        onPlaySaved: () => _loadContinueWatching(),
+        config: _config,
       ),
     );
   }
 
-  // ============================================================================
-  // FULL SCREEN CATEGORIES OVERLAY MODAL
-  // ============================================================================
-  void _openCategoriesModal() {
+  Widget _buildHomeView() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFE50914)),
+      );
+    }
+
+    final billboardItem = trendingMovies.isNotEmpty ? trendingMovies[0] : null;
+
     final List allCategories = [
-      {'title': 'South Action Hits (Hindi Dubbed)', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn', 'isTv': false},
-      {'title': 'Hollywood Blockbusters (Hindi Dubbed)', 'url': '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}', 'isTv': false},
-      {'title': 'Latest Netflix Blockbusters', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN', 'isTv': false},
-      {'title': 'Amazon Prime Video Hits', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN', 'isTv': false},
-      {'title': 'Disney+ Hotstar Specials', 'url': '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN', 'isTv': false},
-      {'title': 'Trending Hindi Web Series', 'url': '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=3', 'isTv': true},
-      {'title': 'Action & Adventure', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28', 'isTv': false},
-      {'title': 'Suspense & Thrillers', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53', 'isTv': false},
-      {'title': 'Sci-Fi & Fantasy', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=878', 'isTv': false},
-      {'title': 'Horror Movies', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=27', 'isTv': false},
-      {'title': 'Comedy Specials', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=35', 'isTv': false},
-      {'title': 'Global TV Hits', 'url': '${MobileConfig.tmdbBase}/tv/popular?api_key=${MobileConfig.tmdbKey}&language=en-US', 'isTv': true},
+      {'title': 'Latest & Trending', 'items': trendingMovies},
+      {'title': 'Bollywood Blockbusters', 'items': bollywoodMovies},
+      {'title': 'South Cinema Special', 'items': southMovies},
+      {'title': 'Action & Adventure', 'items': actionMovies},
     ];
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.black.withOpacity(0.92),
-      builder: (ctx) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.85,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(2)),
-              ),
-              const SizedBox(height: 22),
-              const Text(
-                'Categories',
-                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-              ),
-              const SizedBox(height: 18),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: allCategories.length,
-                  itemBuilder: (context, index) {
-                    final cat = allCategories[index];
-                    final String catTitle = (cat['title'] ?? '').toString();
-                    final String catUrl = (cat['url'] ?? '').toString();
-                    final bool catIsTv = cat['isTv'] == true;
-
-                    return InkWell(
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MobileCategoryGridScreen(
-                              title: catTitle,
-                              baseUrl: catUrl,
-                              isTv: catIsTv,
-                              providers: activeProviders,
-                              onPlaySaved: () => _loadContinueWatching(),
+    return RefreshIndicator(
+      color: const Color(0xFFE50914),
+      backgroundColor: const Color(0xFF1E2029),
+      onRefresh: _loadAllContent,
+      child: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            backgroundColor: const Color(0xFF0F1014),
+            pinned: true,
+            expandedHeight: billboardItem != null ? 360 : 60,
+            flexibleSpace: billboardItem != null
+                ? FlexibleSpaceBar(
+                    background: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.network(
+                          'https://image.tmdb.org/t/p/w780${billboardItem['backdrop_path'] ?? billboardItem['poster_path']}',
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(color: Colors.black26),
+                        ),
+                        Container(
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Color(0x880F1014),
+                                Color(0xFF0F1014),
+                              ],
                             ),
                           ),
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        child: Text(
-                          catTitle,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: index < 2 ? const Color(0xFFE50914) : Colors.white70,
-                            fontSize: 17,
-                            fontWeight: index < 2 ? FontWeight.w900 : FontWeight.w600,
+                        ),
+                        Positioned(
+                          bottom: 16,
+                          left: 16,
+                          right: 16,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                billboardItem['title'] ?? billboardItem['name'] ?? '',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: Colors.black,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.play_arrow),
+                                    label: const Text('Play'),
+                                    onPressed: () => _openStreamSheet(billboardItem),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.white,
+                                      side: const BorderSide(color: Colors.white54),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                    ),
+                                    icon: Icon(
+                                      watchlist.any((e) => e['id'] == billboardItem['id'])
+                                          ? Icons.check
+                                          : Icons.add,
+                                    ),
+                                    label: const Text('My List'),
+                                    onPressed: () => _toggleWatchlist(billboardItem),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              FloatingActionButton(
-                mini: true,
-                backgroundColor: Colors.white,
-                onPressed: () => Navigator.pop(ctx),
-                child: const Icon(Icons.close, color: Colors.black, size: 24),
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // Pill Button Helper
-  Widget _buildTopPill(String title, {required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.4),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white30, width: 1.0),
-        ),
-        child: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ============================================================================
-  // TOP SPOTLIGHT BILLBOARD WITH FOR RAHUL & PILLS (NO CHROMECAST)
-  // ============================================================================
-  Widget _buildMobileBillboard(dynamic item) {
-    if (item == null) return const SizedBox.shrink();
-
-    final String imgUrl = (item['backdrop'] != null && item['backdrop'].toString().isNotEmpty)
-        ? item['backdrop'].toString()
-        : (item['poster'] != null ? item['poster'].toString() : '');
-
-    return SizedBox(
-      height: 520,
-      width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (imgUrl.isNotEmpty)
-            Image.network(
-              imgUrl,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1F1F1F)),
-            )
-          else
-            Container(color: const Color(0xFF1F1F1F)),
-
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black87,
-                  Colors.black38,
-                  Colors.transparent,
-                  Color(0xCC141414),
-                  Color(0xFF141414),
-                ],
-                stops: [0.0, 0.18, 0.45, 0.8, 1.0],
-              ),
-            ),
-          ),
-
-          // TOP STATUS & PILL BUTTONS (NO CHROMECAST)
-          Positioned(
-            top: 40,
-            left: 16,
-            right: 16,
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'For Rahul',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.download_for_offline_outlined, color: Colors.white, size: 23),
-                          onPressed: () {},
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                        const SizedBox(width: 18),
-                        IconButton(
-                          icon: const Icon(Icons.search, color: Colors.white, size: 24),
-                          onPressed: () {},
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
                         ),
                       ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    _buildTopPill('TV Shows', onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => MobileCategoryGridScreen(
-                            title: 'TV Shows',
-                            baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}',
-                            isTv: true,
-                            providers: activeProviders,
-                            onPlaySaved: () => _loadContinueWatching(),
-                          ),
-                        ),
-                      );
-                    }),
-                    const SizedBox(width: 8),
-                    _buildTopPill('Movies', onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => MobileCategoryGridScreen(
-                            title: 'Movies',
-                            baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}',
-                            isTv: false,
-                            providers: activeProviders,
-                            onPlaySaved: () => _loadContinueWatching(),
-                          ),
-                        ),
-                      );
-                    }),
-                    const SizedBox(width: 8),
-                    _buildTopPill('Categories ⌵', onTap: () => _openCategoriesModal()),
-                  ],
-                ),
-              ],
+                  )
+                : null,
+            title: const Text(
+              'NETFLIX PRO',
+              style: TextStyle(
+                color: Color(0xFFE50914),
+                fontWeight: FontWeight.w900,
+                letterSpacing: 2.0,
+                fontSize: 20,
+              ),
             ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.search, color: Colors.white),
+                onPressed: () {
+                  showSearch(
+                    context: context,
+                    delegate: MovieSearchDelegate(
+                      apiKey: tmdbApiKey,
+                      onMovieSelected: _openStreamSheet,
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final cat = allCategories[index];
+                final List items = cat['items'] ?? [];
+                if (items.isEmpty) return const SizedBox.shrink();
 
-          // BOTTOM TITLE & ACTION BUTTONS
-          Positioned(
-            bottom: 18,
-            left: 20,
-            right: 20,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  item['title'] ?? item['name'] ?? '',
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    letterSpacing: 0.6,
-                    shadows: [
-                      Shadow(blurRadius: 10, color: Colors.black, offset: Offset(0, 2)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Action • Suspense • Blockbuster • HD',
-                  style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Text(
+                        cat['title'],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
-                        onPressed: () => _onItemSelect(item),
-                        icon: const Icon(Icons.play_arrow, size: 26, color: Colors.black),
-                        label: const Text('Play', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2B2B2B),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                        ),
-                        onPressed: () => _onItemSelect(item),
-                        icon: const Icon(Icons.add, size: 24, color: Colors.white),
-                        label: const Text('My List', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    SizedBox(
+                      height: 180,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        itemCount: items.length,
+                        itemBuilder: (context, i) {
+                          final item = items[i];
+                          final poster = item['poster_path'];
+                          return GestureDetector(
+                            onTap: () => _openStreamSheet(item),
+                            child: Container(
+                              width: 120,
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(6),
+                                color: const Color(0xFF1E2029),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: poster != null
+                                    ? Image.network(
+                                        'https://image.tmdb.org/t/p/w342$poster',
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Center(child: Icon(Icons.movie, color: Colors.white24)),
+                                      )
+                                    : const Center(child: Icon(Icons.movie, color: Colors.white24)),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ],
-                ),
-              ],
+                );
+              },
+              childCount: allCategories.length,
             ),
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 40)),
         ],
       ),
     );
   }
 
-  // ============================================================================
-  // MOBILE HORIZONTAL ROW (WITH SEE ALL)
-  // ============================================================================
-  Widget _buildMobileRow(
-    String title,
-    List<dynamic> items,
-    String baseUrl, {
-    bool isTv = false,
-  }) {
-    if (items.isEmpty) return const SizedBox.shrink();
+  Widget _buildLiveView() {
+    final banner = _config['live_sports_banner'] ?? {};
+    final List sportsChannels = _config['sports_channels'] ?? [];
 
-    void openSeeAll() {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => MobileCategoryGridScreen(
-            title: title,
-            baseUrl: baseUrl,
-            isTv: isTv,
-            providers: activeProviders,
-            onPlaySaved: () => _loadContinueWatching(),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Live Sports & TV Channels'),
+        backgroundColor: const Color(0xFF0F1014),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (banner['is_live'] == true)
+            GestureDetector(
+              onTap: () {
+                _openStreamSheet({
+                  'title': banner['title'] ?? 'Live Match',
+                  'keywords': banner['search_keywords'] ?? [],
+                  'is_live': true,
+                });
+              },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 24),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: const Color(0xFF1E2029),
                 ),
-              ),
-              InkWell(
-                onTap: openSeeAll,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Text(
-                    'See All →',
-                    style: TextStyle(color: Color(0xFFE50914), fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          height: 175,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            itemCount: items.length + 1,
-            itemBuilder: (ctx, idx) {
-              if (idx == items.length) {
-                return InkWell(
-                  onTap: openSeeAll,
-                  borderRadius: BorderRadius.circular(6),
-                  child: Container(
-                    width: 105,
-                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF202020),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Colors.white12),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.grid_view_rounded, color: Color(0xFFE50914), size: 28),
-                        SizedBox(height: 6),
-                        Text('See All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                        Text('Explore More', style: TextStyle(color: Colors.white54, fontSize: 10)),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              final item = items[idx];
-              final String cardImg = (item['poster'] != null && item['poster'].toString().isNotEmpty)
-                  ? item['poster'].toString()
-                  : (item['backdrop'] != null ? item['backdrop'].toString() : '');
-
-              return InkWell(
-                onTap: () => _onItemSelect(item),
-                borderRadius: BorderRadius.circular(6),
-                child: Container(
-                  width: 115,
-                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF222222),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  clipBehavior: Clip.antiAlias,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
                   child: Stack(
-                    fit: StackFit.expand,
                     children: [
-                      if (cardImg.isNotEmpty)
+                      if (banner['backdrop'] != null)
                         Image.network(
-                          cardImg,
+                          banner['backdrop'],
+                          height: 180,
+                          width: double.infinity,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: const Color(0xFF222222),
-                            child: const Center(child: Icon(Icons.movie, color: Colors.white24)),
+                          errorBuilder: (_, __, ___) => Container(height: 180, color: Colors.black45),
+                        ),
+                      Container(
+                        height: 180,
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Color(0xCC000000)],
                           ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 12,
+                        left: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'LIVE NOW',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 12,
+                        left: 12,
+                        right: 12,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              banner['title'] ?? 'LIVE SPORTS EVENT',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              banner['subtitle'] ?? '',
+                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          const Text(
+            'Channels',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: sportsChannels.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.4,
+            ),
+            itemBuilder: (context, idx) {
+              final ch = sportsChannels[idx];
+              return InkWell(
+                onTap: () {
+                  _openStreamSheet({
+                    'title': ch['title'] ?? 'Live Channel',
+                    'keywords': ch['search_keywords'] ?? [ch['title']],
+                    'is_live': true,
+                  });
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E2029),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (ch['poster'] != null && ch['poster'].toString().isNotEmpty)
+                        Image.network(
+                          ch['poster'],
+                          height: 48,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.tv, size: 36, color: Colors.white54),
                         )
                       else
-                        Container(
-                          color: const Color(0xFF222222),
-                          child: const Center(child: Icon(Icons.movie, color: Colors.white24)),
-                        ),
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [Colors.black, Colors.transparent],
-                            ),
-                          ),
-                          child: Text(
-                            item['title'] ?? '',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                        const Icon(Icons.tv, size: 36, color: Colors.white54),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          ch['title'] ?? '',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -847,224 +508,52 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               );
             },
           ),
-        ),
-        const SizedBox(height: 12),
-      ],
+        ],
+      ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final activeItem = billboardItem ??
-        (homeNetflixList.isNotEmpty
-            ? homeNetflixList.first
-            : (homePrimeList.isNotEmpty
-                ? homePrimeList.first
-                : (homeSouthHindiList.isNotEmpty ? homeSouthHindiList.first : null)));
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF141414),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
-          : RefreshIndicator(
-              color: const Color(0xFFE50914),
-              backgroundColor: const Color(0xFF202020),
-              onRefresh: _loadAllMobileData,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.only(bottom: 30),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (activeItem != null) _buildMobileBillboard(activeItem),
-                    const SizedBox(height: 8),
-
-                    if (continueWatchingList.isNotEmpty)
-                      _buildMobileRow(
-                        'Continue Watching for Rahul',
-                        continueWatchingList,
-                        '',
-                      ),
-
-                    if (homeNetflixList.isNotEmpty)
-                      _buildMobileRow(
-                        'Latest Netflix Blockbusters (Hindi + Global)',
-                        homeNetflixList,
-                        '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
-                      ),
-
-                    if (homeSouthHindiList.isNotEmpty)
-                      _buildMobileRow(
-                        'South Action Hits (Hindi Dubbed)',
-                        homeSouthHindiList,
-                        '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn',
-                      ),
-
-                    if (homeHollywoodHindiList.isNotEmpty)
-                      _buildMobileRow(
-                        'Hollywood Blockbusters (Hindi Dubbed)',
-                        homeHollywoodHindiList,
-                        '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}',
-                      ),
-
-                    if (homePrimeList.isNotEmpty)
-                      _buildMobileRow(
-                        'Amazon Prime Video Hits',
-                        homePrimeList,
-                        '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN',
-                      ),
-
-                    if (homeHotstarList.isNotEmpty)
-                      _buildMobileRow(
-                        'Disney+ Hotstar & Cinema Specials',
-                        homeHotstarList,
-                        '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN',
-                      ),
-
-                    if (homeHindiSeriesList.isNotEmpty)
-                      _buildMobileRow(
-                        'Latest Hindi Web Series',
-                        homeHindiSeriesList,
-                        '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=3',
-                        isTv: true,
-                      ),
-
-                    if (homeEnglishSeriesList.isNotEmpty)
-                      _buildMobileRow(
-                        'Global Hits On The Air',
-                        homeEnglishSeriesList,
-                        '${MobileConfig.tmdbBase}/tv/on_the_air?api_key=${MobileConfig.tmdbKey}&language=en-US',
-                        isTv: true,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-}
-
-// ============================================================================
-// MOBILE 3-COLUMN VERTICAL GRID SCREEN (SEE ALL WITH LATEST / POPULAR)
-// ============================================================================
-class MobileCategoryGridScreen extends StatefulWidget {
-  final String title;
-  final String baseUrl;
-  final bool isTv;
-  final List<dynamic> providers;
-  final VoidCallback onPlaySaved;
-
-  const MobileCategoryGridScreen({
-    super.key,
-    required this.title,
-    required this.baseUrl,
-    required this.isTv,
-    required this.providers,
-    required this.onPlaySaved,
-  });
-
-  @override
-  State<MobileCategoryGridScreen> createState() => _MobileCategoryGridScreenState();
-}
-
-class _MobileCategoryGridScreenState extends State<MobileCategoryGridScreen> {
-  var items = [];
-  bool isLoading = true;
-  String sortType = 'latest';
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchGridData();
-  }
-
-  void _toggleSort() {
-    setState(() {
-      sortType = sortType == 'latest' ? 'popular' : 'latest';
-      isLoading = true;
-      items.clear();
-    });
-    _fetchGridData();
-  }
-
-  Future<void> _fetchGridData() async {
-    final sortQuery = sortType == 'latest'
-        ? (widget.isTv ? 'first_air_date.desc' : 'primary_release_date.desc')
-        : 'popularity.desc';
-
-    var cleanUrl = widget.baseUrl;
-    cleanUrl = cleanUrl.replaceAll(RegExp(r'sort_by=[^&]+'), '');
-    final sep = cleanUrl.contains('?') ? '&' : '?';
-
-    var accumulated = [];
-    for (int p = 1; p <= 10; p++) {
-      try {
-        final url = '$cleanUrl${sep}sort_by=$sortQuery&page=$p';
-        final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body)['results'];
-          final currentYear = DateTime.now().year.toString();
-          for (var m in (data ?? [])) {
-            if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
-            final t = (m['title'] ?? m['name'] ?? 'Untitled').toString();
-            if (isSoapShow(t)) continue;
-
-            accumulated.add({
-              'tmdb_id': m['id'],
-              'title': t,
-              'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
-              'rating': m['vote_average']?.toString() ?? '7.5',
-              'backdrop': m['backdrop_path'] != null
-                  ? '${MobileConfig.backdropBase}${m['backdrop_path']}'
-                  : '${MobileConfig.imgBase}${m['poster_path']}',
-              'poster': m['poster_path'] != null
-                  ? '${MobileConfig.imgBase}${m['poster_path']}'
-                  : '${MobileConfig.backdropBase}${m['backdrop_path']}',
-              'overview': m['overview'] ?? '',
-              'isTv': widget.isTv,
-            });
-          }
-        }
-      } catch (_) {}
-    }
-
-    if (mounted) {
-      setState(() {
-        items = accumulated;
-        isLoading = false;
-      });
-    }
-  }
-
-  void _onGridItemClick(dynamic item) {
-    if (item['isTv'] == true) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) => MobileEpisodeSheet(
-          item: item,
-          onSelected: (season, episode) {
-            _showDirectStreamSheet(item, season: season, episode: episode);
-          },
+  Widget _buildWatchlistView() {
+    if (watchlist.isEmpty) {
+      return const Center(
+        child: Text(
+          'Your watchlist is empty.',
+          style: TextStyle(color: Colors.white54),
         ),
       );
-    } else {
-      _showDirectStreamSheet(item);
     }
-  }
 
-  void _showDirectStreamSheet(dynamic item, {int? season, int? episode}) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => MobileStreamSheet(
-        item: item,
-        season: season,
-        episode: episode,
-        providers: widget.providers,
-        onPlaySaved: widget.onPlaySaved,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Watchlist'),
+        backgroundColor: const Color(0xFF0F1014),
+      ),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: watchlist.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 0.68,
+        ),
+        itemBuilder: (context, i) {
+          final item = watchlist[i];
+          final poster = item['poster_path'];
+          return GestureDetector(
+            onTap: () => _openStreamSheet(item),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: poster != null
+                  ? Image.network(
+                      'https://image.tmdb.org/t/p/w342$poster',
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1E2029)),
+                    )
+                  : Container(color: const Color(0xFF1E2029)),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1072,229 +561,32 @@ class _MobileCategoryGridScreenState extends State<MobileCategoryGridScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF141414),
-      appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.9),
-        title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: InkWell(
-              onTap: _toggleSort,
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF222222),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE50914), width: 1.2),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      sortType == 'latest' ? Icons.fiber_new_rounded : Icons.whatshot_rounded,
-                      size: 16,
-                      color: const Color(0xFFE50914),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      sortType == 'latest' ? 'Latest' : 'Popular',
-                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
-          : GridView.builder(
-              padding: const EdgeInsets.all(10),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 10,
-                childAspectRatio: 0.64,
-              ),
-              itemCount: items.length,
-              itemBuilder: (ctx, idx) {
-                final item = items[idx];
-                return InkWell(
-                  onTap: () => _onGridItemClick(item),
-                  borderRadius: BorderRadius.circular(6),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.network(
-                          item['poster'],
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                            decoration: const BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: [Colors.black, Colors.transparent],
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  item['title'],
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                ),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text('${item['rating']} ★', style: const TextStyle(color: Color(0xFF46D369), fontSize: 9)),
-                                    Text('${item['year']}', style: const TextStyle(color: Colors.white60, fontSize: 9)),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-    );
-  }
-}
-
-// ============================================================================
-// MOBILE EPISODE BOTTOM SHEET
-// ============================================================================
-class MobileEpisodeSheet extends StatefulWidget {
-  final dynamic item;
-  final Function(int s, int ep) onSelected;
-
-  const MobileEpisodeSheet({super.key, required this.item, required this.onSelected});
-
-  @override
-  State<MobileEpisodeSheet> createState() => _MobileEpisodeSheetState();
-}
-
-class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
-  int selectedSeason = 1;
-  int episodeCount = 10;
-  List<int> seasons = [1];
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchDetails();
-  }
-
-  Future<void> _fetchDetails() async {
-    try {
-      final res = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${MobileConfig.tmdbKey}')).timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final raw = (data['seasons'] as List<dynamic>? ?? [])
-            .where((s) => (s['season_number'] ?? 0) > 0)
-            .map((s) => s['season_number'] as int)
-            .toList();
-        if (raw.isNotEmpty && mounted) {
-          setState(() {
-            seasons = raw;
-            selectedSeason = raw.first;
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 380,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: IndexedStack(
+        index: _currentIndex,
         children: [
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-            ),
+          _buildHomeView(),
+          _buildLiveView(),
+          _buildWatchlistView(),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        backgroundColor: const Color(0xFF14151B),
+        selectedItemColor: const Color(0xFFE50914),
+        unselectedItemColor: Colors.white54,
+        onTap: (index) => setState(() => _currentIndex = index),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
           ),
-          const SizedBox(height: 12),
-          Text(widget.item['title'],
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: seasons.map((s) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: s == selectedSeason ? const Color(0xFFE50914) : Colors.white12,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    ),
-                    onPressed: () => setState(() => selectedSeason = s),
-                    child: Text('Season $s'),
-                  ),
-                );
-              }).toList(),
-            ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.live_tv),
+            label: 'Live',
           ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                childAspectRatio: 1.6,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-              ),
-              itemCount: episodeCount,
-              itemBuilder: (ctx, i) {
-                final ep = i + 1;
-                return ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white12,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.zero,
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    widget.onSelected(selectedSeason, ep);
-                  },
-                  child: Text('EP $ep', style: const TextStyle(fontSize: 12)),
-                );
-              },
-            ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bookmarks),
+            label: 'My List',
           ),
         ],
       ),
@@ -1302,32 +594,23 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
   }
 }
 
-// ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET
-// ============================================================================
 class MobileStreamSheet extends StatefulWidget {
-  final dynamic item;
-  final int? season;
-  final int? episode;
-  final List<dynamic> providers;
-  final VoidCallback onPlaySaved;
+  final Map item;
+  final Map config;
 
   const MobileStreamSheet({
-    super.key,
+    Key? key,
     required this.item,
-    this.season,
-    this.episode,
-    required this.providers,
-    required this.onPlaySaved,
-  });
+    required this.config,
+  }) : super(key: key);
 
   @override
   State<MobileStreamSheet> createState() => _MobileStreamSheetState();
 }
 
 class _MobileStreamSheetState extends State<MobileStreamSheet> {
-  var streams = [];
-  bool loading = true;
+  bool _searching = true;
+  List streams = [];
 
   @override
   void initState() {
@@ -1335,125 +618,45 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     _fetchDirectStreams();
   }
 
-  bool _isHindiStream(String title, {String category = ''}) {
-    final lower = '$title $category'.toLowerCase();
-    return lower.contains('hindi') ||
-        lower.contains('dual') ||
-        lower.contains('multi') ||
-        lower.contains('dubbed') ||
-        lower.contains('hin') ||
-        lower.contains('dub');
-  }
-
-  String _clean(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
-
   Future<void> _fetchDirectStreams() async {
-    var resolved = [];
-    final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
-    final isTv = widget.item['isTv'] == true;
-    final movieTitle = widget.item['title'] ?? '';
-    final targetSeason = widget.season ?? 1;
-    final targetEpisode = widget.episode ?? 1;
+    setState(() => _searching = true);
+    final List found = [];
+    final activeProviders = widget.config['active_providers'] ?? [];
 
-    String? imdbId;
-    if (targetTmdbId.isNotEmpty) {
-      try {
-        final extType = isTv ? 'tv' : 'movie';
-        final extRes = await http.get(Uri.parse(
-            '${MobileConfig.tmdbBase}/$extType/$targetTmdbId/external_ids?api_key=${MobileConfig.tmdbKey}')).timeout(const Duration(seconds: 4));
-        if (extRes.statusCode == 200) {
-          imdbId = jsonDecode(extRes.body)['imdb_id'];
-        }
-      } catch (_) {}
-    }
+    if (widget.item['is_live'] == true) {
+      final List keywords = widget.item['keywords'] ?? [];
+      for (var prov in activeProviders) {
+        if (prov['type'] == 'xtream') {
+          final host = (prov['host'] ?? '').toString().replaceAll(RegExp(r'/+$'), '');
+          final user = prov['username'] ?? '';
+          final pass = prov['password'] ?? '';
 
-    final cleanTarget = _clean(movieTitle);
-
-    for (var prov in widget.providers) {
-      final type = prov['type'];
-
-      if (type == 'xtream') {
-        final host = (prov['host'] ?? '').toString().replaceAll(RegExp(r'/+$'), '');
-        final user = prov['username'] ?? '';
-        final pass = prov['password'] ?? '';
-
-        if (host.isNotEmpty && user.isNotEmpty && pass.isNotEmpty) {
           try {
-            if (isTv) {
-              final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_series';
-              final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
-              if (xtreamRes.statusCode == 200) {
-                final seriesList = jsonDecode(xtreamRes.body) as List<dynamic>;
-                var candidates = [];
+            final api = '$host/player_api.php?username=$user&password=$pass&action=get_live_streams';
+            final res = await http.get(Uri.parse(api)).timeout(const Duration(seconds: 12));
+            if (res.statusCode == 200) {
+              final liveList = jsonDecode(res.body);
+              for (var ch in (liveList is List ? liveList : [])) {
+                final chName = (ch['name'] ?? '').toString().toLowerCase();
 
-                for (var s in seriesList) {
-                  final sTmdb = (s['tmdb_id'] ?? s['tmdb'] ?? '').toString();
-                  final rawName = (s['name'] ?? '').toString();
-                  final categoryName = (s['category_name'] ?? '').toString();
-                  final sClean = _clean(rawName);
+                if (chName.contains('plus') || chName.contains('gold') || chName.contains('bharat') || chName.contains('utsav')) {
+                  continue;
+                }
 
-                  if (sTmdb == targetTmdbId || sClean.contains(cleanTarget) || cleanTarget.contains(sClean)) {
-                    s['is_hindi_detected'] = _isHindiStream(rawName, category: categoryName);
-                    candidates.add(s);
+                bool matches = false;
+                for (var kw in keywords) {
+                  final cleanKw = kw.toString().toLowerCase();
+                  if (cleanKw.isNotEmpty && chName.contains(cleanKw)) {
+                    matches = true;
+                    break;
                   }
                 }
 
-                candidates.sort((a, b) => (b['is_hindi_detected'] == true ? 1 : 0).compareTo(a['is_hindi_detected'] == true ? 1 : 0));
-
-                for (var bestSeries in candidates.take(2)) {
-                  final sid = bestSeries['series_id'];
-                  final infoApi = '$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=$sid';
-                  final infoRes = await http.get(Uri.parse(infoApi)).timeout(const Duration(seconds: 8));
-                  if (infoRes.statusCode == 200) {
-                    final epMap = jsonDecode(infoRes.body)['episodes'] as Map<String, dynamic>? ?? {};
-                    final epList = epMap['$targetSeason'] as List<dynamic>? ?? [];
-                    final match = epList.firstWhere((e) => (e['episode_num'] ?? 0) == targetEpisode, orElse: () => null);
-
-                    if (match != null) {
-                      final isHindi = bestSeries['is_hindi_detected'] == true;
-                      resolved.add({
-                        'server': prov['name'] ?? 'LiveBox Xtream IPTV',
-                        'title': isHindi
-                            ? '$movieTitle (Hindi Audio) S$targetSeason:E$targetEpisode'
-                            : '$movieTitle S$targetSeason:E$targetEpisode',
-                        'url': '$host/series/$user/$pass/${match['id']}.${match['container_extension'] ?? "mp4"}',
-                        'isHindi': isHindi,
-                      });
-                    }
-                  }
-                }
-              }
-            } else {
-              final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_vod_streams';
-              final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
-              if (xtreamRes.statusCode == 200) {
-                final streamList = jsonDecode(xtreamRes.body) as List<dynamic>;
-                var candidates = [];
-
-                for (var m in streamList) {
-                  final mTmdb = (m['tmdb_id'] ?? m['tmdb'] ?? '').toString();
-                  final rawName = (m['name'] ?? '').toString();
-                  final categoryName = (m['category_name'] ?? '').toString();
-                  final mClean = _clean(rawName);
-
-                  if (mTmdb == targetTmdbId || mClean.contains(cleanTarget) || cleanTarget.contains(mClean)) {
-                    candidates.add({
-                      'data': m,
-                      'isHindi': _isHindiStream(rawName, category: categoryName),
-                    });
-                  }
-                }
-
-                candidates.sort((a, b) => (b['isHindi'] == true ? 1 : 0).compareTo(a['isHindi'] == true ? 1 : 0));
-
-                for (var cand in candidates.take(3)) {
-                  final bestMovie = cand['data'];
-                  final isHindi = cand['isHindi'] == true;
-                  resolved.add({
-                    'server': prov['name'] ?? 'LiveBox Xtream IPTV',
-                    'title': isHindi ? '$movieTitle (Hindi Audio / Dubbed)' : '$movieTitle HD',
-                    'url': '$host/movie/$user/$pass/${bestMovie['stream_id']}.${bestMovie['container_extension'] ?? "mp4"}',
-                    'isHindi': isHindi,
+                if (matches) {
+                  found.add({
+                    'server': prov['name'] ?? 'Xtream Live IPTV',
+                    'title': ch['name'] ?? widget.item['title'],
+                    'url': '$host/live/$user/$pass/${ch['stream_id']}.m3u8',
                   });
                 }
               }
@@ -1461,190 +664,207 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
           } catch (_) {}
         }
       }
+    } else {
+      for (var prov in activeProviders) {
+        if (prov['type'] == 'stremio') {
+          var manifestUrl = prov['url'] ?? '';
+          var baseUrl = manifestUrl.replaceAll('/manifest.json', '');
+          var imdbId = widget.item['imdb_id'];
 
-      if (type == 'stremio' && imdbId != null && imdbId.isNotEmpty) {
-        final base = (prov['url'] ?? '').toString().replaceAll('/manifest.json', '');
-        final streamPath = isTv
-            ? '$base/stream/series/$imdbId:$targetSeason:$targetEpisode.json'
-            : '$base/stream/movie/$imdbId.json';
-
-        try {
-          final res = await http.get(Uri.parse(streamPath)).timeout(const Duration(seconds: 4));
-          if (res.statusCode == 200) {
-            final data = jsonDecode(res.body);
-            for (var s in (data['streams'] ?? [])) {
-              final titleStr = (s['title'] ?? s['name'] ?? '').toString();
-              if (titleStr.toLowerCase().contains('donation') ||
-                  titleStr.toLowerCase().contains('discord') ||
-                  titleStr.toLowerCase().contains('telegram')) {
-                continue;
+          if (imdbId == null && widget.item['id'] != null) {
+            try {
+              final tmdbRes = await http.get(Uri.parse(
+                'https://api.themoviedb.org/3/movie/${widget.item['id']}/external_ids?api_key=e69ec06ce3bc891f9b3662d558a5e3df',
+              )).timeout(const Duration(seconds: 4));
+              if (tmdbRes.statusCode == 200) {
+                final ids = jsonDecode(tmdbRes.body);
+                imdbId = ids['imdb_id'];
               }
-
-              resolved.add({
-                'server': prov['name'] ?? 'HdHub Provider',
-                'title': titleStr,
-                'url': s['url'],
-                'isHindi': _isHindiStream(titleStr),
-              });
-            }
+            } catch (_) {}
           }
-        } catch (_) {}
+
+          if (imdbId != null && imdbId.toString().startsWith('tt')) {
+            try {
+              final streamUrl = '$baseUrl/stream/movie/$imdbId.json';
+              final res = await http.get(Uri.parse(streamUrl)).timeout(const Duration(seconds: 8));
+              if (res.statusCode == 200) {
+                final data = jsonDecode(res.body);
+                for (var s in (data['streams'] is List ? data['streams'] : [])) {
+                  found.add({
+                    'server': prov['name'] ?? 'HD Streams',
+                    'title': s['title'] ?? s['name'] ?? widget.item['title'],
+                    'url': s['url'] ?? (s['infoHash'] != null ? 'magnet:?xt=urn:btih:${s['infoHash']}' : ''),
+                  });
+                }
+              }
+            } catch (_) {}
+          }
+        } else if (prov['type'] == 'xtream') {
+          final host = (prov['host'] ?? '').toString().replaceAll(RegExp(r'/+$'), '');
+          final user = prov['username'] ?? '';
+          final pass = prov['password'] ?? '';
+
+          try {
+            final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_vod_streams';
+            final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 15));
+            if (xtreamRes.statusCode == 200) {
+              final vodList = jsonDecode(xtreamRes.body);
+              final queryTitle = (widget.item['title'] ?? '').toString().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+              for (var movie in (vodList is List ? vodList : [])) {
+                final movieName = (movie['name'] ?? '').toString().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+                if (queryTitle.isNotEmpty && movieName.contains(queryTitle)) {
+                  final ext = movie['container_extension'] ?? 'mp4';
+                  found.add({
+                    'server': prov['name'] ?? 'Xtream VOD Server',
+                    'title': movie['name'] ?? widget.item['title'],
+                    'url': '$host/movie/$user/$pass/${movie['stream_id']}.$ext',
+                  });
+                }
+              }
+            }
+          } catch (_) {}
+        }
       }
     }
-
-    resolved.sort((a, b) {
-      final aHindi = a['isHindi'] == true ? 1 : 0;
-      final bHindi = b['isHindi'] == true ? 1 : 0;
-      if (aHindi != bHindi) return bHindi.compareTo(aHindi);
-
-      final aIsXtream = (a['server'] ?? '').toString().contains('Xtream') ? 1 : 0;
-      final bIsXtream = (b['server'] ?? '').toString().contains('Xtream') ? 1 : 0;
-      return bIsXtream.compareTo(aIsXtream);
-    });
 
     if (mounted) {
       setState(() {
-        streams = resolved;
-        loading = false;
+        streams = found;
+        _searching = false;
       });
     }
   }
 
-  Future<void> _saveContinueWatching() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload();
-      final raw = prefs.getString('continue_watching_mobile');
-      var curr = [];
-      if (raw != null && raw.isNotEmpty) {
-        curr = jsonDecode(raw) as List<dynamic>;
-      }
-      curr.removeWhere((c) => c['tmdb_id'].toString() == widget.item['tmdb_id'].toString());
-      curr.insert(0, {
-        'tmdb_id': widget.item['tmdb_id'],
-        'title': widget.item['title'] ?? 'Untitled',
-        'backdrop': widget.item['backdrop'] ?? '',
-        'year': widget.item['year'] ?? '',
-        'rating': widget.item['rating'] ?? '8.0',
-        'isTv': widget.item['isTv'] ?? false,
-      });
-      if (curr.length > 15) {
-        curr = curr.sublist(0, 15);
-      }
-      await prefs.setString('continue_watching_mobile', jsonEncode(curr));
-      widget.onPlaySaved();
-    } catch (_) {}
+  void _playInternal(String url, String title) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InternalPlayerScreen(
+          streamUrl: url,
+          title: title,
+        ),
+      ),
+    );
   }
 
-  void _playStream(String url, bool isExternal) async {
-    await _saveContinueWatching();
-    if (!mounted) return;
-    Navigator.pop(context);
-
-    final cleanUrl = url.trim();
-
-    if (isExternal) {
+  Future<void> _playExternalVlc(String streamUrl) async {
+    try {
       final intent = AndroidIntent(
         action: 'action_view',
-        data: cleanUrl,
+        data: streamUrl,
         type: 'video/*',
-        flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+        package: 'org.videolan.vlc',
       );
       await intent.launch();
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => InternalPlayerScreen(
-            streamUrl: cleanUrl,
-            title: widget.item['title'],
-          ),
-        ),
-      );
+    } catch (_) {
+      try {
+        final genericIntent = AndroidIntent(
+          action: 'action_view',
+          data: streamUrl,
+          type: 'video/*',
+        );
+        await genericIntent.launch();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Cannot launch video player: $e')),
+          );
+        }
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 420,
+      padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        color: Color(0xFF1E2029),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: const EdgeInsets.all(16),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  widget.item['title'] ?? 'Select Stream',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white54),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
-          Text(
-            widget.season != null
-                ? '${widget.item['title']} - S${widget.season} E${widget.episode}'
-                : widget.item['title'],
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          if (loading)
-            const Expanded(child: Center(child: CircularProgressIndicator(color: Color(0xFFE50914))))
+          if (_searching)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: CircularProgressIndicator(color: Color(0xFFE50914)),
+              ),
+            )
           else if (streams.isEmpty)
-            const Expanded(child: Center(child: Text('No active streams found on server.', style: TextStyle(color: Colors.white70))))
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  'No active streams found on server.',
+                  style: TextStyle(color: Colors.white60),
+                ),
+              ),
+            )
           else
-            Expanded(
-              child: ListView.builder(
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
                 itemCount: streams.length,
-                itemBuilder: (ctx, i) {
-                  final s = streams[i];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF282828),
-                      borderRadius: BorderRadius.circular(8),
+                separatorBuilder: (_, __) => const Divider(color: Colors.white12),
+                itemBuilder: (context, idx) {
+                  final s = streams[idx];
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      s['title'] ?? 'Stream Source',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      maxLines: 2,
                     ),
-                    child: Row(
+                    subtitle: Text(
+                      s['server'] ?? '',
+                      style: const TextStyle(fontSize: 12, color: Colors.white54),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          s['isHindi'] == true ? Icons.record_voice_over_rounded : Icons.movie_rounded,
-                          color: s['isHindi'] == true ? const Color(0xFF46D369) : Colors.white,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                s['title'],
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                s['server'],
-                                style: const TextStyle(color: Colors.white54, fontSize: 10),
-                              ),
-                            ],
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
                           ),
+                          child: const Text('Play'),
+                          onPressed: () => _playInternal(s['url'], s['title']),
                         ),
                         const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.play_circle_fill, color: Color(0xFFE50914), size: 28),
-                          onPressed: () => _playStream(s['url'], false),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.open_in_new_rounded, color: Colors.white70, size: 22),
-                          onPressed: () => _playStream(s['url'], true),
+                        OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white38),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                          ),
+                          child: const Text('VLC'),
+                          onPressed: () => _playExternalVlc(s['url']),
                         ),
                       ],
                     ),
@@ -1654,6 +874,86 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
             ),
         ],
       ),
+    );
+  }
+}
+
+class MovieSearchDelegate extends SearchDelegate {
+  final String apiKey;
+  final Function(Map) onMovieSelected;
+
+  MovieSearchDelegate({required this.apiKey, required this.onMovieSelected});
+
+  @override
+  ThemeData appBarTheme(BuildContext context) {
+    return ThemeData.dark().copyWith(
+      scaffoldBackgroundColor: const Color(0xFF0F1014),
+      appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF14151B)),
+    );
+  }
+
+  @override
+  List<Widget>? buildActions(BuildContext context) {
+    return [
+      if (query.isNotEmpty)
+        IconButton(
+          icon: const Icon(Icons.clear),
+          onPressed: () => query = '',
+        ),
+    ];
+  }
+
+  @override
+  Widget? buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () => close(context, null),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) => _search();
+
+  @override
+  Widget buildSuggestions(BuildContext context) => _search();
+
+  Widget _search() {
+    if (query.trim().isEmpty) {
+      return const Center(child: Text('Type a movie name...', style: TextStyle(color: Colors.white54)));
+    }
+
+    return FutureBuilder<http.Response>(
+      future: http.get(Uri.parse('https://api.themoviedb.org/3/search/movie?api_key=$apiKey&query=$query')),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)));
+        }
+
+        final data = jsonDecode(snapshot.data!.body);
+        final List list = data['results'] ?? [];
+
+        return ListView.builder(
+          itemCount: list.length,
+          itemBuilder: (context, i) {
+            final movie = list[i];
+            return ListTile(
+              leading: movie['poster_path'] != null
+                  ? Image.network(
+                      'https://image.tmdb.org/t/p/w92${movie['poster_path']}',
+                      width: 40,
+                      fit: BoxFit.cover,
+                    )
+                  : const Icon(Icons.movie),
+              title: Text(movie['title'] ?? ''),
+              subtitle: Text(movie['release_date'] ?? ''),
+              onTap: () {
+                close(context, null);
+                onMovieSelected(movie);
+              },
+            );
+          },
+        );
+      },
     );
   }
 }
