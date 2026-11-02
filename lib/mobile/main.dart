@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE - COMPLETE STANDALONE EDITION (CATALOG, GRID & RESOLVER)
+// NETFLIX PRO MOBILE - COMPLETE STANDALONE EDITION
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -200,9 +200,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   List<dynamic> homeNetflixList = [];
   List<dynamic> homePrimeList = [];
   List<dynamic> homeHotstarList = [];
-  List<dynamic> homeHindiSeriesList = [];
   List<dynamic> homeSouthHindiList = [];
   List<dynamic> homeHollywoodHindiList = [];
+  List<dynamic> homeHindiSeriesList = [];
   List<dynamic> homeEnglishSeriesList = [];
 
   bool isLoading = true;
@@ -214,11 +214,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   Future<void> _loadAllMobileData() async {
-    // Background me credentials aur continue watching bina UI roke load honge
     _loadContinueWatching();
     _fetchProviders();
-
-    // Fast catalog loading
     await _fetchHomeCatalogContent();
     if (mounted) setState(() => isLoading = false);
   }
@@ -246,14 +243,14 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   Future<void> _fetchHomeCatalogContent() async {
-    // 1. Netflix Blockbusters (Popularity sort taaki poster images missing na ho)
+    // 1. Netflix Blockbusters
     try {
       final netflixRes = await http.get(Uri.parse(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
       if (netflixRes.statusCode == 200) {
         homeNetflixList = _parseList(jsonDecode(netflixRes.body)['results']);
         if (homeNetflixList.isNotEmpty) billboardItem = homeNetflixList.first;
-        if (mounted) setState(() => isLoading = false); // Pehli row aate hi loading spinner khatam
+        if (mounted) setState(() => isLoading = false);
       }
     } catch (_) {}
 
@@ -268,7 +265,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       }
     } catch (_) {}
 
-    // 3. Disney+ Hotstar & Cinema Specials
+    // 3. Disney+ Hotstar Specials
     try {
       final hotstarRes = await http.get(Uri.parse(
           '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 4));
@@ -290,7 +287,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       }
     } catch (_) {}
 
-    // 5. Hollywood Blockbusters (Hindi Dubbed / Popular)
+    // 5. Hollywood Blockbusters (Hindi Dubbed)
     try {
       final hollywoodRes = await http.get(Uri.parse(
           '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}&page=1')).timeout(const Duration(seconds: 4));
@@ -301,7 +298,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       }
     } catch (_) {}
 
-    // 6. Latest Hindi Web Series (Filtered OTT - Daily Soaps Excluded)
+    // 6. Latest Hindi Web Series
     try {
       final hindiTvRes = await http.get(Uri.parse(
           '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=3')).timeout(const Duration(seconds: 4));
@@ -314,7 +311,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       }
     } catch (_) {}
 
-    // 7. Global Web Series On The Air
+    // 7. Global Web Series
     try {
       final engTvRes = await http.get(Uri.parse(
           '${MobileConfig.tmdbBase}/tv/on_the_air?api_key=${MobileConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 4));
@@ -385,7 +382,98 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   // ============================================================================
-  // TOP SPOTLIGHT BILLBOARD (NETFLIX WELCOME ENTRY)
+  // FULL SCREEN CATEGORIES OVERLAY MODAL
+  // ============================================================================
+  void _openCategoriesModal() {
+    final List> allCategories = [
+      {'title': 'South Action Hits (Hindi Dubbed)', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn', 'isTv': false},
+      {'title': 'Hollywood Blockbusters (Hindi Dubbed)', 'url': '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}', 'isTv': false},
+      {'title': 'Latest Netflix Blockbusters', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN', 'isTv': false},
+      {'title': 'Amazon Prime Video Hits', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN', 'isTv': false},
+      {'title': 'Disney+ Hotstar Specials', 'url': '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN', 'isTv': false},
+      {'title': 'Trending Hindi Web Series', 'url': '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=3', 'isTv': true},
+      {'title': 'Action & Adventure', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28', 'isTv': false},
+      {'title': 'Suspense & Thrillers', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53', 'isTv': false},
+      {'title': 'Sci-Fi & Fantasy', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=878', 'isTv': false},
+      {'title': 'Horror Movies', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=27', 'isTv': false},
+      {'title': 'Comedy Specials', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=35', 'isTv': false},
+      {'title': 'Global TV Hits', 'url': '${MobileConfig.tmdbBase}/tv/popular?api_key=${MobileConfig.tmdbKey}&language=en-US', 'isTv': true},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black.withOpacity(0.92),
+      builder: (ctx) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(height: 22),
+              const Text(
+                'Categories',
+                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+              ),
+              const SizedBox(height: 18),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: allCategories.length,
+                  itemBuilder: (context, index) {
+                    final cat = allCategories[index];
+                    return InkWell(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => MobileCategoryGridScreen(
+                              title: cat['title'],
+                              baseUrl: cat['url'],
+                              isTv: cat['isTv'],
+                              providers: activeProviders,
+                              onPlaySaved: () => _loadContinueWatching(),
+                            ),
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        child: Text(
+                          cat['title'],
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: index < 2 ? const Color(0xFFE50914) : Colors.white70,
+                            fontSize: 17,
+                            fontWeight: index < 2 ? FontWeight.w900 : FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              FloatingActionButton(
+                mini: true,
+                backgroundColor: Colors.white,
+                onPressed: () => Navigator.pop(ctx),
+                child: const Icon(Icons.close, color: Colors.black, size: 24),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ============================================================================
+  // TOP SPOTLIGHT BILLBOARD WITH FOR RAHUL & PILLS
   // ============================================================================
   Widget _buildMobileBillboard(dynamic item) {
     if (item == null) return const SizedBox.shrink();
@@ -395,7 +483,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         : (item['poster'] != null ? item['poster'].toString() : '');
 
     return SizedBox(
-      height: 480,
+      height: 520,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
@@ -409,61 +497,114 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             )
           else
             Container(color: const Color(0xFF1F1F1F)),
+
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black54,
+                  Colors.black87,
+                  Colors.black38,
                   Colors.transparent,
                   Color(0xCC141414),
                   Color(0xFF141414),
                 ],
-                stops: [0.0, 0.25, 0.75, 1.0],
+                stops: [0.0, 0.18, 0.45, 0.8, 1.0],
               ),
             ),
           ),
 
-          // Header Tags
+          // TOP STATUS & PILL BUTTONS
           Positioned(
-            top: 15,
+            top: 40,
             left: 16,
             right: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: const Text(
-                    'N',
-                    style: TextStyle(
-                      color: Color(0xFFE50914),
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      fontFamily: 'Helvetica Neue',
-                      letterSpacing: -1.0,
-                    ),
-                  ),
-                ),
                 Row(
-                  children: const [
-                    Text('TV Shows', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-                    SizedBox(width: 16),
-                    Text('Movies', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-                    SizedBox(width: 16),
-                    Text('Categories', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'For Rahul',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.cast, color: Colors.white, size: 22),
+                          onPressed: () {},
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 18),
+                        IconButton(
+                          icon: const Icon(Icons.download_for_offline_outlined, color: Colors.white, size: 23),
+                          onPressed: () {},
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 18),
+                        IconButton(
+                          icon: const Icon(Icons.search, color: Colors.white, size: 24),
+                          onPressed: () {},
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _buildTopPill('TV Shows', onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MobileCategoryGridScreen(
+                            title: 'TV Shows',
+                            baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}',
+                            isTv: true,
+                            providers: activeProviders,
+                            onPlaySaved: () => _loadContinueWatching(),
+                          ),
+                        ),
+                      );
+                    }),
+                    const SizedBox(width: 8),
+                    _buildTopPill('Movies', onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MobileCategoryGridScreen(
+                            title: 'Movies',
+                            baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}',
+                            isTv: false,
+                            providers: activeProviders,
+                            onPlaySaved: () => _loadContinueWatching(),
+                          ),
+                        ),
+                      );
+                    }),
+                    const SizedBox(width: 8),
+                    _buildTopPill('Categories ⌵', onTap: () => _openCategoriesModal()),
                   ],
                 ),
               ],
             ),
           ),
 
-          // Bottom Action
+          // BOTTOM TITLE & ACTION BUTTONS
           Positioned(
-            bottom: 20,
-            left: 16,
-            right: 16,
+            bottom: 18,
+            left: 20,
+            right: 20,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -473,38 +614,50 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
                     color: Colors.white,
-                    letterSpacing: 0.5,
+                    letterSpacing: 0.6,
+                    shadows: [
+                      Shadow(blurRadius: 10, color: Colors.black, offset: Offset(0, 2)),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 6),
+                const Text(
+                  'Action • Suspense • Blockbuster • HD',
+                  style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 14),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 9),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        ),
+                        onPressed: () => _onItemSelect(item),
+                        icon: const Icon(Icons.play_arrow, size: 26, color: Colors.black),
+                        label: const Text('Play', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
-                      onPressed: () => _onItemSelect(item),
-                      icon: const Icon(Icons.play_arrow, size: 24),
-                      label: const Text('Play', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
                     const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white24,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2B2B2B),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        ),
+                        onPressed: () => _onItemSelect(item),
+                        icon: const Icon(Icons.add, size: 24, color: Colors.white),
+                        label: const Text('My List', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                       ),
-                      onPressed: () => _onItemSelect(item),
-                      icon: const Icon(Icons.info_outline, size: 20),
-                      label: const Text('Info', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -512,6 +665,29 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTopPill(String title, {required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white30, width: 1.0),
+        ),
+        child: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }
@@ -607,6 +783,10 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               }
 
               final item = items[idx];
+              final String cardImg = (item['poster'] != null && item['poster'].toString().isNotEmpty)
+                  ? item['poster'].toString()
+                  : (item['backdrop'] != null ? item['backdrop'].toString() : '');
+
               return InkWell(
                 onTap: () => _onItemSelect(item),
                 borderRadius: BorderRadius.circular(6),
@@ -614,17 +794,27 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   width: 115,
                   margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                   decoration: BoxDecoration(
+                    color: const Color(0xFF222222),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.network(
-                        item['poster'],
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
-                      ),
+                      if (cardImg.isNotEmpty)
+                        Image.network(
+                          cardImg,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: const Color(0xFF222222),
+                            child: const Center(child: Icon(Icons.movie, color: Colors.white24)),
+                          ),
+                        )
+                      else
+                        Container(
+                          color: const Color(0xFF222222),
+                          child: const Center(child: Icon(Icons.movie, color: Colors.white24)),
+                        ),
                       Positioned(
                         bottom: 0,
                         left: 0,
@@ -639,7 +829,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                             ),
                           ),
                           child: Text(
-                            item['title'],
+                            item['title'] ?? '',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -673,24 +863,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
-      appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.85),
-        elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE50914),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text('N', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-            ),
-            const SizedBox(width: 10),
-            const Text('NETFLIX PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, letterSpacing: 1.1)),
-          ],
-        ),
-      ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
           : RefreshIndicator(
@@ -706,15 +878,13 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                     if (activeItem != null) _buildMobileBillboard(activeItem),
                     const SizedBox(height: 8),
 
-                    // Continue Watching
                     if (continueWatchingList.isNotEmpty)
                       _buildMobileRow(
-                        'Continue Watching for You',
+                        'Continue Watching for Rahul',
                         continueWatchingList,
                         '',
                       ),
 
-                    // Netflix Blockbusters
                     if (homeNetflixList.isNotEmpty)
                       _buildMobileRow(
                         'Latest Netflix Blockbusters (Hindi + Global)',
@@ -722,7 +892,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
                       ),
 
-                    // South Action Hits (Hindi Dubbed)
                     if (homeSouthHindiList.isNotEmpty)
                       _buildMobileRow(
                         'South Action Hits (Hindi Dubbed)',
@@ -730,7 +899,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn',
                       ),
 
-                    // Hollywood Blockbusters (Hindi Dubbed)
                     if (homeHollywoodHindiList.isNotEmpty)
                       _buildMobileRow(
                         'Hollywood Blockbusters (Hindi Dubbed)',
@@ -738,7 +906,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}',
                       ),
 
-                    // Prime Video
                     if (homePrimeList.isNotEmpty)
                       _buildMobileRow(
                         'Amazon Prime Video Hits',
@@ -746,7 +913,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN',
                       ),
 
-                    // Disney+ Hotstar
                     if (homeHotstarList.isNotEmpty)
                       _buildMobileRow(
                         'Disney+ Hotstar & Cinema Specials',
@@ -754,7 +920,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN',
                       ),
 
-                    // Hindi Web Series
                     if (homeHindiSeriesList.isNotEmpty)
                       _buildMobileRow(
                         'Latest Hindi Web Series',
@@ -763,7 +928,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         isTv: true,
                       ),
 
-                    // Global Shows
                     if (homeEnglishSeriesList.isNotEmpty)
                       _buildMobileRow(
                         'Global Hits On The Air',
