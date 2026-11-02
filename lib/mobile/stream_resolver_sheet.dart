@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
-import '../internal_player.dart';
+import 'internal_player.dart';
 import 'tmdb_config.dart';
 import 'category_grid_screen.dart';
 
