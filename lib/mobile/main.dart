@@ -71,10 +71,11 @@ class NetflixMobileApp extends StatelessWidget {
         primaryColor: const Color(0xFFE50914),
         fontFamily: 'sans-serif',
       ),
-              home: const NetflixSplashScreen(),
+      home: const NetflixSplashScreen(),
     );
   }
 }
+
 // ============================================================================
 // NETFLIX INTRO / SPLASH SCREEN
 // ============================================================================
@@ -182,6 +183,7 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
     );
   }
 }
+
 class MobileHomeScreen extends StatefulWidget {
   const MobileHomeScreen({super.key});
 
@@ -199,6 +201,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   List<dynamic> homePrimeList = [];
   List<dynamic> homeHotstarList = [];
   List<dynamic> homeHindiSeriesList = [];
+  List<dynamic> homeSouthHindiList = [];
+  List<dynamic> homeHollywoodHindiList = [];
   List<dynamic> homeEnglishSeriesList = [];
 
   bool isLoading = true;
@@ -210,11 +214,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   Future<void> _loadAllMobileData() async {
-    await Future.wait([
-      _fetchProviders(),
-      _loadContinueWatching(),
-      _fetchHomeCatalogContent(),
-    ]);
+    // Background me credentials aur continue watching bina UI roke load honge
+    _loadContinueWatching();
+    _fetchProviders();
+
+    // Fast catalog loading
+    await _fetchHomeCatalogContent();
     if (mounted) setState(() => isLoading = false);
   }
 
@@ -233,7 +238,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   Future<void> _fetchProviders() async {
     try {
-      final res = await http.get(Uri.parse(MobileConfig.gistUrl)).timeout(const Duration(seconds: 8));
+      final res = await http.get(Uri.parse(MobileConfig.gistUrl)).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
         activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
       }
@@ -241,43 +246,81 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   Future<void> _fetchHomeCatalogContent() async {
+    // 1. Netflix Blockbusters (Popularity sort taaki poster images missing na ho)
     try {
-      // 1. Netflix Blockbusters (Hindi + Global)
       final netflixRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
       if (netflixRes.statusCode == 200) {
         homeNetflixList = _parseList(jsonDecode(netflixRes.body)['results']);
         if (homeNetflixList.isNotEmpty) billboardItem = homeNetflixList.first;
+        if (mounted) setState(() => isLoading = false); // Pehli row aate hi loading spinner khatam
       }
+    } catch (_) {}
 
-      // 2. Prime Video Hits
+    // 2. Prime Video Hits
+    try {
       final primeRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
       if (primeRes.statusCode == 200) {
         homePrimeList = _parseList(jsonDecode(primeRes.body)['results']);
+        billboardItem ??= homePrimeList.isNotEmpty ? homePrimeList.first : null;
+        if (mounted) setState(() {});
       }
+    } catch (_) {}
 
-      // 3. Disney+ Hotstar & Cinema Specials
+    // 3. Disney+ Hotstar & Cinema Specials
+    try {
       final hotstarRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 8));
+          '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 4));
       if (hotstarRes.statusCode == 200) {
         homeHotstarList = _parseList(jsonDecode(hotstarRes.body)['results']);
+        billboardItem ??= homeHotstarList.isNotEmpty ? homeHotstarList.first : null;
+        if (mounted) setState(() {});
       }
+    } catch (_) {}
 
-      // 4. Latest Hindi Web Series (Filtered OTT - Daily Soaps Excluded)
+    // 4. South Movies (Hindi Dubbed)
+    try {
+      final southRes = await http.get(Uri.parse(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
+      if (southRes.statusCode == 200) {
+        homeSouthHindiList = _parseList(jsonDecode(southRes.body)['results']);
+        billboardItem ??= homeSouthHindiList.isNotEmpty ? homeSouthHindiList.first : null;
+        if (mounted) setState(() {});
+      }
+    } catch (_) {}
+
+    // 5. Hollywood Blockbusters (Hindi Dubbed / Popular)
+    try {
+      final hollywoodRes = await http.get(Uri.parse(
+          '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}&page=1')).timeout(const Duration(seconds: 4));
+      if (hollywoodRes.statusCode == 200) {
+        homeHollywoodHindiList = _parseList(jsonDecode(hollywoodRes.body)['results']);
+        billboardItem ??= homeHollywoodHindiList.isNotEmpty ? homeHollywoodHindiList.first : null;
+        if (mounted) setState(() {});
+      }
+    } catch (_) {}
+
+    // 6. Latest Hindi Web Series (Filtered OTT - Daily Soaps Excluded)
+    try {
       final hindiTvRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=5')).timeout(const Duration(seconds: 8));
+          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=3')).timeout(const Duration(seconds: 4));
       if (hindiTvRes.statusCode == 200) {
         homeHindiSeriesList = _parseList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
             .where((item) => !isSoapShow(item['title'] ?? ''))
             .toList();
+        billboardItem ??= homeHindiSeriesList.isNotEmpty ? homeHindiSeriesList.first : null;
+        if (mounted) setState(() {});
       }
+    } catch (_) {}
 
-      // 5. Global Web Series On The Air
+    // 7. Global Web Series On The Air
+    try {
       final engTvRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/tv/on_the_air?api_key=${MobileConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 8));
+          '${MobileConfig.tmdbBase}/tv/on_the_air?api_key=${MobileConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 4));
       if (engTvRes.statusCode == 200) {
         homeEnglishSeriesList = _parseList(jsonDecode(engTvRes.body)['results'], isTv: true);
+        if (mounted) setState(() {});
       }
     } catch (_) {}
   }
@@ -341,8 +384,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-    // ============================================================================
-  // TOP SPOTLIGHT BILLBOARD
+  // ============================================================================
+  // TOP SPOTLIGHT BILLBOARD (NETFLIX WELCOME ENTRY)
   // ============================================================================
   Widget _buildMobileBillboard(dynamic item) {
     if (item == null) return const SizedBox.shrink();
@@ -352,7 +395,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         : (item['poster'] != null ? item['poster'].toString() : '');
 
     return SizedBox(
-      height: 460,
+      height: 480,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
@@ -372,15 +415,51 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.transparent,
+                  Colors.black54,
                   Colors.transparent,
                   Color(0xCC141414),
                   Color(0xFF141414),
                 ],
-                stops: [0.0, 0.45, 0.75, 1.0],
+                stops: [0.0, 0.25, 0.75, 1.0],
               ),
             ),
           ),
+
+          // Header Tags
+          Positioned(
+            top: 15,
+            left: 16,
+            right: 16,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: const Text(
+                    'N',
+                    style: TextStyle(
+                      color: Color(0xFFE50914),
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'Helvetica Neue',
+                      letterSpacing: -1.0,
+                    ),
+                  ),
+                ),
+                Row(
+                  children: const [
+                    Text('TV Shows', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                    SizedBox(width: 16),
+                    Text('Movies', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                    SizedBox(width: 16),
+                    Text('Categories', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // Bottom Action
           Positioned(
             bottom: 20,
             left: 16,
@@ -408,11 +487,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 9),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                       ),
-                      onPressed: () {},
-                      icon: const Icon(Icons.play_arrow, size: 22),
+                      onPressed: () => _onItemSelect(item),
+                      icon: const Icon(Icons.play_arrow, size: 24),
                       label: const Text('Play', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
                     const SizedBox(width: 12),
@@ -420,10 +499,10 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white24,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                       ),
-                      onPressed: () {},
+                      onPressed: () => _onItemSelect(item),
                       icon: const Icon(Icons.info_outline, size: 20),
                       label: const Text('Info', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
@@ -436,6 +515,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       ),
     );
   }
+
   // ============================================================================
   // MOBILE HORIZONTAL ROW (WITH SEE ALL)
   // ============================================================================
@@ -584,6 +664,13 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final activeItem = billboardItem ??
+        (homeNetflixList.isNotEmpty
+            ? homeNetflixList.first
+            : (homePrimeList.isNotEmpty
+                ? homePrimeList.first
+                : (homeSouthHindiList.isNotEmpty ? homeSouthHindiList.first : null)));
+
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       appBar: AppBar(
@@ -616,8 +703,16 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (billboardItem != null) _buildMobileBillboard(billboardItem),
+                    if (activeItem != null) _buildMobileBillboard(activeItem),
                     const SizedBox(height: 8),
+
+                    // Continue Watching
+                    if (continueWatchingList.isNotEmpty)
+                      _buildMobileRow(
+                        'Continue Watching for You',
+                        continueWatchingList,
+                        '',
+                      ),
 
                     // Netflix Blockbusters
                     if (homeNetflixList.isNotEmpty)
@@ -625,6 +720,22 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         'Latest Netflix Blockbusters (Hindi + Global)',
                         homeNetflixList,
                         '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
+                      ),
+
+                    // South Action Hits (Hindi Dubbed)
+                    if (homeSouthHindiList.isNotEmpty)
+                      _buildMobileRow(
+                        'South Action Hits (Hindi Dubbed)',
+                        homeSouthHindiList,
+                        '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn',
+                      ),
+
+                    // Hollywood Blockbusters (Hindi Dubbed)
+                    if (homeHollywoodHindiList.isNotEmpty)
+                      _buildMobileRow(
+                        'Hollywood Blockbusters (Hindi Dubbed)',
+                        homeHollywoodHindiList,
+                        '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}',
                       ),
 
                     // Prime Video
@@ -648,7 +759,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       _buildMobileRow(
                         'Latest Hindi Web Series',
                         homeHindiSeriesList,
-                        '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
+                        '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=3',
                         isTv: true,
                       ),
 
