@@ -384,8 +384,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     // ============================================================================
   // FULL SCREEN CATEGORIES OVERLAY MODAL
   // ============================================================================
-  void _openCategoriesModal() {
-    final List> allCategories = >[
+    void _openCategoriesModal() {
+    List allCategories = [
       {'title': 'South Action Hits (Hindi Dubbed)', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn', 'isTv': false},
       {'title': 'Hollywood Blockbusters (Hindi Dubbed)', 'url': '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}', 'isTv': false},
       {'title': 'Latest Netflix Blockbusters', 'url': '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN', 'isTv': false},
@@ -426,8 +426,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   itemCount: allCategories.length,
                   itemBuilder: (context, index) {
                     final cat = allCategories[index];
-                    final String catTitle = cat['title']?.toString() ?? '';
-                    final String catUrl = cat['url']?.toString() ?? '';
+                    final String catTitle = (cat['title'] ?? '').toString();
+                    final String catUrl = (cat['url'] ?? '').toString();
                     final bool catIsTv = cat['isTv'] == true;
 
                     return InkWell(
