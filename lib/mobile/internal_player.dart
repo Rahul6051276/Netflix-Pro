@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
 import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
 
 class InternalPlayerScreen extends StatefulWidget {
   final String streamUrl;
@@ -69,7 +69,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
         children: [
           Center(
             child: _isLoading
-                ? const CircularProgressIndicator(color: Colors.red)
+                ? const CircularProgressIndicator(color: Color(0xFFE50914))
                 : _hasError
                     ? const Text(
                         'Playback Error. Stream cannot be loaded.',
@@ -80,48 +80,33 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                         child: VideoPlayer(_controller),
                       ),
           ),
-          PositionBar(
-            title: widget.title,
-            onBack: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class PositionBar extends StatelessWidget {
-  final String title;
-  final VoidCallback onBack;
-
-  const PositionBar({Key? key, required this.title, required this.onBack}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
-              onPressed: onBack,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
