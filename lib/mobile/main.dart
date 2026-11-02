@@ -134,19 +134,18 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _fetchHomeCatalogContent() async {
+    Future<void> _fetchHomeCatalogContent() async {
     try {
       // 1. Netflix Blockbusters (Hindi + Global)
       final netflixRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 8));
       if (netflixRes.statusCode == 200) {
         homeNetflixList = _parseList(jsonDecode(netflixRes.body)['results']);
-        if (homeNetflixList.isNotEmpty) billboardItem = homeNetflixList.first;
       }
 
       // 2. Prime Video Hits
       final primeRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 8));
       if (primeRes.statusCode == 200) {
         homePrimeList = _parseList(jsonDecode(primeRes.body)['results']);
       }
@@ -172,6 +171,19 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           '${MobileConfig.tmdbBase}/tv/on_the_air?api_key=${MobileConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 8));
       if (engTvRes.statusCode == 200) {
         homeEnglishSeriesList = _parseList(jsonDecode(engTvRes.body)['results'], isTv: true);
+      }
+
+      // GUARANTEED BILLBOARD ASSIGNMENT (Fallback Mechanism)
+      if (homeNetflixList.isNotEmpty) {
+        billboardItem = homeNetflixList.first;
+      } else if (homePrimeList.isNotEmpty) {
+        billboardItem = homePrimeList.first;
+      } else if (homeHotstarList.isNotEmpty) {
+        billboardItem = homeHotstarList.first;
+      } else if (homeHindiSeriesList.isNotEmpty) {
+        billboardItem = homeHindiSeriesList.first;
+      } else if (homeEnglishSeriesList.isNotEmpty) {
+        billboardItem = homeEnglishSeriesList.first;
       }
     } catch (_) {}
   }
@@ -235,8 +247,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-    // ============================================================================
-  // TOP SPOTLIGHT BILLBOARD
+      // ============================================================================
+  // TOP SPOTLIGHT BILLBOARD (NETFLIX BRANDED WELCOME ENTRY)
   // ============================================================================
   Widget _buildMobileBillboard(dynamic item) {
     if (item == null) return const SizedBox.shrink();
@@ -246,7 +258,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         : (item['poster'] != null ? item['poster'].toString() : '');
 
     return SizedBox(
-      height: 460,
+      height: 480,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
@@ -266,15 +278,60 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.transparent,
+                  Colors.black54,
                   Colors.transparent,
                   Color(0xCC141414),
                   Color(0xFF141414),
                 ],
-                stops: [0.0, 0.45, 0.75, 1.0],
+                stops: [0.0, 0.25, 0.75, 1.0],
               ),
             ),
           ),
+
+          // TOP WELCOME HEADER WITH RED 'N'
+          Positioned(
+            top: 20,
+            left: 16,
+            right: 16,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: const Text(
+                    'N',
+                    style: TextStyle(
+                      color: Color(0xFFE50914),
+                      fontSize: 34,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'Helvetica Neue',
+                      letterSpacing: -1.0,
+                    ),
+                  ),
+                ),
+                Row(
+                  children: const [
+                    Text(
+                      'TV Shows',
+                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(width: 18),
+                    Text(
+                      'Movies',
+                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(width: 18),
+                    Text(
+                      'Categories',
+                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // BOTTOM TITLE & ACTION CONTROLS
           Positioned(
             bottom: 20,
             left: 16,
@@ -305,8 +362,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                       ),
-                      onPressed: () {},
-                      icon: const Icon(Icons.play_arrow, size: 22),
+                      onPressed: () => _onItemSelect(item),
+                      icon: const Icon(Icons.play_arrow, size: 24),
                       label: const Text('Play', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
                     const SizedBox(width: 12),
@@ -317,7 +374,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                       ),
-                      onPressed: () {},
+                      onPressed: () => _onItemSelect(item),
                       icon: const Icon(Icons.info_outline, size: 20),
                       label: const Text('Info', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
@@ -1275,4 +1332,3 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     );
   }
 }
- 
