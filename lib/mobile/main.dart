@@ -38,7 +38,7 @@ class NetflixProApp extends StatelessWidget {
   }
 }
 
-// ==================== NETFLIX 'N' INTRO ANIMATION ====================
+// ==================== BADA 'N' NETFLIX INTRO ANIMATION ====================
 class NetflixSplashScreen extends StatefulWidget {
   const NetflixSplashScreen({Key? key}) : super(key: key);
 
@@ -48,39 +48,39 @@ class NetflixSplashScreen extends StatefulWidget {
 
 class _NetflixSplashScreenState extends State<NetflixSplashScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animController;
+  late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
 
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
+    _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2200),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.6, end: 1.25).animate(
-      CurvedAnimation(parent: _animController, curve: Curves.easeInOutCubic),
+    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.3).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
     );
 
     _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _animController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
+        parent: _controller,
+        curve: const Interval(0.0, 0.65, curve: Curves.easeIn),
       ),
     );
 
-    _animController.forward();
+    _controller.forward();
 
     Timer(const Duration(milliseconds: 2600), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 600),
-            pageBuilder: (_, __, ___) => const NetflixMobileMainScreen(),
-            transitionsBuilder: (_, animation, __, child) {
-              return FadeTransition(opacity: animation, child: child);
+            transitionDuration: const Duration(milliseconds: 500),
+            pageBuilder: (_, __, ___) => const NetflixMobileHomeScreen(),
+            transitionsBuilder: (_, anim, __, child) {
+              return FadeTransition(opacity: anim, child: child);
             },
           ),
         );
@@ -90,7 +90,7 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
 
   @override
   void dispose() {
-    _animController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -100,7 +100,7 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
       backgroundColor: Colors.black,
       body: Center(
         child: AnimatedBuilder(
-          animation: _animController,
+          animation: _controller,
           builder: (context, child) {
             return Opacity(
               opacity: _opacityAnimation.value,
@@ -109,15 +109,15 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
                 child: Text(
                   'N',
                   style: TextStyle(
-                    fontSize: 140,
+                    fontSize: 150,
                     fontWeight: FontWeight.w900,
                     fontFamily: 'Helvetica Neue',
                     color: const Color(0xFFE50914),
                     shadows: [
                       BoxShadow(
-                        color: const Color(0xFFE50914).withOpacity(0.6),
-                        blurRadius: 40,
-                        spreadRadius: 10,
+                        color: const Color(0xFFE50914).withOpacity(0.7),
+                        blurRadius: 50,
+                        spreadRadius: 15,
                       ),
                     ],
                   ),
@@ -131,116 +131,152 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
   }
 }
 
-// ==================== MAIN NETFLIX PRO SCREEN ====================
-class NetflixMobileMainScreen extends StatefulWidget {
-  const NetflixMobileMainScreen({Key? key}) : super(key: key);
+// ==================== NETFLIX FOR RAHUL HOME SCREEN ====================
+class NetflixMobileHomeScreen extends StatefulWidget {
+  const NetflixMobileHomeScreen({Key? key}) : super(key: key);
 
   @override
-  State<NetflixMobileMainScreen> createState() => _NetflixMobileMainScreenState();
+  State<NetflixMobileHomeScreen> createState() => _NetflixMobileHomeScreenState();
 }
 
-class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
-  int _currentTab = 0;
-  bool _isLoading = true;
+class _NetflixMobileHomeScreenState extends State<NetflixMobileHomeScreen> {
+  int _currentIndex = 0;
+  bool _isLoading = false;
   Map<String, dynamic> _config = {};
-
-  List trendingMovies = [];
-  List continueWatching = [];
-  List netflixBlockbusters = [];
-  List bollywoodHits = [];
-  List southSpecials = [];
-  List myWatchlist = [];
 
   final String tmdbApiKey = 'e69ec06ce3bc891f9b3662d558a5e3df';
   final String gistConfigUrl =
       'https://gist.githubusercontent.com/Rahul6051276/5d1dbbe072236fa7c61bf64c9ca4e8df/raw/providers.json';
 
+  // Default fallback data agar internet delay ho taaki blank screen kabhi na aaye
+  Map<String, dynamic> heroItem = {
+    'id': 101,
+    'title': 'Collision Course',
+    'poster_path': '/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg',
+    'backdrop_path': '/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg',
+    'sub_genre': 'Action • Suspense • Blockbuster • HD',
+  };
+
+  List continueWatching = [
+    {
+      'id': 102,
+      'title': 'Surviving Hurricane ...',
+      'poster_path': '/3BhMVFpmt5lhvGOCiU3vB9jP4rE.jpg',
+    },
+    {
+      'id': 103,
+      'title': 'Extraction 2',
+      'poster_path': '/7gKI9hpEMcZUwzrNgKrkHN9q9Kn.jpg',
+    },
+    {
+      'id': 104,
+      'title': 'Money Heist',
+      'poster_path': '/reEMJA1uzscCbk5r6iGVsRYRHgp.jpg',
+    },
+  ];
+
+  List netflixBlockbusters = [];
+  List bollywoodHits = [];
+  List southSpecials = [];
+  List watchlist = [];
+
   @override
   void initState() {
     super.initState();
-    _fetchInitialData();
+    _loadAllData();
   }
 
-  Future<void> _fetchInitialData() async {
-    setState(() => _isLoading = true);
-    await _loadWatchlist();
-    await _fetchGistConfig();
-    await _fetchTMDBData();
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
+  Future<void> _loadAllData() async {
+    _loadWatchlist();
+    _fetchGistConfig();
+    _fetchTMDBContent();
   }
 
   Future<void> _loadWatchlist() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('netflix_watchlist');
-    if (saved != null) {
-      try {
-        myWatchlist = jsonDecode(saved);
-      } catch (_) {}
-    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('netflix_mobile_watchlist');
+      if (saved != null) {
+        setState(() {
+          watchlist = jsonDecode(saved);
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _toggleWatchlist(Map movie) async {
     final prefs = await SharedPreferences.getInstance();
     final id = movie['id'];
-    final exists = myWatchlist.any((item) => item['id'] == id);
+    final exists = watchlist.any((item) => item['id'] == id);
 
     setState(() {
       if (exists) {
-        myWatchlist.removeWhere((item) => item['id'] == id);
+        watchlist.removeWhere((item) => item['id'] == id);
       } else {
-        myWatchlist.add(movie);
+        watchlist.add(movie);
       }
     });
 
-    await prefs.setString('netflix_watchlist', jsonEncode(myWatchlist));
+    await prefs.setString('netflix_mobile_watchlist', jsonEncode(watchlist));
   }
 
   Future<void> _fetchGistConfig() async {
     try {
-      final res = await http.get(Uri.parse(gistConfigUrl)).timeout(const Duration(seconds: 8));
+      final res = await http.get(Uri.parse(gistConfigUrl)).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
-        _config = jsonDecode(res.body);
+        if (mounted) {
+          setState(() {
+            _config = jsonDecode(res.body);
+          });
+        }
       }
     } catch (_) {}
   }
 
-  Future<void> _fetchTMDBData() async {
+  Future<void> _fetchTMDBContent() async {
     try {
       final tRes = await http.get(Uri.parse(
         'https://api.themoviedb.org/3/trending/all/week?api_key=$tmdbApiKey',
-      ));
+      )).timeout(const Duration(seconds: 6));
+
       if (tRes.statusCode == 200) {
         final d = jsonDecode(tRes.body);
-        trendingMovies = d['results'] ?? [];
-        if (trendingMovies.length > 5) {
-          continueWatching = trendingMovies.sublist(1, 5);
+        final results = d['results'] as List? ?? [];
+        if (results.isNotEmpty && mounted) {
+          setState(() {
+            heroItem = results[0];
+            if (results.length > 5) {
+              continueWatching = results.sublist(1, 6);
+            }
+            netflixBlockbusters = results;
+          });
         }
-      }
-
-      final nRes = await http.get(Uri.parse(
-        'https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&with_networks=213&sort_by=popularity.desc',
-      ));
-      if (nRes.statusCode == 200) {
-        final d = jsonDecode(nRes.body);
-        netflixBlockbusters = d['results'] ?? [];
       }
 
       final bRes = await http.get(Uri.parse(
         'https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&with_original_language=hi&sort_by=popularity.desc',
-      ));
+      )).timeout(const Duration(seconds: 6));
+
       if (bRes.statusCode == 200) {
         final d = jsonDecode(bRes.body);
-        bollywoodHits = d['results'] ?? [];
+        if (mounted) {
+          setState(() {
+            bollywoodHits = d['results'] ?? [];
+          });
+        }
       }
 
       final sRes = await http.get(Uri.parse(
         'https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&with_original_language=te|ta|ml|kn&sort_by=popularity.desc',
-      ));
+      )).timeout(const Duration(seconds: 6));
+
       if (sRes.statusCode == 200) {
         final d = jsonDecode(sRes.body);
-        southSpecials = d['results'] ?? [];
+        if (mounted) {
+          setState(() {
+            southSpecials = d['results'] ?? [];
+          });
+        }
       }
     } catch (_) {}
   }
@@ -258,38 +294,30 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
   }
 
   Widget _buildHomeView() {
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFFE50914)),
-      );
-    }
-
-    final heroItem = trendingMovies.isNotEmpty ? trendingMovies[0] : null;
-
     final List allCategories = [
       {
         'title': 'Latest Netflix Blockbusters (Hindi + Glo...',
-        'items': netflixBlockbusters.isNotEmpty ? netflixBlockbusters : trendingMovies,
+        'items': netflixBlockbusters.isNotEmpty ? netflixBlockbusters : continueWatching,
       },
       {
         'title': 'Bollywood Blockbusters',
-        'items': bollywoodHits,
+        'items': bollywoodHits.isNotEmpty ? bollywoodHits : continueWatching,
       },
       {
         'title': 'South Indian Action Blockbusters',
-        'items': southSpecials,
+        'items': southSpecials.isNotEmpty ? southSpecials : continueWatching,
       },
     ];
 
     return RefreshIndicator(
       color: const Color(0xFFE50914),
       backgroundColor: Colors.black,
-      onRefresh: _fetchInitialData,
+      onRefresh: _loadAllData,
       child: CustomScrollView(
         slivers: [
-          // Header: For Rahul, Download, Search (Chromecast removed)
+          // AppBar: For Rahul, Download icon, Search icon (Chromecast removed)
           SliverAppBar(
-            backgroundColor: Colors.black.withOpacity(0.92),
+            backgroundColor: Colors.black.withOpacity(0.94),
             pinned: true,
             automaticallyImplyLeading: false,
             elevation: 0,
@@ -322,230 +350,237 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
               const SizedBox(width: 4),
             ],
             bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(44),
+              preferredSize: const Size.fromHeight(42),
               child: Padding(
                 padding: const EdgeInsets.only(left: 16, bottom: 8),
                 child: Row(
                   children: [
-                    _categoryPill('TV Shows'),
+                    _filterPill('TV Shows'),
                     const SizedBox(width: 8),
-                    _categoryPill('Movies'),
+                    _filterPill('Movies'),
                     const SizedBox(width: 8),
-                    _categoryDropdownPill('Categories'),
+                    _dropdownPill('Categories'),
                   ],
                 ),
               ),
             ),
           ),
 
-          // Billboard Hero Poster Section
-          if (heroItem != null)
-            SliverToBoxAdapter(
-              child: Stack(
-                alignment: Alignment.bottomCenter,
-                children: [
-                  Container(
-                    height: 440,
-                    width: double.infinity,
-                    foregroundDecoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.transparent,
-                          Color(0x99000000),
-                          Color(0xFF000000),
-                        ],
-                        stops: [0.0, 0.4, 0.75, 1.0],
+          // Billboard Poster Hero
+          SliverToBoxAdapter(
+            child: Stack(
+              alignment: Alignment.bottomCenter,
+              children: [
+                Container(
+                  height: 450,
+                  width: double.infinity,
+                  foregroundDecoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.transparent,
+                        Color(0x99000000),
+                        Color(0xFF000000),
+                      ],
+                      stops: [0.0, 0.45, 0.78, 1.0],
+                    ),
+                  ),
+                  child: Image.network(
+                    'https://image.tmdb.org/t/p/w780${heroItem['poster_path'] ?? heroItem['backdrop_path']}',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: const Color(0xFF1B1B1B),
+                      child: const Center(
+                        child: Icon(Icons.movie, size: 70, color: Colors.white24),
                       ),
                     ),
-                    child: Image.network(
-                      'https://image.tmdb.org/t/p/w780${heroItem['poster_path'] ?? heroItem['backdrop_path']}',
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(color: const Color(0xFF181818)),
-                    ),
                   ),
-                  Positioned(
-                    bottom: 12,
-                    left: 16,
-                    right: 16,
-                    child: Column(
-                      children: [
-                        Text(
-                          heroItem['title'] ?? heroItem['name'] ?? 'Collision Course',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                ),
+                Positioned(
+                  bottom: 12,
+                  left: 16,
+                  right: 16,
+                  child: Column(
+                    children: [
+                      Text(
+                        heroItem['title'] ?? heroItem['name'] ?? 'Collision Course',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
                         ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Action • Suspense • Blockbuster • HD',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        heroItem['sub_genre'] ?? 'Action • Suspense • Blockbuster • HD',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
                         ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: Colors.black,
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.black,
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
                                 ),
-                                icon: const Icon(Icons.play_arrow, color: Colors.black, size: 24),
-                                label: const Text(
-                                  'Play',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                ),
-                                onPressed: () => _openStreamSheet(heroItem),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2B2B2B),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                icon: Icon(
-                                  myWatchlist.any((e) => e['id'] == heroItem['id'])
-                                      ? Icons.check
-                                      : Icons.add,
-                                  color: Colors.white,
-                                  size: 22,
-                                ),
-                                label: const Text(
-                                  'My List',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                                ),
-                                onPressed: () => _toggleWatchlist(heroItem),
+                              icon: const Icon(Icons.play_arrow, color: Colors.black, size: 24),
+                              label: const Text(
+                                'Play',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                               ),
+                              onPressed: () => _openStreamSheet(heroItem),
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF282828),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              icon: Icon(
+                                watchlist.any((e) => e['id'] == heroItem['id'])
+                                    ? Icons.check
+                                    : Icons.add,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                              label: const Text(
+                                'My List',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                              ),
+                              onPressed: () => _toggleWatchlist(heroItem),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
 
-          // Continue Watching for Rahul
-          if (continueWatching.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text(
-                          'Continue Watching for Rahul',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
+          // Continue Watching for Rahul Row
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: const [
+                      Text(
+                        'Continue Watching for Rahul',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
                         ),
-                        Text(
-                          'See All →',
-                          style: TextStyle(color: Color(0xFFE50914), fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
+                      ),
+                      Text(
+                        'See All →',
+                        style: TextStyle(color: Color(0xFFE50914), fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
-                  SizedBox(
-                    height: 190,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      itemCount: continueWatching.length + 1,
-                      itemBuilder: (context, i) {
-                        if (i == continueWatching.length) {
-                          return Container(
-                            width: 120,
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1E1E1E),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.grid_view_rounded, color: Color(0xFFE50914), size: 30),
-                                SizedBox(height: 8),
-                                Text('See All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                                Text('Explore More', style: TextStyle(color: Colors.white54, fontSize: 10)),
-                              ],
-                            ),
-                          );
-                        }
-
-                        final item = continueWatching[i];
-                        return GestureDetector(
-                          onTap: () => _openStreamSheet(item),
-                          child: Container(
-                            width: 120,
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(6),
-                              color: const Color(0xFF181818),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  Image.network(
-                                    'https://image.tmdb.org/t/p/w342${item['poster_path'] ?? item['backdrop_path']}',
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1E1E1E)),
-                                  ),
-                                  Positioned(
-                                    bottom: 0,
-                                    left: 0,
-                                    right: 0,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                      color: Colors.black87,
-                                      child: Text(
-                                        item['title'] ?? item['name'] ?? '',
-                                        style: const TextStyle(fontSize: 10, color: Colors.white70),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                ),
+                SizedBox(
+                  height: 190,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: continueWatching.length + 1,
+                    itemBuilder: (context, i) {
+                      if (i == continueWatching.length) {
+                        return Container(
+                          width: 120,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF191919),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.white12),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Icon(Icons.grid_view_rounded, color: Color(0xFFE50914), size: 30),
+                              SizedBox(height: 8),
+                              Text('See All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                              Text('Explore More', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                            ],
                           ),
                         );
-                      },
-                    ),
+                      }
+
+                      final item = continueWatching[i];
+                      return GestureDetector(
+                        onTap: () => _openStreamSheet(item),
+                        child: Container(
+                          width: 120,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            color: const Color(0xFF141414),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Image.network(
+                                  'https://image.tmdb.org/t/p/w342${item['poster_path'] ?? item['backdrop_path']}',
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: const Color(0xFF1F1F1F),
+                                    child: const Center(child: Icon(Icons.movie, color: Colors.white30)),
+                                  ),
+                                ),
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                    color: Colors.black87,
+                                    child: Text(
+                                      item['title'] ?? item['name'] ?? '',
+                                      style: const TextStyle(fontSize: 10, color: Colors.white70),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
 
           // Categories Rows
           SliverList(
@@ -598,7 +633,7 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
                               margin: const EdgeInsets.symmetric(horizontal: 4),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(4),
-                                color: const Color(0xFF181818),
+                                color: const Color(0xFF161616),
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(4),
@@ -628,7 +663,7 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
     );
   }
 
-  Widget _categoryPill(String title) {
+  Widget _filterPill(String title) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
@@ -643,7 +678,7 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
     );
   }
 
-  Widget _categoryDropdownPill(String title) {
+  Widget _dropdownPill(String title) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -824,11 +859,14 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
   }
 
   Widget _buildWatchlistView() {
-    if (myWatchlist.isEmpty) {
-      return const Center(
-        child: Text(
-          'Your watchlist is empty.',
-          style: TextStyle(color: Colors.white54),
+    if (watchlist.isEmpty) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Text(
+            'Your watchlist is empty.',
+            style: TextStyle(color: Colors.white54),
+          ),
         ),
       );
     }
@@ -841,7 +879,7 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
       ),
       body: GridView.builder(
         padding: const EdgeInsets.all(12),
-        itemCount: myWatchlist.length,
+        itemCount: watchlist.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           crossAxisSpacing: 8,
@@ -849,7 +887,7 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
           childAspectRatio: 0.68,
         ),
         itemBuilder: (context, i) {
-          final item = myWatchlist[i];
+          final item = watchlist[i];
           final poster = item['poster_path'];
           return GestureDetector(
             onTap: () => _openStreamSheet(item),
@@ -874,7 +912,7 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: IndexedStack(
-        index: _currentTab,
+        index: _currentIndex,
         children: [
           _buildHomeView(),
           _buildLiveView(),
@@ -882,11 +920,11 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentTab,
+        currentIndex: _currentIndex,
         backgroundColor: const Color(0xFF121212),
         selectedItemColor: const Color(0xFFE50914),
         unselectedItemColor: Colors.white54,
-        onTap: (index) => setState(() => _currentTab = index),
+        onTap: (index) => setState(() => _currentIndex = index),
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
@@ -906,7 +944,7 @@ class _NetflixMobileMainScreenState extends State<NetflixMobileMainScreen> {
   }
 }
 
-// ==================== STREAM RESOLVER SHEET ====================
+// ==================== STREAM RESOLVER BOTTOM SHEET ====================
 class MobileStreamSheet extends StatefulWidget {
   final Map item;
   final Map config;
