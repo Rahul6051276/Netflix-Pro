@@ -188,6 +188,42 @@ class _TvStreamDialogState extends State<TvStreamDialog> {
 
     final cleanTarget = _clean(movieTitle);
 
+    // ==========================================
+    // 1. RENDER CLOUD API (Castle, Vidlink, Showbox etc.)
+    // ==========================================
+    if (targetTmdbId.isNotEmpty) {
+      try {
+        final embedType = isTv ? 'series' : 'movie';
+        final embedUrl = isTv
+            ? 'https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$targetTmdbId?season=$targetSeason&episode=$targetEpisode'
+            : 'https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$targetTmdbId';
+
+        final embedRes = await http.get(Uri.parse(embedUrl)).timeout(const Duration(seconds: 8));
+        if (embedRes.statusCode == 200) {
+          final embedData = jsonDecode(embedRes.body);
+          final streamList = embedData is List ? embedData : (embedData['streams'] ?? []);
+
+          if (streamList is List) {
+            for (var s in streamList) {
+              final sUrl = (s['url'] ?? '').toString();
+              if (sUrl.isNotEmpty) {
+                final sTitle = (s['title'] ?? '$movieTitle HD').toString();
+                final provName = (s['provider'] ?? 'Cloud API').toString();
+                final isHindi = _isHindiStream(sTitle);
+
+                resolved.add({
+                  'server': 'Cloud - $provName',
+                  'title': sTitle,
+                  'url': sUrl,
+                  'isHindi': isHindi,
+                });
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     for (var prov in widget.providers) {
       final type = prov['type'];
 
