@@ -102,6 +102,7 @@ void openCategoriesModal(BuildContext context, List<dynamic> providers, VoidCall
     },
   );
 }
+
 // ============================================================================
 // MOBILE EPISODE SELECTOR BOTTOM SHEET
 // ============================================================================
@@ -224,7 +225,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
 }
 
 // ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET (XTREAM & STREMIO)
+// MOBILE STREAM RESOLVER BOTTOM SHEET (XTREAM, STREMIO & RENDER API)
 // ============================================================================
 class MobileStreamSheet extends StatefulWidget {
   final dynamic item;
@@ -290,9 +291,48 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 
     final cleanTarget = _clean(movieTitle);
 
+    // ==========================================
+    // 1. RENDER CLOUD API (Castle, Vidlink, Showbox etc.)
+    // ==========================================
+    if (targetTmdbId.isNotEmpty) {
+      try {
+        final embedType = isTv ? 'series' : 'movie';
+        final embedUrl = isTv
+            ? 'https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$targetTmdbId?season=$targetSeason&episode=$targetEpisode'
+            : 'https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$targetTmdbId';
+
+        final embedRes = await http.get(Uri.parse(embedUrl)).timeout(const Duration(seconds: 8));
+        if (embedRes.statusCode == 200) {
+          final embedData = jsonDecode(embedRes.body);
+          final streamList = embedData is List ? embedData : (embedData['streams'] ?? []);
+
+          if (streamList is List) {
+            for (var s in streamList) {
+              final sUrl = (s['url'] ?? '').toString();
+              if (sUrl.isNotEmpty) {
+                final sTitle = (s['title'] ?? '$movieTitle HD').toString();
+                final provName = (s['provider'] ?? 'Cloud API').toString();
+                final isHindi = _isHindiStream(sTitle);
+
+                resolved.add({
+                  'server': 'Cloud - $provName',
+                  'title': sTitle,
+                  'url': sUrl,
+                  'isHindi': isHindi,
+                });
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     for (var prov in widget.providers) {
       final type = prov['type'];
 
+      // ==========================================
+      // 2. XTREAM IPTV
+      // ==========================================
       if (type == 'xtream') {
         final host = (prov['host'] ?? '').toString().replaceAll(RegExp(r'/+$'), '');
         final user = prov['username'] ?? '';
@@ -383,6 +423,9 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
         }
       }
 
+      // ==========================================
+      // 3. STREMIO ADDON (HdHub etc.)
+      // ==========================================
       if (type == 'stremio' && imdbId != null && imdbId.isNotEmpty) {
         final base = (prov['url'] ?? '').toString().replaceAll('/manifest.json', '');
         final streamPath = isTv
@@ -506,73 +549,56 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
           ),
           const SizedBox(height: 12),
           Text(
-            widget.season != null
-                ? '${widget.item['title']} - S${widget.season} E${widget.episode}'
-                : widget.item['title'],
+            widget.item['title'] ?? 'Streams',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
-          if (loading)
-            const Expanded(child: Center(child: CircularProgressIndicator(color: Color(0xFFE50914))))
-          else if (streams.isEmpty)
-            const Expanded(child: Center(child: Text('No active streams found on server.', style: TextStyle(color: Colors.white70))))
-          else
-            Expanded(
-              child: ListView.builder(
-                itemCount: streams.length,
-                itemBuilder: (ctx, i) {
-                  final s = streams[i];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF282828),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          s['isHindi'] == true ? Icons.record_voice_over_rounded : Icons.movie_rounded,
-                          color: s['isHindi'] == true ? const Color(0xFF46D369) : Colors.white,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
+          Expanded(
+            child: loading
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+                : streams.isEmpty
+                    ? const Center(child: Text('No streams found', style: TextStyle(color: Colors.white54)))
+                    : ListView.builder(
+                        itemCount: streams.length,
+                        itemBuilder: (ctx, i) {
+                          final s = streams[i];
+                          final isHindi = s['isHindi'] == true;
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white10,
+                              borderRadius: BorderRadius.circular(8),
+                              border: isHindi ? Border.all(color: Colors.green, width: 1) : null,
+                            ),
+                            child: ListTile(
+                              title: Text(
                                 s['title'],
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
+                              subtitle: Text(
                                 s['server'],
-                                style: const TextStyle(color: Colors.white54, fontSize: 10),
+                                style: const TextStyle(color: Colors.white54, fontSize: 12),
                               ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.play_circle_fill, color: Color(0xFFE50914), size: 28),
-                          onPressed: () => _playStream(s['url'], false),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.open_in_new_rounded, color: Colors.white70, size: 22),
-                          onPressed: () => _playStream(s['url'], true),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.play_circle_fill, color: Color(0xFFE50914), size: 32),
+                                    onPressed: () => _playStream(s['url'], false),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.open_in_new, color: Colors.amber, size: 22),
+                                    onPressed: () => _playStream(s['url'], true),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
         ],
       ),
     );
