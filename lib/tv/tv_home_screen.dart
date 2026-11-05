@@ -37,9 +37,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   List<dynamic> allSouthMovies = [];
   List<dynamic> allHollywoodMovies = [];
 
-  // Dedicated Web Series Section (200+ Items Each)
+  // Dedicated Web Series Section (200+ Items Each) - UPDATED
   List<dynamic> allHindiSeries = [];
-  List<dynamic> allEnglishSeries = [];
+  List<dynamic> allNetflixSeries = [];
+  List<dynamic> allAmazonSeries = [];
   List<dynamic> allSouthSeries = [];
 
   bool isLoading = true;
@@ -192,16 +193,29 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       },
     );
 
-    // 5. English & Global Web Series (200+)
+    // 5. All Netflix Series (200+ Netflix Originals & Shows)
     _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&sort_by=$sortTvQuery',
+      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766&sort_by=$sortTvQuery',
       isTv: true,
       onDone: (list) {
-        if (mounted) setState(() => allEnglishSeries = list);
+        if (mounted) {
+          setState(() => allNetflixSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
+        }
       },
     );
 
-    // 6. South Web Series (200+)
+    // 6. All Amazon Series (200+ Prime Video Originals & Shows)
+    _fetchPages(
+      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766&sort_by=$sortTvQuery',
+      isTv: true,
+      onDone: (list) {
+        if (mounted) {
+          setState(() => allAmazonSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
+        }
+      },
+    );
+
+    // 7. South Web Series (200+)
     _fetchPages(
       baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml&sort_by=$sortTvQuery',
       isTv: true,
@@ -764,25 +778,31 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           ),
                         ],
 
-                        // TAB 4: DEDICATED WEB SERIES SECTION (200+ CATALOG)
+                        // TAB 4: DEDICATED WEB SERIES SECTION (200+ CATALOG) - UPDATED
                         if (_selectedNavIndex == 4) ...[
-                          _buildCategoryHeader('All Web Series (Hindi Dubbed & Originals)'),
+                          _buildCategoryHeader('All Web Series (Hindi, Netflix, Amazon & South)'),
                           if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
                           _buildNetflixRow(
-                            'Hindi OTT Web Series',
+                            'All Hindi Web Series',
                             allHindiSeries.isNotEmpty ? allHindiSeries : homeHindiSeriesList,
                             '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
                             isFirstRow: true,
                             isTv: true,
                           ),
                           _buildNetflixRow(
-                            'Global Web Series (Hindi Dubbed & English)',
-                            allEnglishSeries.isNotEmpty ? allEnglishSeries : homeEnglishSeriesList,
-                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}',
+                            'All Netflix Series',
+                            allNetflixSeries.isNotEmpty ? allNetflixSeries : homeEnglishSeriesList,
+                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766',
                             isTv: true,
                           ),
                           _buildNetflixRow(
-                            'South Indian Web Series (Hindi Dubbed)',
+                            'All Amazon Series',
+                            allAmazonSeries.isNotEmpty ? allAmazonSeries : homeHindiSeriesList,
+                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766',
+                            isTv: true,
+                          ),
+                          _buildNetflixRow(
+                            'All South Indian Web Series',
                             allSouthSeries,
                             '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml',
                             isTv: true,
@@ -815,9 +835,15 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                             isTv: true,
                           ),
                           _buildNetflixRow(
-                            'Global Shows',
-                            homeEnglishSeriesList,
-                            '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US',
+                            'Netflix Originals',
+                            allNetflixSeries.isNotEmpty ? allNetflixSeries : homeEnglishSeriesList,
+                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766',
+                            isTv: true,
+                          ),
+                          _buildNetflixRow(
+                            'Amazon Prime Originals',
+                            allAmazonSeries.isNotEmpty ? allAmazonSeries : homeHindiSeriesList,
+                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766',
                             isTv: true,
                           ),
                         ],
