@@ -225,7 +225,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
 }
 
 // ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET (FAST PARALLEL + RENDER API + XTREAM + STREMIO)
+// MOBILE STREAM RESOLVER BOTTOM SHEET (FAST PARALLEL GIST PROVIDERS)
 // ============================================================================
 class MobileStreamSheet extends StatefulWidget {
   final dynamic item;
@@ -269,7 +269,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 
   String _clean(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
 
-  // PARALLEL FAST RESOLVER WITH RENDER API, XTREAM & STREMIO
+  // PARALLEL FAST RESOLVER FOR ALL GIST PROVIDERS (XTREAM & STREMIO / RENDER)
   Future<void> _fetchDirectStreamsParallel() async {
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
@@ -277,59 +277,6 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     final targetSeason = widget.season ?? 1;
     final targetEpisode = widget.episode ?? 1;
     final cleanTarget = _clean(movieTitle);
-
-    var resolved = [];
-
-    // ========================================================================
-    // 1. RENDER API EMBED SOURCES (CASTLE TV, VIDLINK, VIDSRC)
-    // ========================================================================
-    const renderBase = 'https://tmdb-embed-api-4.onrender.com';
-
-    if (targetTmdbId.isNotEmpty) {
-      if (isTv) {
-        resolved.addAll([
-          {
-            'server': 'Castle TV (Render Server)',
-            'title': '$movieTitle S$targetSeason:E$targetEpisode (Multi-Audio / HD)',
-            'url': '$renderBase/embed/tv/$targetTmdbId/$targetSeason/$targetEpisode',
-            'isHindi': false,
-          },
-          {
-            'server': 'VidLink Pro (Render Server)',
-            'title': '$movieTitle S$targetSeason:E$targetEpisode (Fast Stream)',
-            'url': '$renderBase/vidlink/tv/$targetTmdbId/$targetSeason/$targetEpisode',
-            'isHindi': false,
-          },
-          {
-            'server': 'VidSrc Primary (Render Server)',
-            'title': '$movieTitle S$targetSeason:E$targetEpisode (HD)',
-            'url': '$renderBase/vidsrc/tv/$targetTmdbId/$targetSeason/$targetEpisode',
-            'isHindi': false,
-          },
-        ]);
-      } else {
-        resolved.addAll([
-          {
-            'server': 'Castle TV (Render Server)',
-            'title': '$movieTitle (Multi-Audio / HD)',
-            'url': '$renderBase/embed/movie/$targetTmdbId',
-            'isHindi': false,
-          },
-          {
-            'server': 'VidLink Pro (Render Server)',
-            'title': '$movieTitle (Fast Stream)',
-            'url': '$renderBase/vidlink/movie/$targetTmdbId',
-            'isHindi': false,
-          },
-          {
-            'server': 'VidSrc Primary (Render Server)',
-            'title': '$movieTitle HD (Public Stream)',
-            'url': '$renderBase/vidsrc/movie/$targetTmdbId',
-            'isHindi': false,
-          },
-        ]);
-      }
-    }
 
     String? imdbId;
     if (targetTmdbId.isNotEmpty) {
@@ -343,13 +290,12 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
       } catch (_) {}
     }
 
-    // ========================================================================
-    // 2. XTREAM & STREMIO PROVIDERS PARALLEL WORKER
-    // ========================================================================
+    // Saare providers (Xtream aur Stremio/Render Gist providers) ko parallel chalana
     List<Future<List<dynamic>>> tasks = widget.providers.map((prov) async {
       var providerResolved = [];
       final type = prov['type'];
 
+      // --- XTREAM PROVIDER ---
       if (type == 'xtream') {
         final host = (prov['host'] ?? '').toString().replaceAll(RegExp(r'/+$'), '');
         final user = prov['username'] ?? '';
@@ -440,6 +386,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
         }
       }
 
+      // --- STREMIO / RENDER ADDON PROVIDER ---
       if (type == 'stremio' && imdbId != null && imdbId.isNotEmpty) {
         final base = (prov['url'] ?? '').toString().replaceAll('/manifest.json', '');
         final streamPath = isTv
@@ -459,7 +406,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
               }
 
               providerResolved.add({
-                'server': prov['name'] ?? 'HdHub Provider',
+                'server': prov['name'] ?? 'Stremio Provider',
                 'title': titleStr,
                 'url': s['url'],
                 'isHindi': _isHindiStream(titleStr),
@@ -473,6 +420,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     }).toList();
 
     var results = await Future.wait(tasks);
+    var resolved = [];
     for (var r in results) {
       resolved.addAll(r);
     }
