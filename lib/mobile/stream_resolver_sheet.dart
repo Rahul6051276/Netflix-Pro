@@ -7,7 +7,6 @@ import 'package:android_intent_plus/flag.dart';
 import 'internal_player.dart';
 import 'tmdb_config.dart';
 import 'category_grid_screen.dart';
-import 'stream_service.dart';
 
 // ============================================================================
 // FULL SCREEN CATEGORIES OVERLAY MODAL
@@ -226,7 +225,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
 }
 
 // ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET
+// MOBILE STREAM RESOLVER BOTTOM SHEET (XTREAM, STREMIO & RENDER API)
 // ============================================================================
 class MobileStreamSheet extends StatefulWidget {
   final dynamic item;
@@ -255,30 +254,223 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
   @override
   void initState() {
     super.initState();
-    _loadStreams();
+    _fetchDirectStreams();
   }
 
-  Future<void> _loadStreams() async {
-    try {
-      var result = await MobileStreamService.getDirectStreams(
-        item: widget.item,
-        providers: widget.providers,
-        season: widget.season,
-        episode: widget.episode,
-      );
+  bool _isHindiStream(String title, {String category = ''}) {
+    final lower = '$title $category'.toLowerCase();
+    return lower.contains('hindi') ||
+        lower.contains('dual') ||
+        lower.contains('multi') ||
+        lower.contains('dubbed') ||
+        lower.contains('hin') ||
+        lower.contains('dub');
+  }
 
-      if (mounted) {
-        setState(() {
-          streams = result;
-          loading = false;
-        });
+  String _clean(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
+
+  Future<void> _fetchDirectStreams() async {
+    var resolved = [];
+    final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
+    final isTv = widget.item['isTv'] == true;
+    final movieTitle = widget.item['title'] ?? '';
+    final targetSeason = widget.season ?? 1;
+    final targetEpisode = widget.episode ?? 1;
+
+    String? imdbId;
+    if (targetTmdbId.isNotEmpty) {
+      try {
+        final extType = isTv ? 'tv' : 'movie';
+        final extRes = await http.get(Uri.parse(
+            '${MobileConfig.tmdbBase}/$extType/$targetTmdbId/external_ids?api_key=${MobileConfig.tmdbKey}')).timeout(const Duration(seconds: 4));
+        if (extRes.statusCode == 200) {
+          imdbId = jsonDecode(extRes.body)['imdb_id'];
+        }
+      } catch (_) {}
+    }
+
+    final cleanTarget = _clean(movieTitle);
+
+    // ==========================================
+    // 1. RENDER CLOUD API (Castle, Vidlink, Showbox etc.)
+    // ==========================================
+    if (targetTmdbId.isNotEmpty) {
+      try {
+        final embedType = isTv ? 'series' : 'movie';
+        final embedUrl = isTv
+            ? 'https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$targetTmdbId?season=$targetSeason&episode=$targetEpisode'
+            : 'https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$targetTmdbId';
+
+        final embedRes = await http.get(Uri.parse(embedUrl)).timeout(const Duration(seconds: 8));
+        if (embedRes.statusCode == 200) {
+          final embedData = jsonDecode(embedRes.body);
+          final streamList = embedData is List ? embedData : (embedData['streams'] ?? []);
+
+          if (streamList is List) {
+            for (var s in streamList) {
+              final sUrl = (s['url'] ?? '').toString();
+              if (sUrl.isNotEmpty) {
+                final sTitle = (s['title'] ?? '$movieTitle HD').toString();
+                final provName = (s['provider'] ?? 'Cloud API').toString();
+                final isHindi = _isHindiStream(sTitle);
+
+                resolved.add({
+                  'server': 'Cloud - $provName',
+                  'title': sTitle,
+                  'url': sUrl,
+                  'isHindi': isHindi,
+                });
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    for (var prov in widget.providers) {
+      final type = prov['type'];
+
+      // ==========================================
+      // 2. XTREAM IPTV
+      // ==========================================
+      if (type == 'xtream') {
+        final host = (prov['host'] ?? '').toString().replaceAll(RegExp(r'/+$'), '');
+        final user = prov['username'] ?? '';
+        final pass = prov['password'] ?? '';
+
+        if (host.isNotEmpty && user.isNotEmpty && pass.isNotEmpty) {
+          try {
+            if (isTv) {
+              final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_series';
+              final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
+              if (xtreamRes.statusCode == 200) {
+                final seriesList = jsonDecode(xtreamRes.body) as List<dynamic>;
+                var candidates = [];
+
+                for (var s in seriesList) {
+                  final sTmdb = (s['tmdb_id'] ?? s['tmdb'] ?? '').toString();
+                  final rawName = (s['name'] ?? '').toString();
+                  final categoryName = (s['category_name'] ?? '').toString();
+                  final sClean = _clean(rawName);
+
+                  if (sTmdb == targetTmdbId || sClean.contains(cleanTarget) || cleanTarget.contains(sClean)) {
+                    s['is_hindi_detected'] = _isHindiStream(rawName, category: categoryName);
+                    candidates.add(s);
+                  }
+                }
+
+                candidates.sort((a, b) => (b['is_hindi_detected'] == true ? 1 : 0).compareTo(a['is_hindi_detected'] == true ? 1 : 0));
+
+                for (var bestSeries in candidates.take(2)) {
+                  final sid = bestSeries['series_id'];
+                  final infoApi = '$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=$sid';
+                  final infoRes = await http.get(Uri.parse(infoApi)).timeout(const Duration(seconds: 8));
+                  if (infoRes.statusCode == 200) {
+                    final epMap = jsonDecode(infoRes.body)['episodes'] as Map<String, dynamic>? ?? {};
+                    final epList = epMap['$targetSeason'] as List<dynamic>? ?? [];
+                    final match = epList.firstWhere((e) => (e['episode_num'] ?? 0) == targetEpisode, orElse: () => null);
+
+                    if (match != null) {
+                      final isHindi = bestSeries['is_hindi_detected'] == true;
+                      resolved.add({
+                        'server': prov['name'] ?? 'LiveBox Xtream IPTV',
+                        'title': isHindi
+                            ? '$movieTitle (Hindi Audio) S$targetSeason:E$targetEpisode'
+                            : '$movieTitle S$targetSeason:E$targetEpisode',
+                        'url': '$host/series/$user/$pass/${match['id']}.${match['container_extension'] ?? "mp4"}',
+                        'isHindi': isHindi,
+                      });
+                    }
+                  }
+                }
+              }
+            } else {
+              final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_vod_streams';
+              final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
+              if (xtreamRes.statusCode == 200) {
+                final streamList = jsonDecode(xtreamRes.body) as List<dynamic>;
+                var candidates = [];
+
+                for (var m in streamList) {
+                  final mTmdb = (m['tmdb_id'] ?? m['tmdb'] ?? '').toString();
+                  final rawName = (m['name'] ?? '').toString();
+                  final categoryName = (m['category_name'] ?? '').toString();
+                  final mClean = _clean(rawName);
+
+                  if (mTmdb == targetTmdbId || mClean.contains(cleanTarget) || cleanTarget.contains(mClean)) {
+                    candidates.add({
+                      'data': m,
+                      'isHindi': _isHindiStream(rawName, category: categoryName),
+                    });
+                  }
+                }
+
+                candidates.sort((a, b) => (b['isHindi'] == true ? 1 : 0).compareTo(a['isHindi'] == true ? 1 : 0));
+
+                for (var cand in candidates.take(3)) {
+                  final bestMovie = cand['data'];
+                  final isHindi = cand['isHindi'] == true;
+                  resolved.add({
+                    'server': prov['name'] ?? 'LiveBox Xtream IPTV',
+                    'title': isHindi ? '$movieTitle (Hindi Audio / Dubbed)' : '$movieTitle HD',
+                    'url': '$host/movie/$user/$pass/${bestMovie['stream_id']}.${bestMovie['container_extension'] ?? "mp4"}',
+                    'isHindi': isHindi,
+                  });
+                }
+              }
+            }
+          } catch (_) {}
+        }
       }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          loading = false;
-        });
+
+      // ==========================================
+      // 3. STREMIO ADDON (HdHub etc.)
+      // ==========================================
+      if (type == 'stremio' && imdbId != null && imdbId.isNotEmpty) {
+        final base = (prov['url'] ?? '').toString().replaceAll('/manifest.json', '');
+        final streamPath = isTv
+            ? '$base/stream/series/$imdbId:$targetSeason:$targetEpisode.json'
+            : '$base/stream/movie/$imdbId.json';
+
+        try {
+          final res = await http.get(Uri.parse(streamPath)).timeout(const Duration(seconds: 4));
+          if (res.statusCode == 200) {
+            final data = jsonDecode(res.body);
+            for (var s in (data['streams'] ?? [])) {
+              final titleStr = (s['title'] ?? s['name'] ?? '').toString();
+              if (titleStr.toLowerCase().contains('donation') ||
+                  titleStr.toLowerCase().contains('discord') ||
+                  titleStr.toLowerCase().contains('telegram')) {
+                continue;
+              }
+
+              resolved.add({
+                'server': prov['name'] ?? 'HdHub Provider',
+                'title': titleStr,
+                'url': s['url'],
+                'isHindi': _isHindiStream(titleStr),
+              });
+            }
+          }
+        } catch (_) {}
       }
+    }
+
+    resolved.sort((a, b) {
+      final aHindi = a['isHindi'] == true ? 1 : 0;
+      final bHindi = b['isHindi'] == true ? 1 : 0;
+      if (aHindi != bHindi) return bHindi.compareTo(aHindi);
+
+      final aIsXtream = (a['server'] ?? '').toString().contains('Xtream') ? 1 : 0;
+      final bIsXtream = (b['server'] ?? '').toString().contains('Xtream') ? 1 : 0;
+      return bIsXtream.compareTo(aIsXtream);
+    });
+
+    if (mounted) {
+      setState(() {
+        streams = resolved;
+        loading = false;
+      });
     }
   }
 
@@ -357,73 +549,56 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
           ),
           const SizedBox(height: 12),
           Text(
-            widget.season != null
-                ? '${widget.item['title']} - S${widget.season} E${widget.episode}'
-                : widget.item['title'],
+            widget.item['title'] ?? 'Streams',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
-          if (loading)
-            const Expanded(child: Center(child: CircularProgressIndicator(color: Color(0xFFE50914))))
-          else if (streams.isEmpty)
-            const Expanded(child: Center(child: Text('No active streams found on server.', style: TextStyle(color: Colors.white70))))
-          else
-            Expanded(
-              child: ListView.builder(
-                itemCount: streams.length,
-                itemBuilder: (ctx, i) {
-                  final s = streams[i];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF282828),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          s['isHindi'] == true ? Icons.record_voice_over_rounded : Icons.movie_rounded,
-                          color: s['isHindi'] == true ? const Color(0xFF46D369) : Colors.white,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
+          Expanded(
+            child: loading
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+                : streams.isEmpty
+                    ? const Center(child: Text('No streams found', style: TextStyle(color: Colors.white54)))
+                    : ListView.builder(
+                        itemCount: streams.length,
+                        itemBuilder: (ctx, i) {
+                          final s = streams[i];
+                          final isHindi = s['isHindi'] == true;
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white10,
+                              borderRadius: BorderRadius.circular(8),
+                              border: isHindi ? Border.all(color: Colors.green, width: 1) : null,
+                            ),
+                            child: ListTile(
+                              title: Text(
                                 s['title'],
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
+                              subtitle: Text(
                                 s['server'],
-                                style: const TextStyle(color: Colors.white54, fontSize: 10),
+                                style: const TextStyle(color: Colors.white54, fontSize: 12),
                               ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.play_circle_fill, color: Color(0xFFE50914), size: 28),
-                          onPressed: () => _playStream(s['url'], false),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.open_in_new_rounded, color: Colors.white70, size: 22),
-                          onPressed: () => _playStream(s['url'], true),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.play_circle_fill, color: Color(0xFFE50914), size: 32),
+                                    onPressed: () => _playStream(s['url'], false),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.open_in_new, color: Colors.amber, size: 22),
+                                    onPressed: () => _playStream(s['url'], true),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
         ],
       ),
     );
