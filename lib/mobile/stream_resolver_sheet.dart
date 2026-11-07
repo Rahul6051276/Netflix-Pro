@@ -225,7 +225,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
 }
 
 // ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET (FAST PARALLEL FETCHING)
+// MOBILE STREAM RESOLVER BOTTOM SHEET (FAST PARALLEL + TMDB RENDER SERVER)
 // ============================================================================
 class MobileStreamSheet extends StatefulWidget {
   final dynamic item;
@@ -269,7 +269,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 
   String _clean(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
 
-  // PARALLEL & FAST PROVIDER RESOLVER
+  // PARALLEL & FAST PROVIDER RESOLVER WITH TMDB RENDER FALLBACK
   Future<void> _fetchDirectStreamsParallel() async {
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
@@ -277,6 +277,27 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     final targetSeason = widget.season ?? 1;
     final targetEpisode = widget.episode ?? 1;
     final cleanTarget = _clean(movieTitle);
+
+    var resolved = [];
+
+    // 1. TMDB Render / Public Embed Server fallback
+    if (targetTmdbId.isNotEmpty) {
+      if (isTv) {
+        resolved.add({
+          'server': 'TMDB Render TV Server',
+          'title': '$movieTitle S$targetSeason:E$targetEpisode (HD)',
+          'url': 'https://vidsrc.me/embed/tv?tmdb=$targetTmdbId&season=$targetSeason&episode=$targetEpisode',
+          'isHindi': false,
+        });
+      } else {
+        resolved.add({
+          'server': 'TMDB Render Movie Server',
+          'title': '$movieTitle HD (Public Stream)',
+          'url': 'https://vidsrc.me/embed/movie?tmdb=$targetTmdbId',
+          'isHindi': false,
+        });
+      }
+    }
 
     String? imdbId;
     if (targetTmdbId.isNotEmpty) {
@@ -290,7 +311,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
       } catch (_) {}
     }
 
-    // Saare providers ko ek sath (parallel) run karne ke liye Future.wait use kar rahe hain
+    // 2. Saare providers ko parallel chalana (Xtream & Stremio)
     List<Future<List<dynamic>>> tasks = widget.providers.map((prov) async {
       var providerResolved = [];
       final type = prov['type'];
@@ -417,14 +438,12 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
       return providerResolved;
     }).toList();
 
-    // Sabhi providers ke results ek sath ikatthe karna
     var results = await Future.wait(tasks);
-    var resolved = [];
     for (var r in results) {
       resolved.addAll(r);
     }
 
-    // Sorting: Hindi & Xtream priority
+    // Sorting: Hindi first, then others
     resolved.sort((a, b) => (b['isHindi'] == true ? 1 : 0).compareTo(a['isHindi'] == true ? 1 : 0));
 
     if (mounted) {
