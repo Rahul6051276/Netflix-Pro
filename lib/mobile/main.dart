@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE MAIN ENTRY POINT (FINAL ERROR-FREE)
+// NETFLIX PRO MOBILE MAIN ENTRY POINT (CENTER NETFLIX LOGO STYLE)
 // ============================================================================
 import 'dart:async';
 import 'dart:io';
@@ -38,7 +38,7 @@ class NetflixMobileApp extends StatelessWidget {
 }
 
 // ============================================================================
-// NETFLIX INTRO / SPLASH SCREEN
+// NETFLIX INTRO / CENTER SPLASH SCREEN
 // ============================================================================
 class NetflixSplashScreen extends StatefulWidget {
   const NetflixSplashScreen({super.key});
@@ -61,22 +61,21 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
       duration: const Duration(milliseconds: 1800),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.6, end: 1.25).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.15).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
 
     _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.4, curve: Curves.easeIn)),
+      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.5, curve: Curves.easeIn)),
     );
 
     _controller.forward();
 
-    Timer(const Duration(milliseconds: 2200), () {
+    Timer(const Duration(milliseconds: 2400), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
             transitionDuration: const Duration(milliseconds: 600),
-            // Fixed: Pointing to MobileRootScreen which safely wraps bottom navigation & providers
             pageBuilder: (_, __, ___) => const MobileRootScreen(),
             transitionsBuilder: (_, animation, __, child) {
               return FadeTransition(opacity: animation, child: child);
@@ -108,31 +107,32 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: const [
+                    // Center me bada sa Netflix logo text
                     Text(
-                      'N',
+                      'NETFLIX',
                       style: TextStyle(
                         color: Color(0xFFE50914),
-                        fontSize: 90,
+                        fontSize: 48,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: -2.0,
+                        letterSpacing: 4.0,
                         fontFamily: 'Helvetica Neue',
                         shadows: [
                           Shadow(
-                            blurRadius: 25.0,
-                            color: Color(0x99E50914),
+                            blurRadius: 30.0,
+                            color: Color(0xAAE50914),
                             offset: Offset(0, 0),
                           ),
                         ],
                       ),
                     ),
-                    SizedBox(height: 12),
+                    SizedBox(height: 8),
                     Text(
-                      'NETFLIX PRO',
+                      'PRO',
                       style: TextStyle(
-                        color: Color(0xFFE50914),
-                        fontSize: 16,
+                        color: Colors.white70,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        letterSpacing: 4.0,
+                        letterSpacing: 8.0,
                       ),
                     ),
                   ],
