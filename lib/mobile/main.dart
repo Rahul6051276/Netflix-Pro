@@ -1,3 +1,6 @@
+// ============================================================================
+// NETFLIX PRO MOBILE MAIN ENTRY POINT (FINAL ERROR-FREE)
+// ============================================================================
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -73,7 +76,8 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
             transitionDuration: const Duration(milliseconds: 600),
-            pageBuilder: (_, __, ___) => const MobileHomeScreen(),
+            // Fixed: Pointing to MobileRootScreen which safely wraps bottom navigation & providers
+            pageBuilder: (_, __, ___) => const MobileRootScreen(),
             transitionsBuilder: (_, animation, __, child) {
               return FadeTransition(opacity: animation, child: child);
             },
