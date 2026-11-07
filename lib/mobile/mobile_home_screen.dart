@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (FINAL ERROR-FREE)
+// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (CLEAN REAL NETFLIX UI)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -58,7 +58,7 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (idx) => setState(() => _currentIndex = idx),
-        backgroundColor: const Color(0xFF121212), // Fixed typo here
+        backgroundColor: const Color(0xFF121212),
         selectedItemColor: Colors.white,
         unselectedItemColor: Colors.white54,
         selectedFontSize: 11,
@@ -76,7 +76,7 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 }
 
 // ============================================================================
-// 1. HOME SCREEN (NETFLIX PRO UI)
+// 1. HOME SCREEN (CLEAN NETFLIX PRO UI - NO TOP PILLS)
 // ============================================================================
 class MobileHomeScreen extends StatefulWidget {
   final List<dynamic> providers;
@@ -293,25 +293,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       );
     }
     await prefs.setString('my_watchlist', jsonEncode(list));
-  }
-
-  Widget _buildTopPill(String title, {required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.4),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white30, width: 1.0),
-        ),
-        child: Text(
-          title,
-          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
   }
 
   // NETFLIX PRO BILLBOARD
@@ -671,13 +652,13 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   ),
                 ),
 
-                // TOP STICKY NETFLIX HEADER BAR
+                // CLEAN NETFLIX HEADER BAR (LOGO & SEARCH ONLY)
                 Positioned(
                   top: 0,
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.only(top: 40, left: 16, right: 16, bottom: 10),
+                    padding: const EdgeInsets.only(top: 40, left: 16, right: 16, bottom: 12),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
@@ -685,66 +666,21 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         colors: [Colors.black.withOpacity(0.9), Colors.transparent],
                       ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'NETFLIX',
-                              style: TextStyle(color: Color(0xFFE50914), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 1.2),
-                            ),
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.search, color: Colors.white, size: 26),
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(builder: (_) => MobileSearchScreen(providers: widget.providers, onPlaySaved: _loadContinueWatching)),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          ],
+                        const Text(
+                          'NETFLIX',
+                          style: TextStyle(color: Color(0xFFE50914), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 1.2),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            _buildTopPill('TV Shows', onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => MobileCategoryGridScreen(
-                                    title: 'TV Shows',
-                                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}',
-                                    isTv: true,
-                                    providers: widget.providers,
-                                    onPlaySaved: _loadContinueWatching,
-                                  ),
-                                ),
-                              );
-                            }),
-                            const SizedBox(width: 8),
-                            _buildTopPill('Movies', onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => MobileCategoryGridScreen(
-                                    title: 'Movies',
-                                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}',
-                                    isTv: false,
-                                    providers: widget.providers,
-                                    onPlaySaved: _loadContinueWatching,
-                                  ),
-                                ),
-                              );
-                            }),
-                            const SizedBox(width: 8),
-                            _buildTopPill('Categories ⌵', onTap: () => openCategoriesModal(context, widget.providers, _loadContinueWatching)),
-                          ],
+                        IconButton(
+                          icon: const Icon(Icons.search, color: Colors.white, size: 26),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => MobileSearchScreen(providers: widget.providers, onPlaySaved: _loadContinueWatching)),
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -1010,7 +946,7 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
 }
 
 // ============================================================================
-// 4. MORE SCREEN (CATEGORIES & SETTINGS)
+// 4. MORE SCREEN (ALL CATEGORIES MOVED HERE)
 // ============================================================================
 class MobileMoreScreen extends StatelessWidget {
   final List<dynamic> providers;
@@ -1072,6 +1008,46 @@ class MobileMoreScreen extends StatelessWidget {
             title: const Text('Explore Genres & Collections', style: TextStyle(color: Colors.white)),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
             onTap: () => openCategoriesModal(context, providers, () {}),
+          ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.local_fire_department, color: Color(0xFFE50914)),
+            title: const Text('South Action Hits (Hindi Dubbed)', style: TextStyle(color: Colors.white)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'South Action Hits (Hindi Dubbed)',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.movie, color: Colors.white),
+            title: const Text('Hollywood Blockbusters (Hindi Dubbed)', style: TextStyle(color: Colors.white)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Hollywood Blockbusters',
+                    baseUrl: '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
