@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (SLIDING BANNER & CLEAN UI)
+// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (FINAL COMPLETE CODE)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -258,10 +258,10 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     await prefs.setString('my_watchlist', jsonEncode(list));
   }
 
-  // 4-5 CARDS SLIDING BANNER (NO PLAY/MY LIST BUTTONS)
+  // 4-5 CARDS SLIDING BANNER
   Widget _buildSlidingBanner(List<dynamic> items) {
     if (items.isEmpty) return const SizedBox.shrink();
-    final bannerItems = items.take(5).toList(); // Top 4-5 cards
+    final bannerItems = items.take(5).toList();
 
     return SizedBox(
       height: 440,
@@ -325,7 +325,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  // NETFLIX PRO CIRCULAR PREVIEWS ROW
+  // CIRCULAR PREVIEWS ROW
   Widget _buildCircularPreviewsRow(List<dynamic> items) {
     if (items.isEmpty) return const SizedBox.shrink();
     final previewItems = items.take(10).toList();
@@ -474,7 +474,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
               return InkWell(
                 onTap: () => _onItemSelect(item),
-                onLongPress: () => _toggleMyList(item), // Long press to add to My List
+                onLongPress: () => _toggleMyList(item),
                 borderRadius: BorderRadius.circular(6),
                 child: Container(
                   width: 112,
@@ -790,9 +790,6 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
                           );
                         }
                       },
-                      onLongPress: () {
-                        // Optional long press in search if needed
-                      },
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(6),
                         child: Image.network(
@@ -809,7 +806,7 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
 }
 
 // ============================================================================
-// 3. MY LIST SCREEN (WATCHLIST WITH LONG PRESS REMOVE)
+// 3. MY LIST SCREEN (AUTO-REFRESHING WATCHLIST)
 // ============================================================================
 class MobileMyListScreen extends StatefulWidget {
   const MobileMyListScreen({super.key});
@@ -828,19 +825,42 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
     _loadWatchlist();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadWatchlist();
+  }
+
   Future<void> _loadWatchlist() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('my_watchlist') ?? '[]';
-    if (mounted) {
-      setState(() {
-        watchlist = jsonDecode(raw);
-        isLoading = false;
-      });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final raw = prefs.getString('my_watchlist') ?? '[]';
+      if (mounted) {
+        setState(() {
+          watchlist = jsonDecode(raw);
+          isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => isLoading = false);
     }
+  }
+
+  Future<void> _removeFromList(dynamic item) async {
+    final prefs = await SharedPreferences.getInstance();
+    watchlist.removeWhere((x) => x['tmdb_id'] == item['tmdb_id']);
+    await prefs.setString('my_watchlist', jsonEncode(watchlist));
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Removed from My List'), duration: Duration(seconds: 1)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    _loadWatchlist();
+
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       appBar: AppBar(
@@ -851,7 +871,14 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
           : watchlist.isEmpty
               ? const Center(
-                  child: Text('Your list is empty. Long press any poster to add!', style: TextStyle(color: Colors.white54, fontSize: 14)),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 30),
+                    child: Text(
+                      'Your list is empty.\nLong press any movie poster on Home screen to add it here!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white54, fontSize: 14, height: 1.4),
+                    ),
+                  ),
                 )
               : GridView.builder(
                   padding: const EdgeInsets.all(12),
@@ -864,12 +891,15 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
                   itemCount: watchlist.length,
                   itemBuilder: (ctx, idx) {
                     final item = watchlist[idx];
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Image.network(
-                        item['poster'] ?? '',
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
+                    return GestureDetector(
+                      onLongPress: () => _removeFromList(item),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.network(
+                          item['poster'] ?? '',
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
+                        ),
                       ),
                     );
                   },
