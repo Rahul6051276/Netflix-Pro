@@ -1,3 +1,6 @@
+// ============================================================================
+// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE
+// ============================================================================
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -7,15 +10,83 @@ import 'tmdb_config.dart';
 import 'category_grid_screen.dart';
 import 'stream_resolver_sheet.dart';
 
+class MobileRootScreen extends StatefulWidget {
+  const MobileRootScreen({super.key});
+
+  @override
+  State<MobileRootScreen> createState() => _MobileRootScreenState();
+}
+
+class _MobileRootScreenState extends State<MobileRootScreen> {
+  int _currentIndex = 0;
+  List<dynamic> activeProviders = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchGlobalProviders();
+  }
+
+  Future<void> _fetchGlobalProviders() async {
+    try {
+      final res = await http.get(Uri.parse(MobileConfig.gistUrl)).timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        if (mounted) {
+          setState(() {
+            activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Widget> pages = [
+      MobileHomeScreen(providers: activeProviders),
+      MobileSearchScreen(providers: activeProviders),
+      const MobileMyListScreen(),
+      MobileMoreScreen(providers: activeProviders),
+    ];
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF141414),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: pages,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (idx) => setState(() => _currentIndex = idx),
+        backgroundColor: constColor(0xFF121212),
+        selectedItemColor: Colors.white,
+        unselectedItemColor: Colors.white54,
+        selectedFontSize: 11,
+        unselectedFontSize: 11,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_filled, size: 22), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.search, size: 22), label: 'Search'),
+          BottomNavigationBarItem(icon: Icon(Icons.bookmark_outline, size: 22), label: 'My List'),
+          BottomNavigationBarItem(icon: Icon(Icons.menu, size: 22), label: 'More'),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 1. HOME SCREEN (NETFLIX PRO UI)
+// ============================================================================
 class MobileHomeScreen extends StatefulWidget {
-  const MobileHomeScreen({super.key});
+  final List<dynamic> providers;
+  const MobileHomeScreen({super.key, required this.providers});
 
   @override
   State<MobileHomeScreen> createState() => _MobileHomeScreenState();
 }
 
 class _MobileHomeScreenState extends State<MobileHomeScreen> {
-  List<dynamic> activeProviders = [];
   List<dynamic> continueWatchingList = [];
   dynamic billboardItem;
   int _billboardIndex = 0;
@@ -45,7 +116,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   void _startBillboardTimer() {
     _billboardTimer?.cancel();
-    // Har 7 second me banner apne aap agle movie par change hoga
     _billboardTimer = Timer.periodic(const Duration(seconds: 7), (timer) {
       if (homeNetflixList.isNotEmpty && mounted) {
         setState(() {
@@ -57,8 +127,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   Future<void> _loadAllMobileData() async {
-    _loadContinueWatching();
-    _fetchProviders();
+    await _loadContinueWatching();
     await _fetchHomeCatalogContent();
     if (mounted) {
       setState(() => isLoading = false);
@@ -79,24 +148,13 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _fetchProviders() async {
-    try {
-      final res = await http.get(Uri.parse(MobileConfig.gistUrl)).timeout(const Duration(seconds: 6));
-      if (res.statusCode == 200) {
-        activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
-      }
-    } catch (_) {}
-  }
-
   Future<void> _fetchHomeCatalogContent() async {
     try {
       final netflixRes = await http.get(Uri.parse(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
       if (netflixRes.statusCode == 200) {
         homeNetflixList = _parseList(jsonDecode(netflixRes.body)['results']);
-        if (homeNetflixList.isNotEmpty) {
-          billboardItem = homeNetflixList.first;
-        }
+        if (homeNetflixList.isNotEmpty) billboardItem = homeNetflixList.first;
       }
     } catch (_) {}
 
@@ -209,10 +267,32 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         item: item,
         season: season,
         episode: episode,
-        providers: activeProviders,
+        providers: widget.providers,
         onPlaySaved: () => _loadContinueWatching(),
       ),
     );
+  }
+
+  Future<void> _toggleMyList(dynamic item) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('my_watchlist') ?? '[]';
+    List list = jsonDecode(raw);
+    
+    final id = item['tmdb_id'];
+    final exists = list.any((x) => x['tmdb_id'] == id);
+    
+    if (exists) {
+      list.removeWhere((x) => x['tmdb_id'] == id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Removed from My List'), duration: Duration(seconds: 1)),
+      );
+    } else {
+      list.add(item);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Added to My List successfully!'), duration: Duration(seconds: 1)),
+      );
+    }
+    await prefs.setString('my_watchlist', jsonEncode(list));
   }
 
   Widget _buildTopPill(String title, {required VoidCallback onTap}) {
@@ -228,17 +308,13 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         ),
         child: Text(
           title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
         ),
       ),
     );
   }
 
-  // Animated Switching Billboard Banner
+  // NETFLIX PRO BILLBOARD
   Widget _buildMobileBillboard(dynamic item) {
     if (item == null) return const SizedBox.shrink();
 
@@ -247,7 +323,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         : (item['poster'] != null ? item['poster'].toString() : '');
 
     return SizedBox(
-      height: 490,
+      height: 480,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
@@ -266,23 +342,16 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   )
                 : Container(key: const ValueKey('empty'), color: const Color(0xFF1F1F1F)),
           ),
-
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  Colors.transparent,
-                  Color(0xCC141414),
-                  Color(0xFF141414),
-                ],
-                stops: [0.0, 0.42, 0.78, 1.0],
+                colors: [Colors.transparent, Colors.transparent, Color(0xCC141414), Color(0xFF141414)],
+                stops: [0.0, 0.4, 0.78, 1.0],
               ),
             ),
           ),
-
           Positioned(
             bottom: 14,
             left: 20,
@@ -296,18 +365,16 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 25,
+                    fontSize: 24,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                     letterSpacing: 0.5,
-                    shadows: [
-                      Shadow(blurRadius: 10, color: Colors.black, offset: Offset(0, 2)),
-                    ],
+                    shadows: [Shadow(blurRadius: 10, color: Colors.black, offset: Offset(0, 2))],
                   ),
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Action • Suspense • Blockbuster • HD',
+                  'Action • Blockbuster • HD • Premium',
                   style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 14),
@@ -324,7 +391,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         ),
                         onPressed: () => _onItemSelect(item),
                         icon: const Icon(Icons.play_arrow, size: 26, color: Colors.black),
-                        label: const Text('Play', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        label: const Text('Play', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -336,8 +403,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                         ),
-                        onPressed: () => _onItemSelect(item),
-                        icon: const Icon(Icons.add, size: 24, color: Colors.white),
+                        onPressed: () => _toggleMyList(item),
+                        icon: const Icon(Icons.add, size: 22, color: Colors.white),
                         label: const Text('My List', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                       ),
                     ),
@@ -351,12 +418,72 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  Widget _buildMobileRow(
-    String title,
-    List<dynamic> items,
-    String baseUrl, {
-    bool isTv = false,
-  }) {
+  // NETFLIX PRO CIRCULAR PREVIEWS ROW
+  Widget _buildCircularPreviewsRow(List<dynamic> items) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    final previewItems = items.take(10).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Text(
+            'Previews',
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+        SizedBox(
+          height: 105,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            itemCount: previewItems.length,
+            itemBuilder: (ctx, idx) {
+              final item = previewItems[idx];
+              final img = item['poster'] ?? item['backdrop'] ?? '';
+              return GestureDetector(
+                onTap: () => _onItemSelect(item),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 74,
+                        height: 74,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFE50914), width: 2.2),
+                        ),
+                        child: ClipOval(
+                          child: img.isNotEmpty
+                              ? Image.network(img, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.grey))
+                              : Container(color: Colors.grey),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 74,
+                        child: Text(
+                          item['title'] ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70, fontSize: 10),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileRow(String title, List<dynamic> items, String baseUrl, {bool isTv = false}) {
     if (items.isEmpty) return const SizedBox.shrink();
 
     void openSeeAll() {
@@ -366,7 +493,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             title: title,
             baseUrl: baseUrl,
             isTv: isTv,
-            providers: activeProviders,
+            providers: widget.providers,
             onPlaySaved: () => _loadContinueWatching(),
           ),
         ),
@@ -386,11 +513,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
                 ),
               ),
               InkWell(
@@ -407,7 +530,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           ),
         ),
         SizedBox(
-          height: 175,
+          height: 170,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -439,38 +562,22 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
               }
 
               final item = items[idx];
-              final String cardImg = (item['poster'] != null && item['poster'].toString().isNotEmpty)
-                  ? item['poster'].toString()
-                  : (item['backdrop'] != null ? item['backdrop'].toString() : '');
+              final String cardImg = item['poster'] ?? item['backdrop'] ?? '';
 
               return InkWell(
                 onTap: () => _onItemSelect(item),
                 borderRadius: BorderRadius.circular(6),
                 child: Container(
-                  width: 115,
+                  width: 112,
                   margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF222222),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
+                  decoration: BoxDecoration(color: const Color(0xFF222222), borderRadius: BorderRadius.circular(6)),
                   clipBehavior: Clip.antiAlias,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (cardImg.isNotEmpty)
-                        Image.network(
-                          cardImg,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: const Color(0xFF222222),
-                            child: const Center(child: Icon(Icons.movie, color: Colors.white24)),
-                          ),
-                        )
-                      else
-                        Container(
-                          color: const Color(0xFF222222),
-                          child: const Center(child: Icon(Icons.movie, color: Colors.white24)),
-                        ),
+                      cardImg.isNotEmpty
+                          ? Image.network(cardImg, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)))
+                          : Container(color: const Color(0xFF222222)),
                       Positioned(
                         bottom: 0,
                         left: 0,
@@ -478,21 +585,13 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                           decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [Colors.black, Colors.transparent],
-                            ),
+                            gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black, Colors.transparent]),
                           ),
                           child: Text(
                             item['title'] ?? '',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ),
@@ -503,21 +602,14 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
             },
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
       ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final activeItem = billboardItem ??
-        (homeNetflixList.isNotEmpty
-            ? homeNetflixList.first
-            : (homePrimeList.isNotEmpty
-                ? homePrimeList.first
-                : (homeSouthHindiList.isNotEmpty
-                    ? homeSouthHindiList.first
-                    : null)));
+    final activeItem = billboardItem ?? (homeNetflixList.isNotEmpty ? homeNetflixList.first : null);
 
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
@@ -536,56 +628,42 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (activeItem != null) _buildMobileBillboard(activeItem),
+                        const SizedBox(height: 6),
+                        _buildCircularPreviewsRow(homeNetflixList),
                         const SizedBox(height: 10),
 
                         if (continueWatchingList.isNotEmpty)
-                          _buildMobileRow(
-                            'Continue Watching for Rahul',
-                            continueWatchingList,
-                            '',
-                          ),
+                          _buildMobileRow('Continue Watching', continueWatchingList, ''),
 
                         _buildMobileRow(
                           'Latest Netflix Blockbusters',
                           homeNetflixList,
                           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
                         ),
-
                         _buildMobileRow(
                           'South Action Hits (Hindi Dubbed)',
                           homeSouthHindiList,
                           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn',
                         ),
-
                         _buildMobileRow(
                           'Hollywood Blockbusters (Hindi Dubbed)',
                           homeHollywoodHindiList,
                           '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}',
                         ),
-
                         _buildMobileRow(
                           'Amazon Prime Video Hits',
                           homePrimeList,
                           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN',
                         ),
-
                         _buildMobileRow(
                           'Disney+ Hotstar & Cinema Specials',
                           homeHotstarList,
                           '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN',
                         ),
-
                         _buildMobileRow(
                           'Latest Hindi Web Series',
                           homeHindiSeriesList,
                           '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=3',
-                          isTv: true,
-                        ),
-
-                        _buildMobileRow(
-                          'Global Hits On The Air',
-                          homeEnglishSeriesList,
-                          '${MobileConfig.tmdbBase}/tv/on_the_air?api_key=${MobileConfig.tmdbKey}&language=en-US',
                           isTv: true,
                         ),
                       ],
@@ -593,7 +671,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   ),
                 ),
 
-                // Top Sticky Bar With Working Search
+                // TOP STICKY NETFLIX HEADER BAR
                 Positioned(
                   top: 0,
                   left: 0,
@@ -604,10 +682,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.85),
-                          Colors.transparent,
-                        ],
+                        colors: [Colors.black.withOpacity(0.9), Colors.transparent],
                       ),
                     ),
                     child: Column(
@@ -617,45 +692,25 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text(
-                              'For Rahul',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.3,
-                              ),
+                              'NETFLIX',
+                              style: TextStyle(color: Color(0xFFE50914), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 1.2),
                             ),
                             Row(
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.download_for_offline_outlined, color: Colors.white, size: 24),
-                                  onPressed: () {},
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                                const SizedBox(width: 18),
-                                // Working Search Trigger
-                                IconButton(
-                                  icon: const Icon(Icons.search, color: Colors.white, size: 24),
+                                  icon: const Icon(Icons.search, color: Colors.white, size: 26),
                                   onPressed: () {
                                     Navigator.push(
                                       context,
-                                      MaterialPageRoute(
-                                        builder: (_) => MobileSearchScreen(
-                                          providers: activeProviders,
-                                          onPlaySaved: () => _loadContinueWatching(),
-                                        ),
-                                      ),
+                                      MaterialPageRoute(builder: (_) => MobileSearchScreen(providers: widget.providers, onPlaySaved: _loadContinueWatching)),
                                     );
                                   },
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
                                 ),
                               ],
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
                             _buildTopPill('TV Shows', onTap: () {
@@ -666,8 +721,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                     title: 'TV Shows',
                                     baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}',
                                     isTv: true,
-                                    providers: activeProviders,
-                                    onPlaySaved: () => _loadContinueWatching(),
+                                    providers: widget.providers,
+                                    onPlaySaved: _loadContinueWatching,
                                   ),
                                 ),
                               );
@@ -681,14 +736,14 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                                     title: 'Movies',
                                     baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}',
                                     isTv: false,
-                                    providers: activeProviders,
-                                    onPlaySaved: () => _loadContinueWatching(),
+                                    providers: widget.providers,
+                                    onPlaySaved: _loadContinueWatching,
                                   ),
                                 ),
                               );
                             }),
                             const SizedBox(width: 8),
-                            _buildTopPill('Categories ⌵', onTap: () => openCategoriesModal(context, activeProviders, () => _loadContinueWatching())),
+                            _buildTopPill('Categories ⌵', onTap: () => openCategoriesModal(context, widget.providers, _loadContinueWatching)),
                           ],
                         ),
                       ],
@@ -702,13 +757,13 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 }
 
 // ============================================================================
-// MOBILE SEARCH SCREEN (LIVE TMDB QUERY)
+// 2. SEARCH SCREEN
 // ============================================================================
 class MobileSearchScreen extends StatefulWidget {
   final List<dynamic> providers;
-  final VoidCallback onPlaySaved;
+  final VoidCallback? onPlaySaved;
 
-  const MobileSearchScreen({super.key, required this.providers, required this.onPlaySaved});
+  const MobileSearchScreen({super.key, required this.providers, this.onPlaySaved});
 
   @override
   State<MobileSearchScreen> createState() => _MobileSearchScreenState();
@@ -729,8 +784,7 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
       });
       return;
     }
-
-    _debounce = Timer(const Duration(milliseconds: 500), () {
+    _debounce = Timer(const Duration(milliseconds: 400), () {
       _executeSearch(query.trim());
     });
   }
@@ -759,12 +813,8 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
             'title': title,
             'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
             'rating': m['vote_average']?.toString() ?? '7.5',
-            'poster': m['poster_path'] != null
-                ? '${MobileConfig.imgBase}${m['poster_path']}'
-                : '${MobileConfig.backdropBase}${m['backdrop_path']}',
-            'backdrop': m['backdrop_path'] != null
-                ? '${MobileConfig.backdropBase}${m['backdrop_path']}'
-                : '${MobileConfig.imgBase}${m['poster_path']}',
+            'poster': m['poster_path'] != null ? '${MobileConfig.imgBase}${m['poster_path']}' : '${MobileConfig.backdropBase}${m['backdrop_path']}',
+            'backdrop': m['backdrop_path'] != null ? '${MobileConfig.backdropBase}${m['backdrop_path']}' : '${MobileConfig.imgBase}${m['poster_path']}',
             'isTv': type == 'tv',
           });
         }
@@ -855,7 +905,7 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
                                     season: season,
                                     episode: ep,
                                     providers: widget.providers,
-                                    onPlaySaved: widget.onPlaySaved,
+                                    onPlaySaved: widget.onPlaySaved ?? () {},
                                   ),
                                 );
                               },
@@ -869,7 +919,7 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
                             builder: (_) => MobileStreamSheet(
                               item: item,
                               providers: widget.providers,
-                              onPlaySaved: widget.onPlaySaved,
+                              onPlaySaved: widget.onPlaySaved ?? () {},
                             ),
                           );
                         }
@@ -885,6 +935,146 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
                     );
                   },
                 ),
+    );
+  }
+}
+
+// ============================================================================
+// 3. MY LIST SCREEN (WATCHLIST)
+// ============================================================================
+class MobileMyListScreen extends StatefulWidget {
+  const MobileMyListScreen({super.key});
+
+  @override
+  State<MobileMyListScreen> createState() => _MobileMyListScreenState();
+}
+
+class _MobileMyListScreenState extends State<MobileMyListScreen> {
+  List watchlist = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWatchlist();
+  }
+
+  Future<void> _loadWatchlist() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('my_watchlist') ?? '[]';
+    if (mounted) {
+      setState(() {
+        watchlist = jsonDecode(raw);
+        isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF141414),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF1F1F1F),
+        title: const Text('My Watchlist', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+          : watchlist.isEmpty
+              ? const Center(
+                  child: Text('Your list is empty. Add movies you love!', style: TextStyle(color: Colors.white54, fontSize: 14)),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: 0.64,
+                  ),
+                  itemCount: watchlist.length,
+                  itemBuilder: (ctx, idx) {
+                    final item = watchlist[idx];
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.network(
+                        item['poster'] ?? '',
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+// ============================================================================
+// 4. MORE SCREEN (CATEGORIES & SETTINGS)
+// ============================================================================
+class MobileMoreScreen extends StatelessWidget {
+  final List<dynamic> providers;
+  const MobileMoreScreen({super.key, required this.providers});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF141414),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF1F1F1F),
+        title: const Text('More & Categories', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ListTile(
+            leading: const Icon(Icons.movie_filter, color: Colors.white),
+            title: const Text('All Movies Catalogue', style: TextStyle(color: Colors.white)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'All Movies',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.tv, color: Colors.white),
+            title: const Text('All TV Series', style: TextStyle(color: Colors.white)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'All TV Series',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}',
+                    isTv: true,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.category, color: Colors.white),
+            title: const Text('Explore Genres & Collections', style: TextStyle(color: Colors.white)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () => openCategoriesModal(context, providers, () {}),
+          ),
+        ],
+      ),
     );
   }
 }
