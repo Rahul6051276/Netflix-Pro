@@ -10,6 +10,7 @@ import 'package:android_intent_plus/flag.dart';
 import 'internal_player.dart';
 import 'tmdb_config.dart';
 import 'category_grid_screen.dart';
+import 'stream_service.dart'; // Cinema HQ wala service import
 
 void openCategoriesModal(BuildContext context, List<dynamic> providers, VoidCallback onRefresh) {
   List allCategories = [
@@ -130,7 +131,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
   Future<void> _fetchDetails() async {
     try {
       final res = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${MobileConfig.tmdbKey}')).timeout(const Duration(seconds: 4));
+          '${MobileConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${MobileConfig.tmdbKey}')).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final raw = (data['seasons'] as List<dynamic>? ?? [])
@@ -225,7 +226,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
 }
 
 // ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET (FAST PARALLEL GIST PROVIDERS)
+// MOBILE STREAM RESOLVER BOTTOM SHEET (USING CINEMA HQ STREAM SERVICE)
 // ============================================================================
 class MobileStreamSheet extends StatefulWidget {
   final dynamic item;
@@ -254,185 +255,31 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
   @override
   void initState() {
     super.initState();
-    _fetchDirectStreamsParallel();
+    _loadStreams();
   }
 
-  bool _isHindiStream(String title, {String category = ''}) {
-    final lower = '$title $category'.toLowerCase();
-    return lower.contains('hindi') ||
-        lower.contains('dual') ||
-        lower.contains('multi') ||
-        lower.contains('dubbed') ||
-        lower.contains('hin') ||
-        lower.contains('dub');
-  }
+  Future<void> _loadStreams() async {
+    try {
+      // Cinema HQ wala exact stream service call
+      var result = await MobileStreamService.getDirectStreams(
+        item: widget.item,
+        providers: widget.providers,
+        season: widget.season,
+        episode: widget.episode,
+      );
 
-  String _clean(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
-
-  // PARALLEL FAST RESOLVER FOR ALL GIST PROVIDERS (XTREAM & STREMIO / RENDER)
-  Future<void> _fetchDirectStreamsParallel() async {
-    final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
-    final isTv = widget.item['isTv'] == true;
-    final movieTitle = widget.item['title'] ?? '';
-    final targetSeason = widget.season ?? 1;
-    final targetEpisode = widget.episode ?? 1;
-    final cleanTarget = _clean(movieTitle);
-
-    String? imdbId;
-    if (targetTmdbId.isNotEmpty) {
-      try {
-        final extType = isTv ? 'tv' : 'movie';
-        final extRes = await http.get(Uri.parse(
-            '${MobileConfig.tmdbBase}/$extType/$targetTmdbId/external_ids?api_key=${MobileConfig.tmdbKey}')).timeout(const Duration(seconds: 3));
-        if (extRes.statusCode == 200) {
-          imdbId = jsonDecode(extRes.body)['imdb_id'];
-        }
-      } catch (_) {}
-    }
-
-    // Saare providers (Xtream aur Stremio/Render Gist providers) ko parallel chalana
-    List<Future<List<dynamic>>> tasks = widget.providers.map((prov) async {
-      var providerResolved = [];
-      final type = prov['type'];
-
-      // --- XTREAM PROVIDER ---
-      if (type == 'xtream') {
-        final host = (prov['host'] ?? '').toString().replaceAll(RegExp(r'/+$'), '');
-        final user = prov['username'] ?? '';
-        final pass = prov['password'] ?? '';
-
-        if (host.isNotEmpty && user.isNotEmpty && pass.isNotEmpty) {
-          try {
-            if (isTv) {
-              final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_series';
-              final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 4));
-              if (xtreamRes.statusCode == 200) {
-                final seriesList = jsonDecode(xtreamRes.body) as List<dynamic>;
-                var candidates = [];
-
-                for (var s in seriesList) {
-                  final sTmdb = (s['tmdb_id'] ?? s['tmdb'] ?? '').toString();
-                  final rawName = (s['name'] ?? '').toString();
-                  final categoryName = (s['category_name'] ?? '').toString();
-                  final sClean = _clean(rawName);
-
-                  if (sTmdb == targetTmdbId || sClean.contains(cleanTarget) || cleanTarget.contains(sClean)) {
-                    s['is_hindi_detected'] = _isHindiStream(rawName, category: categoryName);
-                    candidates.add(s);
-                  }
-                }
-
-                candidates.sort((a, b) => (b['is_hindi_detected'] == true ? 1 : 0).compareTo(a['is_hindi_detected'] == true ? 1 : 0));
-
-                for (var bestSeries in candidates.take(2)) {
-                  final sid = bestSeries['series_id'];
-                  final infoApi = '$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=$sid';
-                  final infoRes = await http.get(Uri.parse(infoApi)).timeout(const Duration(seconds: 4));
-                  if (infoRes.statusCode == 200) {
-                    final epMap = jsonDecode(infoRes.body)['episodes'] as Map<String, dynamic>? ?? {};
-                    final epList = epMap['$targetSeason'] as List<dynamic>? ?? [];
-                    final match = epList.firstWhere((e) => (e['episode_num'] ?? 0) == targetEpisode, orElse: () => null);
-
-                    if (match != null) {
-                      final isHindi = bestSeries['is_hindi_detected'] == true;
-                      providerResolved.add({
-                        'server': prov['name'] ?? 'LiveBox Xtream IPTV',
-                        'title': isHindi
-                            ? '$movieTitle (Hindi Audio) S$targetSeason:E$targetEpisode'
-                            : '$movieTitle S$targetSeason:E$targetEpisode',
-                        'url': '$host/series/$user/$pass/${match['id']}.${match['container_extension'] ?? "mp4"}',
-                        'isHindi': isHindi,
-                      });
-                    }
-                  }
-                }
-              }
-            } else {
-              final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_vod_streams';
-              final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 4));
-              if (xtreamRes.statusCode == 200) {
-                final streamList = jsonDecode(xtreamRes.body) as List<dynamic>;
-                var candidates = [];
-
-                for (var m in streamList) {
-                  final mTmdb = (m['tmdb_id'] ?? m['tmdb'] ?? '').toString();
-                  final rawName = (m['name'] ?? '').toString();
-                  final categoryName = (m['category_name'] ?? '').toString();
-                  final mClean = _clean(rawName);
-
-                  if (mTmdb == targetTmdbId || mClean.contains(cleanTarget) || cleanTarget.contains(mClean)) {
-                    candidates.add({
-                      'data': m,
-                      'isHindi': _isHindiStream(rawName, category: categoryName),
-                    });
-                  }
-                }
-
-                candidates.sort((a, b) => (b['isHindi'] == true ? 1 : 0).compareTo(a['isHindi'] == true ? 1 : 0));
-
-                for (var cand in candidates.take(3)) {
-                  final bestMovie = cand['data'];
-                  final isHindi = cand['isHindi'] == true;
-                  providerResolved.add({
-                    'server': prov['name'] ?? 'LiveBox Xtream IPTV',
-                    'title': isHindi ? '$movieTitle (Hindi Audio / Dubbed)' : '$movieTitle HD',
-                    'url': '$host/movie/$user/$pass/${bestMovie['stream_id']}.${bestMovie['container_extension'] ?? "mp4"}',
-                    'isHindi': isHindi,
-                  });
-                }
-              }
-            }
-          } catch (_) {}
-        }
+      if (mounted) {
+        setState(() {
+          streams = result;
+          loading = false;
+        });
       }
-
-      // --- STREMIO / RENDER ADDON PROVIDER ---
-      if (type == 'stremio' && imdbId != null && imdbId.isNotEmpty) {
-        final base = (prov['url'] ?? '').toString().replaceAll('/manifest.json', '');
-        final streamPath = isTv
-            ? '$base/stream/series/$imdbId:$targetSeason:$targetEpisode.json'
-            : '$base/stream/movie/$imdbId.json';
-
-        try {
-          final res = await http.get(Uri.parse(streamPath)).timeout(const Duration(seconds: 3));
-          if (res.statusCode == 200) {
-            final data = jsonDecode(res.body);
-            for (var s in (data['streams'] ?? [])) {
-              final titleStr = (s['title'] ?? s['name'] ?? '').toString();
-              if (titleStr.toLowerCase().contains('donation') ||
-                  titleStr.toLowerCase().contains('discord') ||
-                  titleStr.toLowerCase().contains('telegram')) {
-                continue;
-              }
-
-              providerResolved.add({
-                'server': prov['name'] ?? 'Stremio Provider',
-                'title': titleStr,
-                'url': s['url'],
-                'isHindi': _isHindiStream(titleStr),
-              });
-            }
-          }
-        } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
       }
-
-      return providerResolved;
-    }).toList();
-
-    var results = await Future.wait(tasks);
-    var resolved = [];
-    for (var r in results) {
-      resolved.addAll(r);
-    }
-
-    // Sorting: Hindi first, then others
-    resolved.sort((a, b) => (b['isHindi'] == true ? 1 : 0).compareTo(a['isHindi'] == true ? 1 : 0));
-
-    if (mounted) {
-      setState(() {
-        streams = resolved;
-        loading = false;
-      });
     }
   }
 
