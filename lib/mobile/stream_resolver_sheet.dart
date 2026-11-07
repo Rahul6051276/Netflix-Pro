@@ -225,7 +225,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
 }
 
 // ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET (ALL 3 SERVERS: TMDB, XTREAM, STREMIO)
+// MOBILE STREAM RESOLVER BOTTOM SHEET (ALL TMDB EMBEDS SHOWN DIRECTLY OUTSIDE)
 // ============================================================================
 class MobileStreamSheet extends StatefulWidget {
   final dynamic item;
@@ -269,7 +269,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 
   String _clean(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
 
-  // PARALLEL FAST RESOLVER WITH EXPLICIT HEADERS FOR ALL SERVERS
+  // PARALLEL FAST RESOLVER WITH DIRECT PUBLIC SERVERS DISPLAYED EXPLICITLY OUTSIDE
   Future<void> _fetchDirectStreamsParallel() async {
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
@@ -281,23 +281,63 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     var resolved = [];
 
     // ========================================================================
-    // 1. TMDB RENDER / PUBLIC EMBED SERVER (HEADER ADDED)
+    // DIRECT PUBLIC EMBED SERVERS SHOWN ON MAIN LIST (CASTLE TV, VIDLINK, VIDSRC)
     // ========================================================================
     if (targetTmdbId.isNotEmpty) {
       if (isTv) {
-        resolved.add({
-          'server': 'TMDB Render TV Server',
-          'title': '$movieTitle S$targetSeason:E$targetEpisode (HD)',
-          'url': 'https://vidsrc.me/embed/tv?tmdb=$targetTmdbId&season=$targetSeason&episode=$targetEpisode',
-          'isHindi': false,
-        });
+        resolved.addAll([
+          {
+            'server': 'Castle TV (TMDB Server)',
+            'title': '$movieTitle S$targetSeason:E$targetEpisode (Multi-Audio / HD)',
+            'url': 'https://player.castle.box/embed/tv/$targetTmdbId/$targetSeason/$targetEpisode',
+            'isHindi': false,
+          },
+          {
+            'server': 'VidLink Pro (TMDB Server)',
+            'title': '$movieTitle S$targetSeason:E$targetEpisode (Fast Stream)',
+            'url': 'https://vidlink.pro/tv/$targetTmdbId/$targetSeason/$targetEpisode',
+            'isHindi': false,
+          },
+          {
+            'server': 'VidSrc Primary (TMDB Server)',
+            'title': '$movieTitle S$targetSeason:E$targetEpisode (HD)',
+            'url': 'https://vidsrc.me/embed/tv?tmdb=$targetTmdbId&season=$targetSeason&episode=$targetEpisode',
+            'isHindi': false,
+          },
+          {
+            'server': 'VidSrc.cc (TMDB Server)',
+            'title': '$movieTitle S$targetSeason:E$targetEpisode (Alternative)',
+            'url': 'https://vidsrc.cc/v2/embed/tv/$targetTmdbId/$targetSeason/$targetEpisode',
+            'isHindi': false,
+          },
+        ]);
       } else {
-        resolved.add({
-          'server': 'TMDB Render Movie Server',
-          'title': '$movieTitle HD (Public Stream)',
-          'url': 'https://vidsrc.me/embed/movie?tmdb=$targetTmdbId',
-          'isHindi': false,
-        });
+        resolved.addAll([
+          {
+            'server': 'Castle TV (TMDB Server)',
+            'title': '$movieTitle (Multi-Audio / HD)',
+            'url': 'https://player.castle.box/embed/movie/$targetTmdbId',
+            'isHindi': false,
+          },
+          {
+            'server': 'VidLink Pro (TMDB Server)',
+            'title': '$movieTitle (Fast Stream)',
+            'url': 'https://vidlink.pro/movie/$targetTmdbId',
+            'isHindi': false,
+          },
+          {
+            'server': 'VidSrc Primary (TMDB Server)',
+            'title': '$movieTitle HD (Public Stream)',
+            'url': 'https://vidsrc.me/embed/movie?tmdb=$targetTmdbId',
+            'isHindi': false,
+          },
+          {
+            'server': 'VidSrc.cc (TMDB Server)',
+            'title': '$movieTitle (Alternative)',
+            'url': 'https://vidsrc.cc/v2/embed/movie/$targetTmdbId',
+            'isHindi': false,
+          },
+        ]);
       }
     }
 
@@ -314,7 +354,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     }
 
     // ========================================================================
-    // 2. XTREAM & 3. STREMIO PROVIDERS PARALLEL WORKER (HEADERS ADDED)
+    // XTREAM & STREMIO PROVIDERS PARALLEL WORKER
     // ========================================================================
     List<Future<List<dynamic>>> tasks = widget.providers.map((prov) async {
       var providerResolved = [];
