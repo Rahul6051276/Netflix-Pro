@@ -225,7 +225,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
 }
 
 // ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET (FAST PARALLEL + TMDB RENDER SERVER)
+// MOBILE STREAM RESOLVER BOTTOM SHEET (ALL 3 SERVERS: TMDB, XTREAM, STREMIO)
 // ============================================================================
 class MobileStreamSheet extends StatefulWidget {
   final dynamic item;
@@ -269,7 +269,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 
   String _clean(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
 
-  // PARALLEL & FAST PROVIDER RESOLVER WITH TMDB RENDER FALLBACK
+  // PARALLEL FAST RESOLVER WITH EXPLICIT HEADERS FOR ALL SERVERS
   Future<void> _fetchDirectStreamsParallel() async {
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
@@ -280,7 +280,9 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 
     var resolved = [];
 
-    // 1. TMDB Render / Public Embed Server fallback
+    // ========================================================================
+    // 1. TMDB RENDER / PUBLIC EMBED SERVER (HEADER ADDED)
+    // ========================================================================
     if (targetTmdbId.isNotEmpty) {
       if (isTv) {
         resolved.add({
@@ -311,11 +313,14 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
       } catch (_) {}
     }
 
-    // 2. Saare providers ko parallel chalana (Xtream & Stremio)
+    // ========================================================================
+    // 2. XTREAM & 3. STREMIO PROVIDERS PARALLEL WORKER (HEADERS ADDED)
+    // ========================================================================
     List<Future<List<dynamic>>> tasks = widget.providers.map((prov) async {
       var providerResolved = [];
       final type = prov['type'];
 
+      // --- XTREAM PROVIDER BLOCK ---
       if (type == 'xtream') {
         final host = (prov['host'] ?? '').toString().replaceAll(RegExp(r'/+$'), '');
         final user = prov['username'] ?? '';
@@ -406,6 +411,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
         }
       }
 
+      // --- STREMIO PROVIDER BLOCK ---
       if (type == 'stremio' && imdbId != null && imdbId.isNotEmpty) {
         final base = (prov['url'] ?? '').toString().replaceAll('/manifest.json', '');
         final streamPath = isTv
