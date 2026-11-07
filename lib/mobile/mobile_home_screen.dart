@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (FINAL COMPLETE CODE)
+// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (AUTO-SLIDE & WORKING MY LIST)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -76,7 +76,7 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 }
 
 // ============================================================================
-// 1. HOME SCREEN (SLIDING BANNER & NETFLIX PRO CENTER)
+// 1. HOME SCREEN (AUTO-SLIDING BANNER & CENTER NETFLIX PRO)
 // ============================================================================
 class MobileHomeScreen extends StatefulWidget {
   final List<dynamic> providers;
@@ -94,7 +94,10 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   List<dynamic> homeSouthHindiList = [];
   List<dynamic> homeHollywoodHindiList = [];
   List<dynamic> homeHindiSeriesList = [];
-  List<dynamic> homeEnglishSeriesList = [];
+  
+  final PageController _bannerController = PageController();
+  int _currentBannerIndex = 0;
+  Timer? _autoSlideTimer;
 
   bool isLoading = true;
 
@@ -104,11 +107,35 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     _loadAllMobileData();
   }
 
+  @override
+  void dispose() {
+    _autoSlideTimer?.cancel();
+    _bannerController.dispose();
+    super.dispose();
+  }
+
+  void _startAutoSlide(int itemCount) {
+    _autoSlideTimer?.cancel();
+    _autoSlideTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (itemCount > 0 && mounted && _bannerController.hasClients) {
+        _currentBannerIndex = (_currentBannerIndex + 1) % itemCount;
+        _bannerController.animateToPage(
+          _currentBannerIndex,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
+
   Future<void> _loadAllMobileData() async {
     await _loadContinueWatching();
     await _fetchHomeCatalogContent();
     if (mounted) {
       setState(() => isLoading = false);
+      if (homeNetflixList.isNotEmpty) {
+        _startAutoSlide(homeNetflixList.take(5).length);
+      }
     }
   }
 
@@ -258,7 +285,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     await prefs.setString('my_watchlist', jsonEncode(list));
   }
 
-  // 4-5 CARDS SLIDING BANNER
+  // AUTO-SLIDING BANNER
   Widget _buildSlidingBanner(List<dynamic> items) {
     if (items.isEmpty) return const SizedBox.shrink();
     final bannerItems = items.take(5).toList();
@@ -267,13 +294,15 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
       height: 440,
       width: double.infinity,
       child: PageView.builder(
+        controller: _bannerController,
         itemCount: bannerItems.length,
+        onPageChanged: (idx) => _currentBannerIndex = idx,
         itemBuilder: (context, index) {
           final item = bannerItems[index];
           final String imgUrl = item['backdrop'] ?? item['poster'] ?? '';
 
           return GestureDetector(
-            onTap: () => _onItemSelect(item),
+            onTap: () => _onItemSelect(item), // Click to play / open stream server
             onLongPress: () => _toggleMyList(item),
             child: Stack(
               fit: StackFit.expand,
@@ -806,7 +835,7 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
 }
 
 // ============================================================================
-// 3. MY LIST SCREEN (AUTO-REFRESHING WATCHLIST)
+// 3. MY LIST SCREEN (WORKING PLAY & AUTO-SYNC)
 // ============================================================================
 class MobileMyListScreen extends StatefulWidget {
   const MobileMyListScreen({super.key});
@@ -818,17 +847,32 @@ class MobileMyListScreen extends StatefulWidget {
 class _MobileMyListScreenState extends State<MobileMyListScreen> {
   List watchlist = [];
   bool isLoading = true;
+  List<dynamic> activeProviders = [];
 
   @override
   void initState() {
     super.initState();
     _loadWatchlist();
+    _fetchProviders();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _loadWatchlist();
+  }
+
+  Future<void> _fetchProviders() async {
+    try {
+      final res = await http.get(Uri.parse(MobileConfig.gistUrl)).timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        if (mounted) {
+          setState(() {
+            activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadWatchlist() async {
@@ -845,6 +889,39 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
     } catch (_) {
       if (mounted) setState(() => isLoading = false);
     }
+  }
+
+  void _onItemSelect(dynamic item) {
+    if (item['isTv'] == true) {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => MobileEpisodeSheet(
+          item: item,
+          onSelected: (season, episode) {
+            _showMobileStreamSheet(item, season: season, episode: episode);
+          },
+        ),
+      );
+    } else {
+      _showMobileStreamSheet(item);
+    }
+  }
+
+  void _showMobileStreamSheet(dynamic item, {int? season, int? episode}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => MobileStreamSheet(
+        item: item,
+        season: season,
+        episode: episode,
+        providers: activeProviders,
+        onPlaySaved: () => _loadWatchlist(),
+      ),
+    );
   }
 
   Future<void> _removeFromList(dynamic item) async {
@@ -892,7 +969,8 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
                   itemBuilder: (ctx, idx) {
                     final item = watchlist[idx];
                     return GestureDetector(
-                      onLongPress: () => _removeFromList(item),
+                      onTap: () => _onItemSelect(item), // Click to open stream/server sheet and play!
+                      onLongPress: () => _removeFromList(item), // Long press to remove
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(6),
                         child: Image.network(
