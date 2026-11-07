@@ -225,7 +225,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
 }
 
 // ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET (ALL TMDB EMBEDS SHOWN DIRECTLY OUTSIDE)
+// MOBILE STREAM RESOLVER BOTTOM SHEET (WITH YOUR RENDER API ENDPOINT)
 // ============================================================================
 class MobileStreamSheet extends StatefulWidget {
   final dynamic item;
@@ -269,7 +269,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 
   String _clean(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
 
-  // PARALLEL FAST RESOLVER WITH DIRECT PUBLIC SERVERS DISPLAYED EXPLICITLY OUTSIDE
+  // PARALLEL FAST RESOLVER WITH YOUR RENDER API + XTREAM + STREMIO
   Future<void> _fetchDirectStreamsParallel() async {
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
@@ -281,60 +281,50 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     var resolved = [];
 
     // ========================================================================
-    // DIRECT PUBLIC EMBED SERVERS SHOWN ON MAIN LIST (CASTLE TV, VIDLINK, VIDSRC)
+    // YOUR RENDER SERVER EMBEDS (`https://tmdb-embed-api-4.onrender.com`)
     // ========================================================================
+    const renderBase = 'https://tmdb-embed-api-4.onrender.com';
+
     if (targetTmdbId.isNotEmpty) {
       if (isTv) {
         resolved.addAll([
           {
-            'server': 'Castle TV (TMDB Server)',
+            'server': 'Render Castle TV Server',
             'title': '$movieTitle S$targetSeason:E$targetEpisode (Multi-Audio / HD)',
-            'url': 'https://player.castle.box/embed/tv/$targetTmdbId/$targetSeason/$targetEpisode',
+            'url': '$renderBase/embed/tv/$targetTmdbId/$targetSeason/$targetEpisode',
             'isHindi': false,
           },
           {
-            'server': 'VidLink Pro (TMDB Server)',
+            'server': 'Render VidLink Server',
             'title': '$movieTitle S$targetSeason:E$targetEpisode (Fast Stream)',
-            'url': 'https://vidlink.pro/tv/$targetTmdbId/$targetSeason/$targetEpisode',
+            'url': '$renderBase/vidlink/tv/$targetTmdbId/$targetSeason/$targetEpisode',
             'isHindi': false,
           },
           {
-            'server': 'VidSrc Primary (TMDB Server)',
+            'server': 'Render VidSrc Server',
             'title': '$movieTitle S$targetSeason:E$targetEpisode (HD)',
-            'url': 'https://vidsrc.me/embed/tv?tmdb=$targetTmdbId&season=$targetSeason&episode=$targetEpisode',
-            'isHindi': false,
-          },
-          {
-            'server': 'VidSrc.cc (TMDB Server)',
-            'title': '$movieTitle S$targetSeason:E$targetEpisode (Alternative)',
-            'url': 'https://vidsrc.cc/v2/embed/tv/$targetTmdbId/$targetSeason/$targetEpisode',
+            'url': '$renderBase/vidsrc/tv/$targetTmdbId/$targetSeason/$targetEpisode',
             'isHindi': false,
           },
         ]);
       } else {
         resolved.addAll([
           {
-            'server': 'Castle TV (TMDB Server)',
+            'server': 'Render Castle TV Server',
             'title': '$movieTitle (Multi-Audio / HD)',
-            'url': 'https://player.castle.box/embed/movie/$targetTmdbId',
+            'url': '$renderBase/embed/movie/$targetTmdbId',
             'isHindi': false,
           },
           {
-            'server': 'VidLink Pro (TMDB Server)',
+            'server': 'Render VidLink Server',
             'title': '$movieTitle (Fast Stream)',
-            'url': 'https://vidlink.pro/movie/$targetTmdbId',
+            'url': '$renderBase/vidlink/movie/$targetTmdbId',
             'isHindi': false,
           },
           {
-            'server': 'VidSrc Primary (TMDB Server)',
+            'server': 'Render VidSrc Server',
             'title': '$movieTitle HD (Public Stream)',
-            'url': 'https://vidsrc.me/embed/movie?tmdb=$targetTmdbId',
-            'isHindi': false,
-          },
-          {
-            'server': 'VidSrc.cc (TMDB Server)',
-            'title': '$movieTitle (Alternative)',
-            'url': 'https://vidsrc.cc/v2/embed/movie/$targetTmdbId',
+            'url': '$renderBase/vidsrc/movie/$targetTmdbId',
             'isHindi': false,
           },
         ]);
