@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE
+// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (FINAL ERROR-FREE)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -58,7 +58,7 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (idx) => setState(() => _currentIndex = idx),
-        backgroundColor: constColor(0xFF121212),
+        backgroundColor: const Color(0xFF121212), // Fixed typo here
         selectedItemColor: Colors.white,
         unselectedItemColor: Colors.white54,
         selectedFontSize: 11,
