@@ -102,7 +102,6 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
     setState(() => _showControls = !_showControls);
     if (_showControls) {
       if (_isLocked) {
-        // Lock hone par 3 second me lock button wapas auto-hide ho jayega
         _controlsTimer?.cancel();
         _controlsTimer = Timer(const Duration(seconds: 3), () {
           if (mounted && _isLocked) {
@@ -148,12 +147,10 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
     _startHideTimer();
   }
 
-  // 100% Fixed Screen Lock/Unlock Function
   void _toggleLock() {
     setState(() {
       _isLocked = !_isLocked;
       if (_isLocked) {
-        // Lock hote hi 2 second baad lock icon chup jayega
         _controlsTimer?.cancel();
         _controlsTimer = Timer(const Duration(seconds: 2), () {
           if (mounted && _isLocked) {
@@ -161,7 +158,6 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
           }
         });
       } else {
-        // Unlock hote hi saare controls wapas aayenge
         _showControls = true;
         _startHideTimer();
       }
@@ -264,7 +260,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Video Output Layer
+          // 1. Video Layer
           _buildVideoOutput(),
 
           // 2. Brightness Black Shading
@@ -274,7 +270,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
             ),
           ),
 
-          // 3. Gesture Layer (Screen Tap & Drag)
+          // 3. Gesture Layer (Tap Screen to Show/Hide Controls & Drag)
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _toggleControls,
@@ -386,7 +382,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                     ),
                   ),
 
-                  // Center 30s Seek & Play/Pause Buttons
+                  // Center 30s Seek & Play/Pause Buttons (Dono Seek Fixed: () =>)
                   Center(
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -424,7 +420,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                         ),
                         const SizedBox(width: 44),
                         InkWell(
-                          onTap: _seekRelative(30),
+                          onTap: () => _seekRelative(30),
                           child: Container(
                             width: 56,
                             height: 56,
@@ -478,7 +474,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
               ),
             ),
 
-          // 6. SCREEN LOCK BUTTON (SABSE TOP LAYER PE RAHEGA TAHO CLICK HAMESHA KAAM KARE)
+          // 6. SCREEN LOCK BUTTON (SABSE TOP LAYER PAR HAI TAHO HAR BAAR CLICK REGISTER HO)
           if (_showControls && _isInit)
             Positioned(
               left: 20,
