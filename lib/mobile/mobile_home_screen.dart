@@ -987,7 +987,7 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
 }
 
 // ============================================================================
-// 4. MORE SCREEN (FIXED HINDI OTT WEB SERIES HUB)
+// 4. MORE SCREEN (OTT WEB SERIES HUB WITH PURE HINDI DISCOVERY)
 // ============================================================================
 class MobileMoreScreen extends StatelessWidget {
   final List<dynamic> providers;
@@ -1070,7 +1070,7 @@ class MobileMoreScreen extends StatelessWidget {
           ),
           const Divider(color: Colors.white24),
 
-                    // 4. Zee5 Web Series (Fixed with Pure Hindi Discovery)
+          // 4. Zee5 Web Series
           ListTile(
             leading: const Icon(Icons.tv_rounded, color: Color(0xFFE50914)),
             title: const Text('Zee5 Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -1092,7 +1092,7 @@ class MobileMoreScreen extends StatelessWidget {
           ),
           const Divider(color: Colors.white24),
 
-          // 5. SonyLIV Web Series (Fixed with Pure Hindi Discovery)
+          // 5. SonyLIV Web Series
           ListTile(
             leading: const Icon(Icons.monitor_rounded, color: Color(0xFFE50914)),
             title: const Text('SonyLIV Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -1112,3 +1112,8 @@ class MobileMoreScreen extends StatelessWidget {
               );
             },
           ),
+        ],
+      ),
+    );
+  }
+}
