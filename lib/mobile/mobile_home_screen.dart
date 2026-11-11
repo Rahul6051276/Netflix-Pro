@@ -1070,7 +1070,7 @@ class MobileMoreScreen extends StatelessWidget {
           ),
           const Divider(color: Colors.white24),
 
-          // 4. Zee5 Web Series (Fixed with Hindi Language Filter)
+                    // 4. Zee5 Web Series (Fixed with Pure Hindi Discovery)
           ListTile(
             leading: const Icon(Icons.tv_rounded, color: Color(0xFFE50914)),
             title: const Text('Zee5 Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -1081,7 +1081,7 @@ class MobileMoreScreen extends StatelessWidget {
                 MaterialPageRoute(
                   builder: (_) => MobileCategoryGridScreen(
                     title: 'Zee5 Web Series',
-                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&with_networks=2377&without_genres=10766',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=2',
                     isTv: true,
                     providers: providers,
                     onPlaySaved: () {},
@@ -1092,7 +1092,7 @@ class MobileMoreScreen extends StatelessWidget {
           ),
           const Divider(color: Colors.white24),
 
-          // 5. SonyLIV Web Series (Fixed with Hindi Language Filter)
+          // 5. SonyLIV Web Series (Fixed with Pure Hindi Discovery)
           ListTile(
             leading: const Icon(Icons.monitor_rounded, color: Color(0xFFE50914)),
             title: const Text('SonyLIV Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -1103,7 +1103,7 @@ class MobileMoreScreen extends StatelessWidget {
                 MaterialPageRoute(
                   builder: (_) => MobileCategoryGridScreen(
                     title: 'SonyLIV Web Series',
-                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&with_networks=2334&without_genres=10766',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=1',
                     isTv: true,
                     providers: providers,
                     onPlaySaved: () {},
@@ -1112,8 +1112,3 @@ class MobileMoreScreen extends StatelessWidget {
               );
             },
           ),
-        ],
-      ),
-    );
-  }
-}
