@@ -23,72 +23,105 @@ class TvSearchScreen extends StatefulWidget {
 
 class _TvSearchScreenState extends State<TvSearchScreen> {
   final TextEditingController _searchController = TextEditingController();
-  final FocusNode _inputFocusNode = FocusNode();
-  final FocusNode _firstGridItemFocus = FocusNode();
-  Timer? _debounce;
-  List<dynamic> _results = [];
+  final FocusNode _searchFocusNode = FocusNode();
+  Timer? _debounceTimer;
+
   bool _isLoading = false;
-  bool _hasSearched = false;
+  List<dynamic> _searchResults = [];
 
   @override
   void initState() {
     super.initState();
-    // जब Sidebar से focus भेजा जाए तो सीधे TextField के असली FocusNode पर ट्रांसफर करें
-    widget.searchBoxFocusNode.addListener(_forwardFocusToInput);
-  }
 
-  void _forwardFocusToInput() {
-    if (widget.searchBoxFocusNode.hasFocus && mounted) {
-      _inputFocusNode.requestFocus();
-    }
-  }
+    // Prime Flix का Exact Keyboard Focus Logic (बिना किसी onKeyEvent रुकावट के)
+    _searchFocusNode.addListener(() {
+      if (mounted) setState(() {});
+      if (_searchFocusNode.hasFocus) {
+        SystemChannels.textInput.invokeMethod('TextInput.show');
+      }
+    });
 
-  @override
-  void dispose() {
-    widget.searchBoxFocusNode.removeListener(_forwardFocusToInput);
-    _debounce?.cancel();
-    _searchController.dispose();
-    _inputFocusNode.dispose();
-    _firstGridItemFocus.dispose();
-    super.dispose();
-  }
-
-  void _onSearchChanged(String query) {
-    setState(() {});
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 450), () {
-      final cleanQuery = query.trim();
-      if (cleanQuery.isEmpty) {
-        if (mounted) {
-          setState(() {
-            _results = [];
-            _hasSearched = false;
-            _isLoading = false;
-          });
-        }
-      } else {
-        _performSearch(cleanQuery);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocusNode.requestFocus();
+        SystemChannels.textInput.invokeMethod('TextInput.show');
       }
     });
   }
 
-  Future<void> _performSearch(String query) async {
-    setState(() {
-      _isLoading = true;
-      _hasSearched = true;
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    setState(() {});
+    if (query.trim().isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _isLoading = false;
+      });
+      return;
+    }
+
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _performSearch(query.trim());
     });
+  }
+
+  Future<void> _performSearch(String query) async {
+    setState(() => _isLoading = true);
+    final encodedQuery = Uri.encodeComponent(query);
 
     try {
-      final encoded = Uri.encodeQueryComponent(query);
-      final url =
-          '${TvConfig.tmdbBase}/search/multi?api_key=${TvConfig.tmdbKey}&query=$encoded&include_adult=false&language=en-US&page=1';
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      final url = Uri.parse(
+        '${TvConfig.tmdbBase}/search/multi?api_key=${TvConfig.tmdbKey}&query=$encodedQuery&include_adult=false&page=1',
+      );
+
+      final res = await http.get(url).timeout(const Duration(seconds: 8));
 
       if (res.statusCode == 200) {
-        final rawList = jsonDecode(res.body)['results'] ?? [];
+        final data = jsonDecode(res.body);
+        final rawList = data['results'] as List? ?? [];
+        final currentYear = DateTime.now().year.toString();
+        List<dynamic> parsed = [];
+
+        for (var m in rawList) {
+          final mediaType = m['media_type'];
+          if (mediaType != 'movie' && mediaType != 'tv') continue;
+          final bool isTv = (mediaType == 'tv');
+
+          final title = (isTv ? (m['name'] ?? m['original_name'] ?? '') : (m['title'] ?? m['original_title'] ?? '')).toString();
+          if (isTv && isSoapShow(title)) continue;
+
+          final posterPath = m['poster_path'];
+          if (posterPath != null && posterPath.toString().isNotEmpty) {
+            parsed.add({
+              'tmdb_id': m['id'],
+              'title': title,
+              'poster': '${TvConfig.imgBase}$posterPath',
+              'backdrop': m['backdrop_path'] != null
+                  ? '${TvConfig.backdropBase}${m['backdrop_path']}'
+                  : '${TvConfig.imgBase}$posterPath',
+              'year': (isTv ? (m['first_air_date'] ?? '') : (m['release_date'] ?? '')).toString().split('-').first.isNotEmpty
+                  ? (isTv ? (m['first_air_date'] ?? '') : (m['release_date'] ?? '')).toString().split('-').first
+                  : currentYear,
+              'rating': (m['vote_average'] is num)
+                  ? (m['vote_average'] as num).toStringAsFixed(1)
+                  : '7.5',
+              'overview': m['overview'] ?? '',
+              'isTv': isTv,
+            });
+          }
+        }
+
         if (mounted) {
           setState(() {
-            _results = _parseSearchResults(rawList);
+            _searchResults = parsed;
             _isLoading = false;
           });
         }
@@ -100,41 +133,6 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     }
   }
 
-  List<dynamic> _parseSearchResults(List<dynamic> list) {
-    final currentYear = DateTime.now().year.toString();
-    var parsed = [];
-
-    for (var m in list) {
-      final mediaType = (m['media_type'] ?? '').toString();
-      if (mediaType != 'movie' && mediaType != 'tv') continue;
-      if (m['poster_path'] == null && m['backdrop_path'] == null) continue;
-
-      final isTv = mediaType == 'tv';
-      final title = (m['title'] ?? m['name'] ?? 'Untitled').toString();
-      if (isTv && isSoapShow(title)) continue;
-
-      parsed.add({
-        'tmdb_id': m['id'],
-        'title': title,
-        'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear)
-            .toString()
-            .split('-')[0],
-        'rating': (m['vote_average'] is num)
-            ? (m['vote_average'] as num).toStringAsFixed(1)
-            : '7.5',
-        'backdrop': m['backdrop_path'] != null
-            ? '${TvConfig.backdropBase}${m['backdrop_path']}'
-            : '${TvConfig.imgBase}${m['poster_path']}',
-        'poster': m['poster_path'] != null
-            ? '${TvConfig.imgBase}${m['poster_path']}'
-            : '${TvConfig.backdropBase}${m['backdrop_path']}',
-        'overview': m['overview'] ?? '',
-        'isTv': isTv,
-      });
-    }
-    return parsed;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -143,88 +141,60 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ==================================================================
-          // SEARCH INPUT BAR (PROPER ANDROID TV IME CONNECTION)
+          // PRIME FLIX STYLE SEARCH BAR (100% WORKING GBOARD TYPING)
           // ==================================================================
-          Focus(
-            skipTraversal: true,
-            onKeyEvent: (node, event) {
-              if (event is KeyDownEvent) {
-                // बॉक्स खाली होने पर Left दबाने से वापस Sidebar पर जाएँ
-                if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
-                    _searchController.text.isEmpty) {
-                  widget.onLeftBoundaryHit();
-                  return KeyEventResult.handled;
-                }
-                // रिजल्ट आने पर Down दबाने से नीचे पोस्टर पर जाएँ
-                if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
-                    _results.isNotEmpty) {
-                  _firstGridItemFocus.requestFocus();
-                  return KeyEventResult.handled;
-                }
-              }
-              return KeyEventResult.ignored;
-            },
+          Container(
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFF222222),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: _searchFocusNode.hasFocus ? Colors.white : Colors.white24,
+                width: _searchFocusNode.hasFocus ? 2.2 : 1.2,
+              ),
+            ),
             child: TextField(
-              focusNode: _inputFocusNode,
-              autofocus: true,
               controller: _searchController,
-              onChanged: _onSearchChanged,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (val) {
-                if (val.trim().isNotEmpty) {
-                  _performSearch(val.trim());
-                }
-              },
+              focusNode: _searchFocusNode,
+              autofocus: true,
               style: const TextStyle(color: Colors.white, fontSize: 16),
               cursorColor: const Color(0xFFE50914),
+              keyboardType: TextInputType.text,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (v) => _performSearch(v.trim()),
+              onChanged: _onSearchChanged,
+              onTap: () {
+                SystemChannels.textInput.invokeMethod('TextInput.show');
+              },
               decoration: InputDecoration(
                 hintText: 'Search Movies, Web Series, South, Hindi...',
                 hintStyle: const TextStyle(color: Colors.white38, fontSize: 15),
                 prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFE50914), size: 24),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                        icon: const Icon(Icons.clear, color: Colors.white70, size: 20),
                         onPressed: () {
                           _searchController.clear();
-                          setState(() {
-                            _results = [];
-                            _hasSearched = false;
-                          });
-                          _inputFocusNode.requestFocus();
+                          _onSearchChanged('');
+                          _searchFocusNode.requestFocus();
                         },
                       )
                     : null,
-                filled: true,
-                fillColor: const Color(0xFF222222),
-                contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.white24, width: 1.2),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.white, width: 2.2),
-                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
           ),
 
           const SizedBox(height: 16),
 
-          // ==================================================================
-          // HEADER (केवल सर्च करने पर ही दिखेगा)
-          // ==================================================================
-          if (_hasSearched) ...[
+          if (_searchResults.isNotEmpty) ...[
             Row(
               children: [
-                const Icon(
-                  Icons.movie_filter_rounded,
-                  color: Color(0xFFE50914),
-                  size: 20,
-                ),
+                const Icon(Icons.movie_filter_rounded, color: Color(0xFFE50914), size: 20),
                 const SizedBox(width: 8),
                 Text(
-                  'Search Results (${_results.length})',
+                  'Search Results (${_searchResults.length})',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -237,58 +207,47 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
           ],
 
           // ==================================================================
-          // SEARCH RESULTS GRID (NO DEFAULT TRENDING ITEMS)
+          // 5-COLUMN POSTER GRID (NETFLIX PRO THEME & SIZE)
           // ==================================================================
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
-                : !_hasSearched
-                    ? const Center(
+                : _searchResults.isEmpty
+                    ? Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.search_rounded, color: Colors.white24, size: 54),
-                            SizedBox(height: 10),
+                            const Icon(Icons.search_rounded, color: Colors.white24, size: 54),
+                            const SizedBox(height: 10),
                             Text(
-                              'Type any Movie or Web Series name above to search',
-                              style: TextStyle(color: Colors.white54, fontSize: 15),
+                              _searchController.text.isEmpty
+                                  ? 'Type any Movie or Web Series name above to search'
+                                  : 'No movies or series found',
+                              style: const TextStyle(color: Colors.white54, fontSize: 15),
                             ),
                           ],
                         ),
                       )
-                    : _results.isEmpty
-                        ? Center(
-                            child: Text(
-                              'No results found for "${_searchController.text}"',
-                              style: const TextStyle(color: Colors.white54, fontSize: 15),
-                            ),
-                          )
-                        : GridView.builder(
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 5,
-                              crossAxisSpacing: 14,
-                              mainAxisSpacing: 16,
-                              childAspectRatio: 0.68,
-                            ),
-                            itemCount: _results.length,
-                            itemBuilder: (ctx, idx) {
-                              final item = _results[idx];
-                              final isFirstInRow = (idx % 5 == 0);
-                              final isTopRow = (idx < 5);
+                    : GridView.builder(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 5,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 16,
+                          childAspectRatio: 0.68,
+                        ),
+                        itemCount: _searchResults.length,
+                        itemBuilder: (ctx, idx) {
+                          final item = _searchResults[idx];
+                          final isFirstInRow = (idx % 5 == 0);
 
-                              return _SearchGridCard(
-                                focusNode: idx == 0 ? _firstGridItemFocus : null,
-                                item: item,
-                                isFirstInRow: isFirstInRow,
-                                isTopRow: isTopRow,
-                                onUpBoundaryHit: () {
-                                  _inputFocusNode.requestFocus();
-                                },
-                                onLeftBoundaryHit: widget.onLeftBoundaryHit,
-                                onTap: () => widget.onItemSelected(item),
-                              );
-                            },
-                          ),
+                          return _SearchGridCard(
+                            item: item,
+                            isFirstInRow: isFirstInRow,
+                            onLeftBoundaryHit: widget.onLeftBoundaryHit,
+                            onTap: () => widget.onItemSelected(item),
+                          );
+                        },
+                      ),
           ),
         ],
       ),
@@ -297,20 +256,14 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 }
 
 class _SearchGridCard extends StatefulWidget {
-  final FocusNode? focusNode;
   final dynamic item;
   final bool isFirstInRow;
-  final bool isTopRow;
-  final VoidCallback onUpBoundaryHit;
   final VoidCallback onLeftBoundaryHit;
   final VoidCallback onTap;
 
   const _SearchGridCard({
-    this.focusNode,
     required this.item,
     required this.isFirstInRow,
-    required this.isTopRow,
-    required this.onUpBoundaryHit,
     required this.onLeftBoundaryHit,
     required this.onTap,
   });
@@ -327,7 +280,6 @@ class _SearchGridCardState extends State<_SearchGridCard> {
     final isTv = widget.item['isTv'] == true;
 
     return Focus(
-      focusNode: widget.focusNode,
       onFocusChange: (f) => setState(() => _isFocused = f),
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent) {
@@ -335,112 +287,115 @@ class _SearchGridCardState extends State<_SearchGridCard> {
             widget.onLeftBoundaryHit();
             return KeyEventResult.handled;
           }
-          if (event.logicalKey == LogicalKeyboardKey.arrowUp && widget.isTopRow) {
-            widget.onUpBoundaryHit();
-            return KeyEventResult.handled;
-          }
           if (event.logicalKey == LogicalKeyboardKey.select ||
-              event.logicalKey == LogicalKeyboardKey.enter) {
+              event.logicalKey == LogicalKeyboardKey.enter ||
+              event.logicalKey == LogicalKeyboardKey.space ||
+              event.logicalKey == LogicalKeyboardKey.gameButtonA) {
             widget.onTap();
             return KeyEventResult.handled;
           }
         }
         return KeyEventResult.ignored;
       },
-      child: GestureDetector(
+      child: InkWell(
         onTap: widget.onTap,
-        child: AnimatedContainer(
+        borderRadius: BorderRadius.circular(6),
+        child: AnimatedScale(
+          scale: _isFocused ? 1.05 : 1.0,
           duration: const Duration(milliseconds: 150),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: _isFocused ? Colors.white : Colors.transparent,
-              width: _isFocused ? 3.0 : 0.0,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: _isFocused ? Colors.white : Colors.transparent,
+                width: _isFocused ? 3.0 : 0.0,
+              ),
+              boxShadow: _isFocused
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFFE50914).withOpacity(0.55),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      )
+                    ]
+                  : null,
             ),
-            boxShadow: _isFocused
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFFE50914).withOpacity(0.55),
-                      blurRadius: 12,
-                      spreadRadius: 2,
-                    )
-                  ]
-                : [],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.network(
-                widget.item['poster'],
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
-              ),
-              Positioned(
-                top: 6,
-                right: 6,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: isTv ? const Color(0xFFE50914) : Colors.black87,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.white24, width: 0.8),
-                  ),
-                  child: Text(
-                    isTv ? 'SERIES' : 'MOVIE',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.network(
+                  widget.item['poster'],
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
+                ),
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isTv ? const Color(0xFFE50914) : Colors.black87,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.white24, width: 0.8),
+                    ),
+                    child: Text(
+                      isTv ? 'SERIES' : 'MOVIE',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [Colors.black, Colors.transparent],
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [Colors.black, Colors.transparent],
+                      ),
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        widget.item['title'] ?? '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.item['title'] ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '${widget.item['rating']} ★',
-                            style: const TextStyle(color: Color(0xFF46D369), fontSize: 11),
-                          ),
-                          Text(
-                            '${widget.item['year']}',
-                            style: const TextStyle(color: Colors.white60, fontSize: 11),
-                          ),
-                        ],
-                      ),
-                    ],
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${widget.item['rating']} ★',
+                              style: const TextStyle(color: Color(0xFF46D369), fontSize: 11),
+                            ),
+                            Text(
+                              '${widget.item['year']}',
+                              style: const TextStyle(color: Colors.white60, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
