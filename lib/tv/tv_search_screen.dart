@@ -24,6 +24,7 @@ class TvSearchScreen extends StatefulWidget {
 class _TvSearchScreenState extends State<TvSearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final FocusNode _firstGridItemFocus = FocusNode();
   Timer? _debounceTimer;
 
   bool _isLoading = false;
@@ -33,7 +34,6 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   void initState() {
     super.initState();
 
-    // Prime Flix का Exact Keyboard Focus Logic (बिना किसी onKeyEvent रुकावट के)
     _searchFocusNode.addListener(() {
       if (mounted) setState(() {});
       if (_searchFocusNode.hasFocus) {
@@ -54,6 +54,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     _debounceTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _firstGridItemFocus.dispose();
     super.dispose();
   }
 
@@ -73,7 +74,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     });
   }
 
-  Future<void> _performSearch(String query) async {
+  Future<void> _performSearch(String query, {bool focusFirstResult = false}) async {
+    if (query.isEmpty) return;
     setState(() => _isLoading = true);
     final encodedQuery = Uri.encodeComponent(query);
 
@@ -95,11 +97,17 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
           if (mediaType != 'movie' && mediaType != 'tv') continue;
           final bool isTv = (mediaType == 'tv');
 
-          final title = (isTv ? (m['name'] ?? m['original_name'] ?? '') : (m['title'] ?? m['original_title'] ?? '')).toString();
+          final title = (isTv
+                  ? (m['name'] ?? m['original_name'] ?? '')
+                  : (m['title'] ?? m['original_title'] ?? ''))
+              .toString();
           if (isTv && isSoapShow(title)) continue;
 
           final posterPath = m['poster_path'];
           if (posterPath != null && posterPath.toString().isNotEmpty) {
+            final rawDate = (isTv ? (m['first_air_date'] ?? '') : (m['release_date'] ?? '')).toString();
+            final yearStr = rawDate.split('-').first.isNotEmpty ? rawDate.split('-').first : currentYear;
+
             parsed.add({
               'tmdb_id': m['id'],
               'title': title,
@@ -107,9 +115,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
               'backdrop': m['backdrop_path'] != null
                   ? '${TvConfig.backdropBase}${m['backdrop_path']}'
                   : '${TvConfig.imgBase}$posterPath',
-              'year': (isTv ? (m['first_air_date'] ?? '') : (m['release_date'] ?? '')).toString().split('-').first.isNotEmpty
-                  ? (isTv ? (m['first_air_date'] ?? '') : (m['release_date'] ?? '')).toString().split('-').first
-                  : currentYear,
+              'year': yearStr,
               'rating': (m['vote_average'] is num)
                   ? (m['vote_average'] as num).toStringAsFixed(1)
                   : '7.5',
@@ -124,6 +130,12 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
             _searchResults = parsed;
             _isLoading = false;
           });
+
+          if (focusFirstResult && parsed.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _firstGridItemFocus.requestFocus();
+            });
+          }
         }
       } else {
         if (mounted) setState(() => _isLoading = false);
@@ -140,9 +152,6 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ==================================================================
-          // PRIME FLIX STYLE SEARCH BAR (100% WORKING GBOARD TYPING)
-          // ==================================================================
           Container(
             height: 52,
             decoration: BoxDecoration(
@@ -161,7 +170,13 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
               cursorColor: const Color(0xFFE50914),
               keyboardType: TextInputType.text,
               textInputAction: TextInputAction.search,
-              onSubmitted: (v) => _performSearch(v.trim()),
+              onSubmitted: (v) {
+                if (_searchResults.isNotEmpty) {
+                  _firstGridItemFocus.requestFocus();
+                } else {
+                  _performSearch(v.trim(), focusFirstResult: true);
+                }
+              },
               onChanged: _onSearchChanged,
               onTap: () {
                 SystemChannels.textInput.invokeMethod('TextInput.show');
@@ -185,9 +200,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
               ),
             ),
           ),
-
           const SizedBox(height: 16),
-
           if (_searchResults.isNotEmpty) ...[
             Row(
               children: [
@@ -205,10 +218,6 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
             ),
             const SizedBox(height: 12),
           ],
-
-          // ==================================================================
-          // 5-COLUMN POSTER GRID (NETFLIX PRO THEME & SIZE)
-          // ==================================================================
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
@@ -239,10 +248,16 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                         itemBuilder: (ctx, idx) {
                           final item = _searchResults[idx];
                           final isFirstInRow = (idx % 5 == 0);
+                          final isTopRow = (idx < 5);
 
                           return _SearchGridCard(
+                            focusNode: idx == 0 ? _firstGridItemFocus : null,
                             item: item,
                             isFirstInRow: isFirstInRow,
+                            isTopRow: isTopRow,
+                            onUpBoundaryHit: () {
+                              _searchFocusNode.requestFocus();
+                            },
                             onLeftBoundaryHit: widget.onLeftBoundaryHit,
                             onTap: () => widget.onItemSelected(item),
                           );
@@ -256,14 +271,20 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 }
 
 class _SearchGridCard extends StatefulWidget {
+  final FocusNode? focusNode;
   final dynamic item;
   final bool isFirstInRow;
+  final bool isTopRow;
+  final VoidCallback onUpBoundaryHit;
   final VoidCallback onLeftBoundaryHit;
   final VoidCallback onTap;
 
   const _SearchGridCard({
+    this.focusNode,
     required this.item,
     required this.isFirstInRow,
+    required this.isTopRow,
+    required this.onUpBoundaryHit,
     required this.onLeftBoundaryHit,
     required this.onTap,
   });
@@ -280,11 +301,16 @@ class _SearchGridCardState extends State<_SearchGridCard> {
     final isTv = widget.item['isTv'] == true;
 
     return Focus(
+      focusNode: widget.focusNode,
       onFocusChange: (f) => setState(() => _isFocused = f),
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent) {
           if (event.logicalKey == LogicalKeyboardKey.arrowLeft && widget.isFirstInRow) {
             widget.onLeftBoundaryHit();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp && widget.isTopRow) {
+            widget.onUpBoundaryHit();
             return KeyEventResult.handled;
           }
           if (event.logicalKey == LogicalKeyboardKey.select ||
@@ -297,11 +323,10 @@ class _SearchGridCardState extends State<_SearchGridCard> {
         }
         return KeyEventResult.ignored;
       },
-      child: InkWell(
+      child: GestureDetector(
         onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(6),
         child: AnimatedScale(
-          scale: _isFocused ? 1.05 : 1.0,
+          scale: _isFocused ? 1.06 : 1.0,
           duration: const Duration(milliseconds: 150),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
