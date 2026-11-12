@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (AUTO-SLIDE & WORKING MY LIST)
+// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (SYNCED WITH CINEMA HQ ENGINE)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -28,13 +28,35 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
   }
 
   Future<void> _fetchGlobalProviders() async {
+    final prefs = await SharedPreferences.getInstance();
+    // 1. Pehle saved servers load karo taaki zero delay rahe
+    final cached = prefs.getString('cached_active_providers');
+    if (cached != null && cached.isNotEmpty && mounted) {
+      try {
+        setState(() {
+          activeProviders = jsonDecode(cached) as List<dynamic>;
+        });
+      } catch (_) {}
+    }
+
+    // 2. Fresh Gist data fetch karo (without GitHub cache)
     try {
-      final res = await http.get(Uri.parse(MobileConfig.gistUrl)).timeout(const Duration(seconds: 6));
+      final freshUrl =
+          '${MobileConfig.gistUrl}?t=${DateTime.now().millisecondsSinceEpoch}';
+      final res =
+          await http.get(Uri.parse(freshUrl)).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
-        if (mounted) {
-          setState(() {
-            activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
-          });
+        final decoded = jsonDecode(res.body);
+        final list = decoded is List
+            ? decoded
+            : (decoded['active_providers'] ?? decoded['providers'] ?? []);
+        if (list is List && list.isNotEmpty) {
+          await prefs.setString('cached_active_providers', jsonEncode(list));
+          if (mounted) {
+            setState(() {
+              activeProviders = list;
+            });
+          }
         }
       }
     } catch (_) {}
@@ -45,7 +67,7 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
     final List<Widget> pages = [
       MobileHomeScreen(providers: activeProviders),
       MobileSearchScreen(providers: activeProviders),
-      const MobileMyListScreen(),
+      MobileMyListScreen(providers: activeProviders),
       MobileMoreScreen(providers: activeProviders),
     ];
 
@@ -94,7 +116,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   List<dynamic> homeSouthHindiList = [];
   List<dynamic> homeHollywoodHindiList = [];
   List<dynamic> homeHindiSeriesList = [];
-  
+
   final PageController _bannerController = PageController();
   int _currentBannerIndex = 0;
   Timer? _autoSlideTimer;
@@ -155,7 +177,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   Future<void> _fetchHomeCatalogContent() async {
     try {
       final netflixRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 6));
       if (netflixRes.statusCode == 200) {
         homeNetflixList = _parseList(jsonDecode(netflixRes.body)['results']);
       }
@@ -163,7 +185,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
     try {
       final primeRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 6));
       if (primeRes.statusCode == 200) {
         homePrimeList = _parseList(jsonDecode(primeRes.body)['results']);
       }
@@ -171,7 +193,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
     try {
       final hotstarRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 4));
+          '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 6));
       if (hotstarRes.statusCode == 200) {
         homeHotstarList = _parseList(jsonDecode(hotstarRes.body)['results']);
       }
@@ -179,7 +201,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
     try {
       final southRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&sort_by=popularity.desc')).timeout(const Duration(seconds: 4));
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&sort_by=popularity.desc')).timeout(const Duration(seconds: 6));
       if (southRes.statusCode == 200) {
         homeSouthHindiList = _parseList(jsonDecode(southRes.body)['results']);
       }
@@ -187,7 +209,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
     try {
       final hollywoodRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}&page=1')).timeout(const Duration(seconds: 4));
+          '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}&page=1')).timeout(const Duration(seconds: 6));
       if (hollywoodRes.statusCode == 200) {
         homeHollywoodHindiList = _parseList(jsonDecode(hollywoodRes.body)['results']);
       }
@@ -195,7 +217,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
     try {
       final hindiTvRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=3')).timeout(const Duration(seconds: 4));
+          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=3')).timeout(const Duration(seconds: 6));
       if (hindiTvRes.statusCode == 200) {
         homeHindiSeriesList = _parseList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
             .where((item) => !isSoapShow(item['title'] ?? ''))
@@ -238,6 +260,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
         backgroundColor: Colors.transparent,
         builder: (ctx) => MobileEpisodeSheet(
           item: item,
+          providers: widget.providers,
           onSelected: (season, episode) {
             _showMobileStreamSheet(item, season: season, episode: episode);
           },
@@ -267,20 +290,24 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('my_watchlist') ?? '[]';
     List list = jsonDecode(raw);
-    
+
     final id = item['tmdb_id'];
     final exists = list.any((x) => x['tmdb_id'] == id);
-    
+
     if (exists) {
       list.removeWhere((x) => x['tmdb_id'] == id);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Removed from My List'), duration: Duration(seconds: 1)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Removed from My List'), duration: Duration(seconds: 1)),
+        );
+      }
     } else {
       list.add(item);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Added to My List successfully!'), duration: Duration(seconds: 1)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Added to My List successfully!'), duration: Duration(seconds: 1)),
+        );
+      }
     }
     await prefs.setString('my_watchlist', jsonEncode(list));
   }
@@ -302,7 +329,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           final String imgUrl = item['backdrop'] ?? item['poster'] ?? '';
 
           return GestureDetector(
-            onTap: () => _onItemSelect(item), // Click to play / open stream server
+            onTap: () => _onItemSelect(item),
             onLongPress: () => _toggleMyList(item),
             child: Stack(
               fit: StackFit.expand,
@@ -635,7 +662,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                               onPressed: () {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (_) => MobileSearchScreen(providers: widget.providers, onPlaySaved: _loadContinueWatching)),
+                                  MaterialPageRoute(
+                                    builder: (_) => MobileSearchScreen(
+                                      providers: widget.providers,
+                                      onPlaySaved: _loadContinueWatching,
+                                    ),
+                                  ),
                                 );
                               },
                             ),
@@ -790,6 +822,7 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
                             backgroundColor: Colors.transparent,
                             builder: (_) => MobileEpisodeSheet(
                               item: item,
+                              providers: widget.providers,
                               onSelected: (season, ep) {
                                 showModalBottomSheet(
                                   context: context,
@@ -835,10 +868,11 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
 }
 
 // ============================================================================
-// 3. MY LIST SCREEN (WORKING PLAY & AUTO-SYNC)
+// 3. MY LIST SCREEN (WORKING PLAY & AUTO-SYNC WITHOUT RELOAD LOOP)
 // ============================================================================
 class MobileMyListScreen extends StatefulWidget {
-  const MobileMyListScreen({super.key});
+  final List<dynamic> providers;
+  const MobileMyListScreen({super.key, required this.providers});
 
   @override
   State<MobileMyListScreen> createState() => _MobileMyListScreenState();
@@ -847,32 +881,11 @@ class MobileMyListScreen extends StatefulWidget {
 class _MobileMyListScreenState extends State<MobileMyListScreen> {
   List watchlist = [];
   bool isLoading = true;
-  List<dynamic> activeProviders = [];
 
   @override
   void initState() {
     super.initState();
     _loadWatchlist();
-    _fetchProviders();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadWatchlist();
-  }
-
-  Future<void> _fetchProviders() async {
-    try {
-      final res = await http.get(Uri.parse(MobileConfig.gistUrl)).timeout(const Duration(seconds: 6));
-      if (res.statusCode == 200) {
-        if (mounted) {
-          setState(() {
-            activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
-          });
-        }
-      }
-    } catch (_) {}
   }
 
   Future<void> _loadWatchlist() async {
@@ -899,6 +912,7 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
         backgroundColor: Colors.transparent,
         builder: (ctx) => MobileEpisodeSheet(
           item: item,
+          providers: widget.providers,
           onSelected: (season, episode) {
             _showMobileStreamSheet(item, season: season, episode: episode);
           },
@@ -918,7 +932,7 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
         item: item,
         season: season,
         episode: episode,
-        providers: activeProviders,
+        providers: widget.providers,
         onPlaySaved: () => _loadWatchlist(),
       ),
     );
@@ -929,20 +943,26 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
     watchlist.removeWhere((x) => x['tmdb_id'] == item['tmdb_id']);
     await prefs.setString('my_watchlist', jsonEncode(watchlist));
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Removed from My List'), duration: Duration(seconds: 1)),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Removed from My List'), duration: Duration(seconds: 1)),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    _loadWatchlist();
-
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1F1F1F),
         title: const Text('My Watchlist', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white70),
+            onPressed: _loadWatchlist,
+          ),
+        ],
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
@@ -969,8 +989,8 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
                   itemBuilder: (ctx, idx) {
                     final item = watchlist[idx];
                     return GestureDetector(
-                      onTap: () => _onItemSelect(item), // Click to open stream/server sheet and play!
-                      onLongPress: () => _removeFromList(item), // Long press to remove
+                      onTap: () => _onItemSelect(item),
+                      onLongPress: () => _removeFromList(item),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(6),
                         child: Image.network(

@@ -1,3 +1,6 @@
+// ============================================================================
+// NETFLIX PRO STREAM RESOLVER (UPGRADED WITH CINEMA HQ ENGINE)
+// ============================================================================
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -7,6 +10,39 @@ import 'package:android_intent_plus/flag.dart';
 import 'internal_player.dart';
 import 'tmdb_config.dart';
 import 'category_grid_screen.dart';
+
+// Helper: Ensure providers are always loaded (even if clicked immediately)
+Future<List<dynamic>> _ensureProvidersLoaded(List<dynamic>? passed) async {
+  if (passed != null && passed.isNotEmpty) return passed;
+
+  final prefs = await SharedPreferences.getInstance();
+  final cached = prefs.getString('cached_active_providers');
+  if (cached != null && cached.isNotEmpty) {
+    try {
+      final list = jsonDecode(cached);
+      if (list is List && list.isNotEmpty) return list;
+    } catch (_) {}
+  }
+
+  try {
+    final freshUrl =
+        '${MobileConfig.gistUrl}?t=${DateTime.now().millisecondsSinceEpoch}';
+    final res =
+        await http.get(Uri.parse(freshUrl)).timeout(const Duration(seconds: 10));
+    if (res.statusCode == 200) {
+      final decoded = jsonDecode(res.body);
+      final list = decoded is List
+          ? decoded
+          : (decoded['active_providers'] ?? decoded['providers'] ?? []);
+      if (list is List && list.isNotEmpty) {
+        await prefs.setString('cached_active_providers', jsonEncode(list));
+        return list;
+      }
+    }
+  } catch (_) {}
+
+  return [];
+}
 
 // ============================================================================
 // FULL SCREEN CATEGORIES OVERLAY MODAL
@@ -104,13 +140,19 @@ void openCategoriesModal(BuildContext context, List<dynamic> providers, VoidCall
 }
 
 // ============================================================================
-// MOBILE EPISODE SELECTOR BOTTOM SHEET
+// MOBILE EPISODE SELECTOR BOTTOM SHEET (REAL XTREAM SEASONS + FALLBACK)
 // ============================================================================
 class MobileEpisodeSheet extends StatefulWidget {
   final dynamic item;
+  final List<dynamic>? providers;
   final Function(int s, int ep) onSelected;
 
-  const MobileEpisodeSheet({super.key, required this.item, required this.onSelected});
+  const MobileEpisodeSheet({
+    super.key,
+    required this.item,
+    this.providers,
+    required this.onSelected,
+  });
 
   @override
   State<MobileEpisodeSheet> createState() => _MobileEpisodeSheetState();
@@ -118,8 +160,12 @@ class MobileEpisodeSheet extends StatefulWidget {
 
 class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
   int selectedSeason = 1;
-  int episodeCount = 10;
+  Map<int, List<dynamic>> xtreamSeasonsMap = {};
   List<int> seasons = [1];
+  bool loading = true;
+
+  String _clean(String s) =>
+      s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
 
   @override
   void initState() {
@@ -128,9 +174,79 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
   }
 
   Future<void> _fetchDetails() async {
+    final activeProvs = await _ensureProvidersLoaded(widget.providers);
+    final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
+    final cleanTarget = _clean((widget.item['title'] ?? '').toString());
+
+    // 1. Pehle Cinema HQ ki tarah Xtream se real seasons/episodes check karo
+    for (var prov in activeProvs) {
+      if (prov['type'] == 'xtream') {
+        final host = (prov['xc_host'] ?? prov['host'] ?? '')
+            .toString()
+            .replaceAll(RegExp(r'/+$'), '');
+        final user = prov['xc_username'] ?? prov['username'] ?? '';
+        final pass = prov['xc_password'] ?? prov['password'] ?? '';
+
+        if (host.isNotEmpty && user.isNotEmpty && pass.isNotEmpty) {
+          try {
+            final searchApi =
+                '$host/player_api.php?username=$user&password=$pass&action=get_series';
+            final xtreamRes = await http
+                .get(Uri.parse(searchApi))
+                .timeout(const Duration(seconds: 6));
+            if (xtreamRes.statusCode == 200) {
+              final seriesList = jsonDecode(xtreamRes.body);
+              if (seriesList is List) {
+                for (var s in seriesList) {
+                  final sTmdb = (s['tmdb_id'] ?? s['tmdb'] ?? '').toString();
+                  final rawName = (s['name'] ?? '').toString();
+                  if ((sTmdb.isNotEmpty && sTmdb == targetTmdbId) ||
+                      _clean(rawName).contains(cleanTarget)) {
+                    final sid = s['series_id'];
+                    final infoApi =
+                        '$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=$sid';
+                    final infoRes = await http
+                        .get(Uri.parse(infoApi))
+                        .timeout(const Duration(seconds: 6));
+                    if (infoRes.statusCode == 200) {
+                      final episodesMap =
+                          jsonDecode(infoRes.body)['episodes'] ?? {};
+                      if (episodesMap is Map) {
+                        episodesMap.forEach((sNum, eps) {
+                          final sn = int.tryParse(sNum.toString()) ?? 1;
+                          if (eps is List && eps.isNotEmpty) {
+                            xtreamSeasonsMap[sn] = eps;
+                          }
+                        });
+                      }
+                    }
+                    break;
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }
+      }
+      if (xtreamSeasonsMap.isNotEmpty) break;
+    }
+
+    if (xtreamSeasonsMap.isNotEmpty && mounted) {
+      final sortedKeys = xtreamSeasonsMap.keys.toList()..sort();
+      setState(() {
+        seasons = sortedKeys;
+        selectedSeason = sortedKeys.first;
+        loading = false;
+      });
+      return;
+    }
+
+    // 2. Fallback: TMDB seasons (for Stremio / Cloud API)
     try {
-      final res = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${MobileConfig.tmdbKey}')).timeout(const Duration(seconds: 8));
+      final res = await http
+          .get(Uri.parse(
+              '${MobileConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${MobileConfig.tmdbKey}'))
+          .timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final raw = (data['seasons'] as List<dynamic>? ?? [])
@@ -145,12 +261,17 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
         }
       }
     } catch (_) {}
+
+    if (mounted) setState(() => loading = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    final realEps = xtreamSeasonsMap[selectedSeason];
+    final int count = (realEps != null && realEps.isNotEmpty) ? realEps.length : 12;
+
     return Container(
-      height: 380,
+      height: 390,
       decoration: const BoxDecoration(
         color: Color(0xFF1E1E1E),
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -172,52 +293,60 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: seasons.map((s) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: s == selectedSeason ? const Color(0xFFE50914) : Colors.white12,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          if (loading)
+            const Expanded(
+              child: Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
+            )
+          else ...[
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: seasons.map((s) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: s == selectedSeason ? const Color(0xFFE50914) : Colors.white12,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      ),
+                      onPressed: () => setState(() => selectedSeason = s),
+                      child: Text('Season $s'),
                     ),
-                    onPressed: () => setState(() => selectedSeason = s),
-                    child: Text('Season $s'),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                childAspectRatio: 1.6,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
+                  );
+                }).toList(),
               ),
-              itemCount: episodeCount,
-              itemBuilder: (ctx, i) {
-                final ep = i + 1;
-                return ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white12,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.zero,
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    widget.onSelected(selectedSeason, ep);
-                  },
-                  child: Text('EP $ep', style: const TextStyle(fontSize: 12)),
-                );
-              },
             ),
-          ),
+            const SizedBox(height: 14),
+            Expanded(
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  childAspectRatio: 1.6,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: count,
+                itemBuilder: (ctx, i) {
+                  final epNum = (realEps != null && i < realEps.length)
+                      ? (int.tryParse((realEps[i]['episode_num'] ?? (i + 1)).toString()) ?? (i + 1))
+                      : (i + 1);
+                  return ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white12,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.zero,
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      widget.onSelected(selectedSeason, epNum);
+                    },
+                    child: Text('EP $epNum', style: const TextStyle(fontSize: 12)),
+                  );
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -225,7 +354,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
 }
 
 // ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET (XTREAM, STREMIO & RENDER API)
+// MOBILE STREAM RESOLVER BOTTOM SHEET (CINEMA HQ UNIVERSAL ENGINE)
 // ============================================================================
 class MobileStreamSheet extends StatefulWidget {
   final dynamic item;
@@ -271,9 +400,10 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 
   Future<void> _fetchDirectStreams() async {
     var resolved = [];
+    final activeProvs = await _ensureProvidersLoaded(widget.providers);
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
-    final movieTitle = widget.item['title'] ?? '';
+    final movieTitle = (widget.item['title'] ?? '').toString();
     final targetSeason = widget.season ?? 1;
     final targetEpisode = widget.episode ?? 1;
 
@@ -327,12 +457,13 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
       } catch (_) {}
     }
 
-    for (var prov in widget.providers) {
+    // ==========================================
+    // 2. GIST ACTIVE PROVIDERS (XTREAM + STREMIO)
+    // ==========================================
+    for (var prov in activeProvs) {
       final type = prov['type'];
 
-      // ==========================================
-      // 2. XTREAM IPTV (Supports host / xc_host)
-      // ==========================================
+      // A. XTREAM IPTV (Livebox Pro, Abbastream IPTV etc.)
       if (type == 'xtream') {
         final host = (prov['xc_host'] ?? prov['host'] ?? '').toString().replaceAll(RegExp(r'/+$'), '');
         final user = prov['xc_username'] ?? prov['username'] ?? '';
@@ -344,42 +475,53 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
               final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_series';
               final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
               if (xtreamRes.statusCode == 200) {
-                final seriesList = jsonDecode(xtreamRes.body) as List<dynamic>;
-                var candidates = [];
+                final seriesList = jsonDecode(xtreamRes.body);
+                if (seriesList is List) {
+                  var candidates = [];
 
-                for (var s in seriesList) {
-                  final sTmdb = (s['tmdb_id'] ?? s['tmdb'] ?? '').toString();
-                  final rawName = (s['name'] ?? '').toString();
-                  final categoryName = (s['category_name'] ?? '').toString();
-                  final sClean = _clean(rawName);
+                  for (var s in seriesList) {
+                    final sTmdb = (s['tmdb_id'] ?? s['tmdb'] ?? '').toString();
+                    final rawName = (s['name'] ?? '').toString();
+                    final categoryName = (s['category_name'] ?? '').toString();
+                    final sClean = _clean(rawName);
 
-                  if (sTmdb == targetTmdbId || sClean.contains(cleanTarget) || cleanTarget.contains(sClean)) {
-                    s['is_hindi_detected'] = _isHindiStream(rawName, category: categoryName);
-                    candidates.add(s);
+                    if ((sTmdb.isNotEmpty && sTmdb == targetTmdbId) ||
+                        sClean.contains(cleanTarget) ||
+                        cleanTarget.contains(sClean)) {
+                      s['is_hindi_detected'] = _isHindiStream(rawName, category: categoryName);
+                      candidates.add(s);
+                    }
                   }
-                }
 
-                candidates.sort((a, b) => (b['is_hindi_detected'] == true ? 1 : 0).compareTo(a['is_hindi_detected'] == true ? 1 : 0));
+                  candidates.sort((a, b) => (b['is_hindi_detected'] == true ? 1 : 0)
+                      .compareTo(a['is_hindi_detected'] == true ? 1 : 0));
 
-                for (var bestSeries in candidates.take(2)) {
-                  final sid = bestSeries['series_id'];
-                  final infoApi = '$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=$sid';
-                  final infoRes = await http.get(Uri.parse(infoApi)).timeout(const Duration(seconds: 8));
-                  if (infoRes.statusCode == 200) {
-                    final epMap = jsonDecode(infoRes.body)['episodes'] as Map<String, dynamic>? ?? {};
-                    final epList = epMap['$targetSeason'] as List<dynamic>? ?? [];
-                    final match = epList.firstWhere((e) => (e['episode_num'] ?? 0) == targetEpisode, orElse: () => null);
+                  for (var bestSeries in candidates.take(2)) {
+                    final sid = bestSeries['series_id'];
+                    final infoApi = '$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=$sid';
+                    final infoRes = await http.get(Uri.parse(infoApi)).timeout(const Duration(seconds: 8));
+                    if (infoRes.statusCode == 200) {
+                      final epMap = jsonDecode(infoRes.body)['episodes'] ?? {};
+                      final epList = (epMap is Map) ? (epMap['$targetSeason'] ?? []) : [];
 
-                    if (match != null) {
-                      final isHindi = bestSeries['is_hindi_detected'] == true;
-                      resolved.add({
-                        'server': prov['name'] ?? 'LiveBox Xtream IPTV',
-                        'title': isHindi
-                            ? '$movieTitle (Hindi Audio) S$targetSeason:E$targetEpisode'
-                            : '$movieTitle S$targetSeason:E$targetEpisode',
-                        'url': '$host/series/$user/$pass/${match['id']}.${match['container_extension'] ?? "mp4"}',
-                        'isHindi': isHindi,
-                      });
+                      if (epList is List && epList.isNotEmpty) {
+                        final match = epList.firstWhere(
+                          (e) => int.tryParse((e['episode_num'] ?? 0).toString()) == targetEpisode,
+                          orElse: () => null,
+                        );
+
+                        if (match != null) {
+                          final isHindi = bestSeries['is_hindi_detected'] == true;
+                          resolved.add({
+                            'server': prov['name'] ?? 'Xtream Series HD',
+                            'title': isHindi
+                                ? '$movieTitle (Hindi Audio) S$targetSeason:E$targetEpisode'
+                                : '$movieTitle S$targetSeason:E$targetEpisode',
+                            'url': '$host/series/$user/$pass/${match['id']}.${match['container_extension'] ?? "mp4"}',
+                            'isHindi': isHindi,
+                          });
+                        }
+                      }
                     }
                   }
                 }
@@ -388,34 +530,39 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
               final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_vod_streams';
               final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
               if (xtreamRes.statusCode == 200) {
-                final streamList = jsonDecode(xtreamRes.body) as List<dynamic>;
-                var candidates = [];
+                final streamList = jsonDecode(xtreamRes.body);
+                if (streamList is List) {
+                  var candidates = [];
 
-                for (var m in streamList) {
-                  final mTmdb = (m['tmdb_id'] ?? m['tmdb'] ?? '').toString();
-                  final rawName = (m['name'] ?? '').toString();
-                  final categoryName = (m['category_name'] ?? '').toString();
-                  final mClean = _clean(rawName);
+                  for (var m in streamList) {
+                    final mTmdb = (m['tmdb_id'] ?? m['tmdb'] ?? '').toString();
+                    final rawName = (m['name'] ?? '').toString();
+                    final categoryName = (m['category_name'] ?? '').toString();
+                    final mClean = _clean(rawName);
 
-                  if (mTmdb == targetTmdbId || mClean.contains(cleanTarget) || cleanTarget.contains(mClean)) {
-                    candidates.add({
-                      'data': m,
-                      'isHindi': _isHindiStream(rawName, category: categoryName),
+                    if ((mTmdb.isNotEmpty && mTmdb == targetTmdbId) ||
+                        mClean.contains(cleanTarget) ||
+                        cleanTarget.contains(mClean)) {
+                      candidates.add({
+                        'data': m,
+                        'isHindi': _isHindiStream(rawName, category: categoryName),
+                      });
+                    }
+                  }
+
+                  candidates.sort((a, b) => (b['isHindi'] == true ? 1 : 0)
+                      .compareTo(a['isHindi'] == true ? 1 : 0));
+
+                  for (var cand in candidates.take(3)) {
+                    final bestMovie = cand['data'];
+                    final isHindi = cand['isHindi'] == true;
+                    resolved.add({
+                      'server': prov['name'] ?? 'Xtream Movies VIP',
+                      'title': isHindi ? '$movieTitle (Hindi Audio / Dubbed)' : '$movieTitle (Direct HD)',
+                      'url': '$host/movie/$user/$pass/${bestMovie['stream_id']}.${bestMovie['container_extension'] ?? "mp4"}',
+                      'isHindi': isHindi,
                     });
                   }
-                }
-
-                candidates.sort((a, b) => (b['isHindi'] == true ? 1 : 0).compareTo(a['isHindi'] == true ? 1 : 0));
-
-                for (var cand in candidates.take(3)) {
-                  final bestMovie = cand['data'];
-                  final isHindi = cand['isHindi'] == true;
-                  resolved.add({
-                    'server': prov['name'] ?? 'LiveBox Xtream IPTV',
-                    'title': isHindi ? '$movieTitle (Hindi Audio / Dubbed)' : '$movieTitle HD',
-                    'url': '$host/movie/$user/$pass/${bestMovie['stream_id']}.${bestMovie['container_extension'] ?? "mp4"}',
-                    'isHindi': isHindi,
-                  });
                 }
               }
             }
@@ -423,9 +570,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
         }
       }
 
-      // ==========================================
-      // 3. STREMIO ADDON (HdHub etc.)
-      // ==========================================
+      // B. STREMIO ADDON (PenguPlay, HdHub etc.)
       if (type == 'stremio' && imdbId != null && imdbId.isNotEmpty) {
         final base = (prov['url'] ?? '').toString().replaceAll('/manifest.json', '');
         final streamPath = isTv
@@ -433,23 +578,29 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
             : '$base/stream/movie/$imdbId.json';
 
         try {
-          final res = await http.get(Uri.parse(streamPath)).timeout(const Duration(seconds: 4));
+          final res = await http.get(Uri.parse(streamPath)).timeout(const Duration(seconds: 6));
           if (res.statusCode == 200) {
             final data = jsonDecode(res.body);
-            for (var s in (data['streams'] ?? [])) {
-              final titleStr = (s['title'] ?? s['name'] ?? '').toString();
-              if (titleStr.toLowerCase().contains('donation') ||
-                  titleStr.toLowerCase().contains('discord') ||
-                  titleStr.toLowerCase().contains('telegram')) {
-                continue;
-              }
+            final streamEntries = data['streams'] ?? [];
+            if (streamEntries is List) {
+              for (var s in streamEntries) {
+                final stremioUrl = (s['url'] ?? '').toString();
+                if (stremioUrl.isEmpty) continue;
 
-              resolved.add({
-                'server': prov['name'] ?? 'HdHub Provider',
-                'title': titleStr,
-                'url': s['url'],
-                'isHindi': _isHindiStream(titleStr),
-              });
+                final titleStr = (s['title'] ?? s['name'] ?? '').toString();
+                if (titleStr.toLowerCase().contains('donation') ||
+                    titleStr.toLowerCase().contains('discord') ||
+                    titleStr.toLowerCase().contains('telegram')) {
+                  continue;
+                }
+
+                resolved.add({
+                  'server': prov['name'] ?? 'Stremio Server',
+                  'title': titleStr.isNotEmpty ? titleStr : '$movieTitle Stream',
+                  'url': stremioUrl,
+                  'isHindi': _isHindiStream(titleStr),
+                });
+              }
             }
           }
         } catch (_) {}
@@ -461,8 +612,14 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
       final bHindi = b['isHindi'] == true ? 1 : 0;
       if (aHindi != bHindi) return bHindi.compareTo(aHindi);
 
-      final aIsXtream = (a['server'] ?? '').toString().contains('Xtream') ? 1 : 0;
-      final bIsXtream = (b['server'] ?? '').toString().contains('Xtream') ? 1 : 0;
+      final aIsXtream = (a['server'] ?? '').toString().toLowerCase().contains('iptv') ||
+              (a['server'] ?? '').toString().toLowerCase().contains('livebox')
+          ? 1
+          : 0;
+      final bIsXtream = (b['server'] ?? '').toString().toLowerCase().contains('iptv') ||
+              (b['server'] ?? '').toString().toLowerCase().contains('livebox')
+          ? 1
+          : 0;
       return bIsXtream.compareTo(aIsXtream);
     });
 
