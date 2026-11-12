@@ -1,10 +1,12 @@
 // ============================================================================
-// INTERNAL VIDEO PLAYER (AUTO-HIDE CONTROLS + SCREEN LOCK + GESTURES + CROP)
+// INTERNAL VIDEO PLAYER (AUTO-HIDE + SYSTEM VOLUME & BRIGHTNESS SYNC + LOCK)
 // ============================================================================
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:volume_controller/volume_controller.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 
 class InternalPlayerScreen extends StatefulWidget {
   final String streamUrl;
@@ -32,8 +34,8 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
   bool _isLocked = false;
   Timer? _controlsTimer;
 
-  // Gestures (Volume & Brightness)
-  double _volume = 1.0;
+  // System Gestures (Volume & Brightness)
+  double _volume = 0.5;
   double _brightness = 0.5;
   String _overlayText = '';
   IconData _overlayIcon = Icons.volume_up_rounded;
@@ -52,7 +54,43 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
+    _initSystemControls();
     _initPlayer();
+  }
+
+  Future<void> _initSystemControls() async {
+    // 1. System Volume Sync
+    VolumeController().showSystemUI = false;
+    try {
+      final currentVol = await VolumeController().getVolume();
+      if (mounted) setState(() => _volume = currentVol);
+    } catch (_) {}
+
+    VolumeController().listener((vol) {
+      if (mounted) {
+        setState(() {
+          _volume = vol;
+          _overlayText = '${(_volume * 100).toInt()}%';
+          _overlayIcon =
+              _volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded;
+          _showOverlayIndicator = true;
+        });
+        _resetOverlayTimer();
+      }
+    });
+
+    // 2. System Brightness Sync
+    try {
+      final currentBright = await ScreenBrightness().current;
+      if (mounted) setState(() => _brightness = currentBright);
+    } catch (_) {}
+  }
+
+  void _resetOverlayTimer() {
+    _overlayTimer?.cancel();
+    _overlayTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _showOverlayIndicator = false);
+    });
   }
 
   Future<void> _initPlayer() async {
@@ -68,7 +106,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
       );
 
       await _controller.initialize();
-      await _controller.setVolume(_volume);
+      await _controller.setVolume(1.0); // Player full rahega, control system se hoga
       await _controller.play();
 
       if (mounted) {
@@ -78,7 +116,6 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
 
       _controller.addListener(() {
         if (!mounted) return;
-        // Agar movie chal rahi hai aur controls dikh rahe hain par timer band hai, to timer chalu kar do
         if (_controller.value.isPlaying &&
             _showControls &&
             !_isLocked &&
@@ -178,32 +215,36 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
     });
   }
 
-  void _onVerticalDragUpdate(DragUpdateDetails details, double screenWidth, double screenHeight) {
+  void _onVerticalDragUpdate(
+      DragUpdateDetails details, double screenWidth, double screenHeight) {
     if (_isLocked) return;
 
     final delta = -details.primaryDelta! / (screenHeight * 0.75);
 
     if (details.localPosition.dx < screenWidth / 2) {
+      // Left Side: Real System Brightness
+      final newBright = (_brightness + delta).clamp(0.01, 1.0);
+      ScreenBrightness().setScreenBrightness(newBright);
       setState(() {
-        _brightness = (_brightness + delta).clamp(0.05, 1.0);
+        _brightness = newBright;
         _overlayText = '${(_brightness * 100).toInt()}%';
         _overlayIcon = Icons.brightness_6_rounded;
         _showOverlayIndicator = true;
       });
     } else {
+      // Right Side: Real System Media Volume
+      final newVol = (_volume + delta).clamp(0.0, 1.0);
+      VolumeController().setVolume(newVol);
       setState(() {
-        _volume = (_volume + delta).clamp(0.0, 1.0);
-        _controller.setVolume(_volume);
+        _volume = newVol;
         _overlayText = '${(_volume * 100).toInt()}%';
-        _overlayIcon = _volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded;
+        _overlayIcon =
+            _volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded;
         _showOverlayIndicator = true;
       });
     }
 
-    _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(milliseconds: 900), () {
-      if (mounted) setState(() => _showOverlayIndicator = false);
-    });
+    _resetOverlayTimer();
   }
 
   String _formatDuration(Duration d) {
@@ -217,6 +258,8 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
   void dispose() {
     _controlsTimer?.cancel();
     _overlayTimer?.cancel();
+    VolumeController().removeListener();
+    ScreenBrightness().resetScreenBrightness();
     _controller.dispose();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -226,6 +269,19 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
   }
 
   Widget _buildVideoOutput() {
+    if (_hasError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            'Stream Error: $_errorMessage',
+            style: const TextStyle(color: Colors.white70),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
     if (!_isInit) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFFE50914)),
@@ -277,46 +333,47 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
           // 1. Video Layer
           _buildVideoOutput(),
 
-          // 2. Brightness Black Shading
-          IgnorePointer(
-            child: Container(
-              color: Colors.black.withOpacity((1.0 - _brightness) * 0.8),
-            ),
-          ),
-
-          // 3. Gesture Layer (Tap Screen to Show/Hide Controls & Drag)
+          // 2. Gesture Layer (Tap Screen to Show/Hide Controls & Drag)
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _toggleControls,
-            onVerticalDragUpdate: (details) => _onVerticalDragUpdate(details, size.width, size.height),
+            onVerticalDragUpdate: (details) =>
+                _onVerticalDragUpdate(details, size.width, size.height),
             child: Container(color: Colors.transparent),
           ),
 
-          // 4. Center Gesture HUD (Volume & Brightness)
+          // 3. Center Gesture HUD (Volume & Brightness)
           if (_showOverlayIndicator)
             Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
                 decoration: BoxDecoration(
                   color: const Color(0xFF181818).withOpacity(0.9),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE50914).withOpacity(0.5), width: 1.5),
+                  border: Border.all(
+                      color: const Color(0xFFE50914).withOpacity(0.5),
+                      width: 1.5),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(_overlayIcon, color: const Color(0xFFE50914), size: 28),
+                    Icon(_overlayIcon,
+                        color: const Color(0xFFE50914), size: 28),
                     const SizedBox(width: 10),
                     Text(
                       _overlayText,
-                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
               ),
             ),
 
-          // 5. Full Player Controls (Lock hone par hide ho jayenge + 3 sec auto-hide)
+          // 4. Full Player Controls (3-sec auto-hide + touch protection)
           if (_showControls && _isInit && !_isLocked)
             Listener(
               onPointerDown: (_) => _controlsTimer?.cancel(),
@@ -353,7 +410,8 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                                 shape: BoxShape.circle,
                                 border: Border.all(color: Colors.white24),
                               ),
-                              child: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
+                              child: const Icon(Icons.arrow_back,
+                                  color: Colors.white, size: 22),
                             ),
                           ),
                           const SizedBox(width: 14),
@@ -372,16 +430,19 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                           InkWell(
                             onTap: _cycleScaleMode,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 8),
                               decoration: BoxDecoration(
                                 color: const Color(0xFF181818).withOpacity(0.9),
                                 borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: const Color(0xFFE50914), width: 1.5),
+                                border: Border.all(
+                                    color: const Color(0xFFE50914), width: 1.5),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.aspect_ratio, color: Color(0xFFE50914), size: 18),
+                                  const Icon(Icons.aspect_ratio,
+                                      color: Color(0xFFE50914), size: 18),
                                   const SizedBox(width: 6),
                                   Text(
                                     scaleNames[_scaleMode],
@@ -412,9 +473,11 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: Colors.black45,
-                                border: Border.all(color: Colors.white24, width: 1.5),
+                                border: Border.all(
+                                    color: Colors.white24, width: 1.5),
                               ),
-                              child: const Icon(Icons.replay_30, color: Colors.white, size: 34),
+                              child: const Icon(Icons.replay_30,
+                                  color: Colors.white, size: 34),
                             ),
                           ),
                           const SizedBox(width: 44),
@@ -426,10 +489,13 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: const Color(0xFFE50914),
-                                border: Border.all(color: Colors.white30, width: 2),
+                                border:
+                                    Border.all(color: Colors.white30, width: 2),
                               ),
                               child: Icon(
-                                _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                                _controller.value.isPlaying
+                                    ? Icons.pause
+                                    : Icons.play_arrow,
                                 color: Colors.white,
                                 size: 42,
                               ),
@@ -444,9 +510,11 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: Colors.black45,
-                                border: Border.all(color: Colors.white24, width: 1.5),
+                                border: Border.all(
+                                    color: Colors.white24, width: 1.5),
                               ),
-                              child: const Icon(Icons.forward_30, color: Colors.white, size: 34),
+                              child: const Icon(Icons.forward_30,
+                                  color: Colors.white, size: 34),
                             ),
                           ),
                         ],
@@ -476,11 +544,17 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                             children: [
                               Text(
                                 _formatDuration(_controller.value.position),
-                                style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold),
                               ),
                               Text(
                                 _formatDuration(_controller.value.duration),
-                                style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
@@ -492,7 +566,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
               ),
             ),
 
-          // 6. SCREEN LOCK BUTTON
+          // 5. Screen Lock Button
           if (_showControls && _isInit)
             Positioned(
               left: 20,
@@ -503,7 +577,9 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _isLocked ? const Color(0xFFE50914) : Colors.black54,
+                    color: _isLocked
+                        ? const Color(0xFFE50914)
+                        : Colors.black54,
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: _isLocked ? Colors.white : Colors.white38,
