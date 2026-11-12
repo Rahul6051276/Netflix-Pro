@@ -3,270 +3,138 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'tmdb_config.dart';
-import 'category_grid_screen.dart';
-import 'stream_resolver_sheet.dart';
-import 'tv_search_screen.dart';
 
-class TvHomeScreen extends StatefulWidget {
-  const TvHomeScreen({super.key});
+class TvSearchScreen extends StatefulWidget {
+  final FocusNode searchBoxFocusNode;
+  final VoidCallback onLeftBoundaryHit;
+  final Function(dynamic item) onItemSelected;
+
+  const TvSearchScreen({
+    super.key,
+    required this.searchBoxFocusNode,
+    required this.onLeftBoundaryHit,
+    required this.onItemSelected,
+  });
 
   @override
-  State<TvHomeScreen> createState() => _TvHomeScreenState();
+  State<TvSearchScreen> createState() => _TvSearchScreenState();
 }
 
-class _TvHomeScreenState extends State<TvHomeScreen> {
-  int _selectedNavIndex = 2; // Default Home
-  final List<FocusNode> _sidebarFocusNodes = List.generate(6, (_) => FocusNode());
-  final FocusNode _firstContentCardFocus = FocusNode();
-  final FocusNode _watchNowFocusNode = FocusNode();
-
-  List<dynamic> activeProviders = [];
-  List<dynamic> continueWatchingList = [];
-  dynamic activeShowcaseItem;
-
-  // Home Fast Lists
-  List<dynamic> homeNetflixList = [];
-  List<dynamic> homePrimeList = [];
-  List<dynamic> homeHotstarList = [];
-  List<dynamic> homeHindiSeriesList = [];
-  List<dynamic> homeEnglishSeriesList = [];
-
-  // Dedicated Movies Section (200+ Items Each)
-  List<dynamic> allBollywoodMovies = [];
-  List<dynamic> allSouthMovies = [];
-  List<dynamic> allHollywoodMovies = [];
-
-  // Dedicated Web Series Section (200+ Items Each) - UPDATED
-  List<dynamic> allHindiSeries = [];
-  List<dynamic> allNetflixSeries = [];
-  List<dynamic> allAmazonSeries = [];
-  List<dynamic> allSouthSeries = [];
-
-  bool isLoading = true;
-  String _catalogSortType = 'latest';
+class _TvSearchScreenState extends State<TvSearchScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _firstGridItemFocus = FocusNode();
+  Timer? _debounce;
+  List<dynamic> _results = [];
+  bool _isLoading = false;
+  bool _isShowingTrending = true;
 
   @override
   void initState() {
     super.initState();
-    _loadAllTvData();
+    _fetchTrending();
+
+    // स्क्रीन पूरी तरह लोड होने के बाद Search Box को साफ़ फोकस दें ताकि Gboard सही से जुड़े
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.searchBoxFocusNode.requestFocus();
+      }
+    });
   }
 
   @override
   void dispose() {
-    for (var node in _sidebarFocusNodes) {
-      node.dispose();
-    }
-    _firstContentCardFocus.dispose();
-    _watchNowFocusNode.dispose();
+    _debounce?.cancel();
+    _searchController.dispose();
+    _firstGridItemFocus.dispose();
     super.dispose();
   }
 
-  void _jumpFocusToSidebar() {
-    final activeIndex = _selectedNavIndex.clamp(0, _sidebarFocusNodes.length - 1);
-    _sidebarFocusNodes[activeIndex].requestFocus();
-  }
-
-  void _jumpFocusToContent() {
-    _firstContentCardFocus.requestFocus();
-  }
-
-  Future<void> _loadAllTvData() async {
-    await Future.wait([
-      _fetchProviders(),
-      _loadContinueWatching(),
-      _fetchHomeCatalogContent(),
-    ]);
-    if (mounted) setState(() => isLoading = false);
-    _fetchDeepCatalogs();
-  }
-
-  Future<void> _loadContinueWatching() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload();
-      final raw = prefs.getString('continue_watching_tv');
-      if (raw != null && raw.isNotEmpty && mounted) {
-        setState(() {
-          continueWatchingList = jsonDecode(raw) as List<dynamic>;
-        });
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _fetchProviders() async {
-    try {
-      final res = await http.get(Uri.parse(TvConfig.gistUrl)).timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
-      }
-    } catch (_) {}
-  }
-
-  // Fast Instant Render for Home Screen
-  Future<void> _fetchHomeCatalogContent() async {
-    try {
-      // 1. Netflix Latest (Movies in IN region - Hindi + English)
-      final netflixRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
-      if (netflixRes.statusCode == 200) {
-        homeNetflixList = _parseTvList(jsonDecode(netflixRes.body)['results']);
-        if (homeNetflixList.isNotEmpty) activeShowcaseItem = homeNetflixList.first;
-      }
-
-      // 2. Prime Video Latest (Movies in IN region - Hindi + English)
-      final primeRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
-      if (primeRes.statusCode == 200) {
-        homePrimeList = _parseTvList(jsonDecode(primeRes.body)['results']);
-      }
-
-      // 3. Hotstar & Disney Specials (Latest Releases)
-      final hotstarRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 8));
-      if (hotstarRes.statusCode == 200) {
-        homeHotstarList = _parseTvList(jsonDecode(hotstarRes.body)['results']);
-      }
-
-      // 4. Hindi Web Series (Filtered OTT Only - No Daily Soaps)
-      final hindiTvRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=5')).timeout(const Duration(seconds: 8));
-      if (hindiTvRes.statusCode == 200) {
-        homeHindiSeriesList = _parseTvList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
-            .where((item) => !isSoapShow(item['title'] ?? ''))
-            .toList();
-      }
-
-      // 5. Global Web Series (Trending Hits)
-      final engTvRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 8));
-      if (engTvRes.statusCode == 200) {
-        homeEnglishSeriesList = _parseTvList(jsonDecode(engTvRes.body)['results'], isTv: true);
-      }
-    } catch (_) {}
-  }
-
-  // Deep Fetch 200+ Titles via Multi-page Pagination
-  Future<void> _fetchDeepCatalogs() async {
-    final sortQuery = _catalogSortType == 'latest'
-        ? 'primary_release_date.desc'
-        : 'popularity.desc';
-    final sortTvQuery = _catalogSortType == 'latest'
-        ? 'first_air_date.desc'
-        : 'popularity.desc';
-
-    // 1. Bollywood Movies (200+)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&sort_by=$sortQuery',
-      isTv: false,
-      onDone: (list) {
-        if (mounted) setState(() => allBollywoodMovies = list);
-      },
-    );
-
-    // 2. South Movies (200+)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=$sortQuery',
-      isTv: false,
-      onDone: (list) {
-        if (mounted) setState(() => allSouthMovies = list);
-      },
-    );
-
-    // 3. Hollywood Movies (200+)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&sort_by=$sortQuery',
-      isTv: false,
-      onDone: (list) {
-        if (mounted) setState(() => allHollywoodMovies = list);
-      },
-    );
-
-    // 4. Hindi Web Series (200+ Pure OTT Shows)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5&sort_by=$sortTvQuery',
-      isTv: true,
-      onDone: (list) {
-        if (mounted) {
-          setState(() => allHindiSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
-        }
-      },
-    );
-
-    // 5. All Netflix Series (200+ Netflix Originals & Shows)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766&sort_by=$sortTvQuery',
-      isTv: true,
-      onDone: (list) {
-        if (mounted) {
-          setState(() => allNetflixSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
-        }
-      },
-    );
-
-    // 6. All Amazon Series (200+ Prime Video Originals & Shows)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766&sort_by=$sortTvQuery',
-      isTv: true,
-      onDone: (list) {
-        if (mounted) {
-          setState(() => allAmazonSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
-        }
-      },
-    );
-
-    // 7. South Web Series (200+)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml&sort_by=$sortTvQuery',
-      isTv: true,
-      onDone: (list) {
-        if (mounted) setState(() => allSouthSeries = list);
-      },
-    );
-  }
-
-  Future<void> _fetchPages({
-    required String baseUrl,
-    required bool isTv,
-    required Function(List<dynamic>) onDone,
-  }) async {
-    var accumulated = [];
-    for (int p = 1; p <= 10; p++) {
-      try {
-        final res = await http.get(Uri.parse('$baseUrl&page=$p')).timeout(const Duration(seconds: 6));
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body)['results'];
-          accumulated.addAll(_parseTvList(data, isTv: isTv));
-        }
-      } catch (_) {}
-    }
-    onDone(accumulated);
-  }
-
-  void _toggleSortType() {
+  Future<void> _fetchTrending() async {
     setState(() {
-      _catalogSortType = _catalogSortType == 'latest' ? 'popular' : 'latest';
-      isLoading = true;
+      _isLoading = true;
+      _isShowingTrending = true;
     });
-    _fetchDeepCatalogs().then((_) {
-      if (mounted) setState(() => isLoading = false);
+
+    try {
+      final url =
+          '${TvConfig.tmdbBase}/trending/all/day?api_key=${TvConfig.tmdbKey}&language=en-US';
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final rawList = jsonDecode(res.body)['results'] ?? [];
+        if (mounted) {
+          setState(() {
+            _results = _parseSearchResults(rawList);
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {}); // Clear (X) बटन अपडेट करने के लिए
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      final cleanQuery = query.trim();
+      if (cleanQuery.isEmpty) {
+        _fetchTrending();
+      } else {
+        _performSearch(cleanQuery);
+      }
     });
   }
 
-  List<dynamic> _parseTvList(dynamic list, {bool isTv = false}) {
-    var res = [];
-    final currentYear = DateTime.now().year.toString();
-    for (var m in (list ?? [])) {
-      if (m['backdrop_path'] == null && m['poster_path'] == null) continue;
-      final t = (m['title'] ?? m['name'] ?? 'Untitled').toString();
-      if (isTv && isSoapShow(t)) continue;
+  Future<void> _performSearch(String query) async {
+    setState(() {
+      _isLoading = true;
+      _isShowingTrending = false;
+    });
 
-      res.add({
+    try {
+      final encoded = Uri.encodeQueryComponent(query);
+      final url =
+          '${TvConfig.tmdbBase}/search/multi?api_key=${TvConfig.tmdbKey}&query=$encoded&include_adult=false&language=en-US&page=1';
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+
+      if (res.statusCode == 200) {
+        final rawList = jsonDecode(res.body)['results'] ?? [];
+        if (mounted) {
+          setState(() {
+            _results = _parseSearchResults(rawList);
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  List<dynamic> _parseSearchResults(List<dynamic> list) {
+    final currentYear = DateTime.now().year.toString();
+    var parsed = [];
+
+    for (var m in list) {
+      final mediaType = (m['media_type'] ?? '').toString();
+      if (mediaType != 'movie' && mediaType != 'tv') continue;
+      if (m['poster_path'] == null && m['backdrop_path'] == null) continue;
+
+      final isTv = mediaType == 'tv';
+      final title = (m['title'] ?? m['name'] ?? 'Untitled').toString();
+      if (isTv && isSoapShow(title)) continue;
+
+      parsed.add({
         'tmdb_id': m['id'],
-        'title': t,
-        'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
-        'rating': m['vote_average']?.toString() ?? '7.5',
+        'title': title,
+        'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear)
+            .toString()
+            .split('-')[0],
+        'rating': (m['vote_average'] is num)
+            ? (m['vote_average'] as num).toStringAsFixed(1)
+            : '7.5',
         'backdrop': m['backdrop_path'] != null
             ? '${TvConfig.backdropBase}${m['backdrop_path']}'
             : '${TvConfig.imgBase}${m['poster_path']}',
@@ -277,585 +145,167 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         'isTv': isTv,
       });
     }
-    return res;
+    return parsed;
   }
 
-  void _onTvItemSelect(dynamic item) {
-    if (item['isTv'] == true) {
-      showDialog(
-        context: context,
-        builder: (ctx) => TvEpisodeDialog(
-          item: item,
-          onSelected: (season, episode) {
-            _showTvStreamDialog(item, season: season, episode: episode);
-          },
-        ),
-      );
-    } else {
-      _showTvStreamDialog(item);
+  // Search Box के लिए D-Pad हैंडलर (बिना किसी एक्स्ट्रा Focus रैपर के)
+  KeyEventResult _handleSearchBoxKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent) {
+      // Left Arrow दबाने पर (जब टेक्स्ट खाली हो) Sidebar पर जाएँ
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+          _searchController.text.isEmpty) {
+        widget.onLeftBoundaryHit();
+        return KeyEventResult.handled;
+      }
+      // Down Arrow दबाने पर सीधे नीचे वाले Catalog (पहले पोस्टर) पर जाएँ
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+          _results.isNotEmpty) {
+        SystemChannels.textInput.invokeMethod('TextInput.hide');
+        _firstGridItemFocus.requestFocus();
+        return KeyEventResult.handled;
+      }
+      // Select/OK दबाने पर कीबोर्ड को सक्रिय करें
+      if (event.logicalKey == LogicalKeyboardKey.select ||
+          event.logicalKey == LogicalKeyboardKey.enter) {
+        SystemChannels.textInput.invokeMethod('TextInput.show');
+        return KeyEventResult.ignored;
+      }
     }
+    return KeyEventResult.ignored;
   }
 
-  void _showTvStreamDialog(dynamic item, {int? season, int? episode}) {
-    showDialog(
-      context: context,
-      builder: (ctx) => TvStreamDialog(
-        item: item,
-        season: season,
-        episode: episode,
-        providers: activeProviders,
-        onPlaySaved: () => _loadContinueWatching(),
-      ),
-    );
-  }
+  @override
+  Widget build(BuildContext context) {
+    // Search Box FocusNode पर सीधे key listener जोड़ें
+    widget.searchBoxFocusNode.onKeyEvent = _handleSearchBoxKey;
 
-  // ============================================================================
-  // NETFLIX RED MINIMAL SLIM SIDEBAR
-  // ============================================================================
-  Widget _buildNetflixNavRail() {
-    final icons = [
-      Icons.person_outline_rounded,
-      Icons.search_rounded,
-      Icons.home_filled,
-      Icons.movie_creation_outlined, // 3: Movies Tab
-      Icons.tv_rounded,              // 4: Web Series Tab
-      Icons.grid_view_rounded,
-    ];
-
-    return Container(
-      width: 58,
-      color: Colors.transparent,
-      padding: const EdgeInsets.symmetric(vertical: 24),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 22, 24, 12),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: Color(0xFFE50914),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(height: 36),
-          Expanded(
-            child: ListView.separated(
-              itemCount: icons.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 18),
-              itemBuilder: (ctx, i) {
-                return NetflixSidebarIcon(
-                  focusNode: _sidebarFocusNodes[i],
-                  icon: icons[i],
-                  isSelected: _selectedNavIndex == i,
-                  onRightArrow: _jumpFocusToContent,
-                  onTap: () {
-                    setState(() => _selectedNavIndex = i);
-                    _jumpFocusToContent();
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================================
-  // NETFLIX BILLBOARD SHOWCASE
-  // ============================================================================
-  Widget _buildNetflixBillboard(dynamic item) {
-    return SizedBox(
-      height: 340,
-      width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned.fill(
-            child: ShaderMask(
-              shaderCallback: (rect) {
-                return const LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [Colors.transparent, Colors.black],
-                  stops: [0.0, 0.45],
-                ).createShader(rect);
-              },
-              blendMode: BlendMode.dstIn,
-              child: Image.network(
-                item['backdrop'],
-                fit: BoxFit.cover,
-                alignment: Alignment.topRight,
-                errorBuilder: (_, __, ___) => Container(color: const Color(0xFF141414)),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Color(0x66141414), Color(0xFF141414)],
-                  stops: [0.2, 0.65, 1.0],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 20,
-            top: 24,
-            right: 320,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE50914),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                      child: const Text('NETFLIX PRO', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      item['isTv'] == true ? 'S E R I E S' : 'M O V I E',
-                      style: const TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  item['title'].toString().toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text('${item['rating']} ★ Match', style: const TextStyle(color: Color(0xFF46D369), fontSize: 13, fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 12),
-                    Text('${item['year']}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(border: Border.all(color: Colors.white38), borderRadius: BorderRadius.circular(3)),
-                      child: const Text('Ultra HD 4K', style: TextStyle(color: Colors.white70, fontSize: 9)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  (item['overview'] ?? '').toString().isNotEmpty
-                      ? item['overview']
-                      : 'Stream latest releases in high quality with high-speed playback.',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Focus(
-                      focusNode: _watchNowFocusNode,
-                      onKey: (node, event) {
-                        if (event is RawKeyDownEvent &&
-                            (event.logicalKey == LogicalKeyboardKey.select ||
-                                event.logicalKey == LogicalKeyboardKey.enter)) {
-                          _onTvItemSelect(item);
-                          return KeyEventResult.handled;
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      child: Builder(builder: (c) {
-                        final focused = Focus.of(c).hasFocus;
-                        return ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: focused ? Colors.white : const Color(0xFFE50914),
-                            foregroundColor: focused ? Colors.black : Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                            side: BorderSide(
-                              color: focused ? Colors.white : Colors.transparent,
-                              width: 1.5,
-                            ),
-                          ),
-                          onPressed: () => _onTvItemSelect(item),
-                          icon: const Icon(Icons.play_arrow_rounded, size: 22),
-                          label: const Text('Watch Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        );
-                      }),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white12,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Icon(Icons.add, color: Colors.white70, size: 20),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================================
-  // NETFLIX LANDSCAPE ROW WITH DIRECT SEE-ALL INTEGRATION
-  // ============================================================================
-  Widget _buildNetflixRow(
-    String title,
-    List<dynamic> items,
-    String baseUrl, {
-    bool isFirstRow = false,
-    bool isTv = false,
-  }) {
-    if (items.isEmpty) return const SizedBox.shrink();
-
-    void openSeeAll() {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => TVCategoryGridScreen(
-            title: title,
-            baseUrl: baseUrl,
-            isTv: isTv,
-            providers: activeProviders,
-            onPlaySaved: () => _loadContinueWatching(),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // ==================================================================
+          // SEARCH INPUT BAR (DIRECT FOCUS - NO DOUBLE FOCUS WRAPPER)
+          // ==================================================================
+          Row(
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              InkWell(
-                onTap: openSeeAll,
-                child: Text(
-                  '${items.length} Titles  •  See All →',
-                  style: const TextStyle(color: Color(0xFFE50914), fontSize: 12, fontWeight: FontWeight.bold),
+              Expanded(
+                child: TextField(
+                  focusNode: widget.searchBoxFocusNode,
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  onTap: () {
+                    widget.searchBoxFocusNode.requestFocus();
+                    SystemChannels.textInput.invokeMethod('TextInput.show');
+                  },
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (val) {
+                    if (val.trim().isNotEmpty) {
+                      _performSearch(val.trim());
+                    }
+                    if (_results.isNotEmpty) {
+                      _firstGridItemFocus.requestFocus();
+                    }
+                  },
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  cursorColor: const Color(0xFFE50914),
+                  decoration: InputDecoration(
+                    hintText: 'Search Movies, Web Series, South, Hindi...',
+                    hintStyle: const TextStyle(color: Colors.white38, fontSize: 15),
+                    prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFE50914), size: 24),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                            onPressed: () {
+                              _searchController.clear();
+                              _fetchTrending();
+                              widget.searchBoxFocusNode.requestFocus();
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFF222222),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.white24, width: 1.2),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.white, width: 2.2),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-        SizedBox(
-          height: 150,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: items.length + 1,
-            itemBuilder: (ctx, idx) {
-              if (idx == items.length) {
-                return Container(
-                  width: 160,
-                  margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  child: Focus(
-                    child: Builder(
-                      builder: (context) {
-                        final isFocused = Focus.of(context).hasFocus;
-                        return InkWell(
-                          borderRadius: BorderRadius.circular(6),
-                          onTap: openSeeAll,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF222222),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: isFocused ? Colors.white : Colors.white24,
-                                width: isFocused ? 2.5 : 1.0,
-                              ),
-                              boxShadow: isFocused
-                                  ? [BoxShadow(color: const Color(0xFFE50914).withOpacity(0.55), blurRadius: 10, spreadRadius: 2)]
-                                  : [],
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.grid_view_rounded, color: Color(0xFFE50914), size: 32),
-                                SizedBox(height: 6),
-                                Text('See All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                                Text('Explore Catalog', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                );
-              }
 
-              final currentItem = items[idx];
-              return NetflixCard(
-                focusNode: (isFirstRow && idx == 0) ? _firstContentCardFocus : null,
-                item: currentItem,
-                isFirstInRow: idx == 0,
-                onLeftBoundaryHit: _jumpFocusToSidebar,
-                onFocusGained: () {
-                  setState(() => activeShowcaseItem = currentItem);
-                },
-                onTap: () => _onTvItemSelect(currentItem),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 10),
-      ],
-    );
-  }
+          const SizedBox(height: 16),
 
-  Widget _buildCategoryHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          Focus(
-            onKey: (node, event) {
-              if (event is RawKeyDownEvent &&
-                  (event.logicalKey == LogicalKeyboardKey.select ||
-                      event.logicalKey == LogicalKeyboardKey.enter)) {
-                _toggleSortType();
-                return KeyEventResult.handled;
-              }
-              return KeyEventResult.ignored;
-            },
-            child: Builder(builder: (c) {
-              final focused = Focus.of(c).hasFocus;
-              return InkWell(
-                onTap: _toggleSortType,
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: focused ? Colors.white : const Color(0xFF222222),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white24, width: 1.2),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _catalogSortType == 'latest' ? Icons.fiber_new_rounded : Icons.whatshot_rounded,
-                        size: 15,
-                        color: focused ? Colors.black : const Color(0xFFE50914),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _catalogSortType == 'latest' ? 'Filter: Latest Releases' : 'Filter: Most Popular',
-                        style: TextStyle(
-                          color: focused ? Colors.black : Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+          // ==================================================================
+          // SECTION HEADER
+          // ==================================================================
+          Row(
+            children: [
+              Icon(
+                _isShowingTrending ? Icons.local_fire_department_rounded : Icons.movie_filter_rounded,
+                color: const Color(0xFFE50914),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _isShowingTrending
+                    ? 'Trending Searches Today'
+                    : 'Search Results (${_results.length})',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                 ),
-              );
-            }),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF141414),
-      body: Row(
-        children: [
-          _buildNetflixNavRail(),
+          const SizedBox(height: 12),
+
+          // ==================================================================
+          // RESULTS GRID (5 COLUMNS - SAME SIZE & THEME)
+          // ==================================================================
           Expanded(
-            child: isLoading
+            child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
-                : _selectedNavIndex == 1
-                    ? TvSearchScreen(
-                        searchBoxFocusNode: _firstContentCardFocus,
-                        onLeftBoundaryHit: _jumpFocusToSidebar,
-                        onItemSelected: _onTvItemSelect,
-                      )
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // TAB 2: MAIN HOME (LATEST MIX)
-                            if (_selectedNavIndex == 2 || _selectedNavIndex == 0) ...[
-                              if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
-                              if (continueWatchingList.isNotEmpty)
-                                _buildNetflixRow(
-                                  'Continue Watching',
-                                  continueWatchingList,
-                                  '',
-                                  isFirstRow: true,
-                                ),
-                              if (homeNetflixList.isNotEmpty)
-                                _buildNetflixRow(
-                                  'Latest Netflix Blockbusters (Hindi + Global)',
-                                  homeNetflixList,
-                                  '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
-                                  isFirstRow: continueWatchingList.isEmpty,
-                                ),
-                              if (homePrimeList.isNotEmpty)
-                                _buildNetflixRow(
-                                  'Amazon Prime Video Hits',
-                                  homePrimeList,
-                                  '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN',
-                                ),
-                              if (homeHotstarList.isNotEmpty)
-                                _buildNetflixRow(
-                                  'Disney+ Hotstar & Cinema Specials',
-                                  homeHotstarList,
-                                  '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN',
-                                ),
-                              if (homeHindiSeriesList.isNotEmpty)
-                                _buildNetflixRow(
-                                  'Latest Hindi Web Series',
-                                  homeHindiSeriesList,
-                                  '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
-                                  isTv: true,
-                                ),
-                              if (homeEnglishSeriesList.isNotEmpty)
-                                _buildNetflixRow(
-                                  'Global Hits On The Air',
-                                  homeEnglishSeriesList,
-                                  '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US',
-                                  isTv: true,
-                                ),
-                            ],
-
-                            // TAB 3: DEDICATED MOVIES SECTION (200+ CATALOG)
-                            if (_selectedNavIndex == 3) ...[
-                              _buildCategoryHeader('All Movies (200+ Titles Per Hub)'),
-                              if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
-                              _buildNetflixRow(
-                                'Bollywood Hit Movies',
-                                allBollywoodMovies.isNotEmpty ? allBollywoodMovies : homeNetflixList,
-                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
-                                isFirstRow: true,
-                              ),
-                              _buildNetflixRow(
-                                'South Indian Blockbusters (Hindi Dubbed)',
-                                allSouthMovies.isNotEmpty ? allSouthMovies : homePrimeList,
-                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn',
-                              ),
-                              _buildNetflixRow(
-                                'Hollywood Blockbusters (Hindi Dubbed & Global)',
-                                allHollywoodMovies.isNotEmpty ? allHollywoodMovies : homeHotstarList,
-                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}',
-                              ),
-                            ],
-
-                            // TAB 4: DEDICATED WEB SERIES SECTION (200+ CATALOG) - UPDATED
-                            if (_selectedNavIndex == 4) ...[
-                              _buildCategoryHeader('All Web Series (Hindi, Netflix, Amazon & South)'),
-                              if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
-                              _buildNetflixRow(
-                                'All Hindi Web Series',
-                                allHindiSeries.isNotEmpty ? allHindiSeries : homeHindiSeriesList,
-                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
-                                isFirstRow: true,
-                                isTv: true,
-                              ),
-                              _buildNetflixRow(
-                                'All Netflix Series',
-                                allNetflixSeries.isNotEmpty ? allNetflixSeries : homeEnglishSeriesList,
-                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766',
-                                isTv: true,
-                              ),
-                              _buildNetflixRow(
-                                'All Amazon Series',
-                                allAmazonSeries.isNotEmpty ? allAmazonSeries : homeHindiSeriesList,
-                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766',
-                                isTv: true,
-                              ),
-                              _buildNetflixRow(
-                                'All South Indian Web Series',
-                                allSouthSeries,
-                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml',
-                                isTv: true,
-                              ),
-                            ],
-
-                            // TAB 5: EXPLORE ALL
-                            if (_selectedNavIndex == 5) ...[
-                              _buildCategoryHeader('Explore All Collections'),
-                              _buildNetflixRow(
-                                'Bollywood Top Rated',
-                                homeNetflixList,
-                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
-                                isFirstRow: true,
-                              ),
-                              _buildNetflixRow(
-                                'South Indian Hits',
-                                homePrimeList,
-                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn',
-                              ),
-                              _buildNetflixRow(
-                                'Hollywood Dubbed Hits',
-                                homeHotstarList,
-                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}',
-                              ),
-                              _buildNetflixRow(
-                                'Hindi Originals',
-                                homeHindiSeriesList,
-                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
-                                isTv: true,
-                              ),
-                              _buildNetflixRow(
-                                'Netflix Originals',
-                                allNetflixSeries.isNotEmpty ? allNetflixSeries : homeEnglishSeriesList,
-                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766',
-                                isTv: true,
-                              ),
-                              _buildNetflixRow(
-                                'Amazon Prime Originals',
-                                allAmazonSeries.isNotEmpty ? allAmazonSeries : homeHindiSeriesList,
-                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766',
-                                isTv: true,
-                              ),
-                            ],
-                          ],
+                : _results.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No results found for "${_searchController.text}"',
+                          style: const TextStyle(color: Colors.white54, fontSize: 15),
                         ),
+                      )
+                    : GridView.builder(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 5,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 16,
+                          childAspectRatio: 0.68,
+                        ),
+                        itemCount: _results.length,
+                        itemBuilder: (ctx, idx) {
+                          final item = _results[idx];
+                          final isFirstInRow = (idx % 5 == 0);
+                          final isTopRow = (idx < 5);
+
+                          return _SearchGridCard(
+                            focusNode: idx == 0 ? _firstGridItemFocus : null,
+                            item: item,
+                            isFirstInRow: isFirstInRow,
+                            isTopRow: isTopRow,
+                            onUpBoundaryHit: () {
+                              widget.searchBoxFocusNode.requestFocus();
+                            },
+                            onLeftBoundaryHit: widget.onLeftBoundaryHit,
+                            onTap: () => widget.onItemSelected(item),
+                          );
+                        },
                       ),
           ),
         ],
@@ -864,41 +314,47 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 }
 
-// ============================================================================
-// NETFLIX MINIMAL SIDEBAR ICON
-// ============================================================================
-class NetflixSidebarIcon extends StatefulWidget {
-  final FocusNode focusNode;
-  final IconData icon;
-  final bool isSelected;
-  final VoidCallback onRightArrow;
+class _SearchGridCard extends StatefulWidget {
+  final FocusNode? focusNode;
+  final dynamic item;
+  final bool isFirstInRow;
+  final bool isTopRow;
+  final VoidCallback onUpBoundaryHit;
+  final VoidCallback onLeftBoundaryHit;
   final VoidCallback onTap;
 
-  const NetflixSidebarIcon({
-    super.key,
-    required this.focusNode,
-    required this.icon,
-    required this.isSelected,
-    required this.onRightArrow,
+  const _SearchGridCard({
+    this.focusNode,
+    required this.item,
+    required this.isFirstInRow,
+    required this.isTopRow,
+    required this.onUpBoundaryHit,
+    required this.onLeftBoundaryHit,
     required this.onTap,
   });
 
   @override
-  State<NetflixSidebarIcon> createState() => _NetflixSidebarIconState();
+  State<_SearchGridCard> createState() => _SearchGridCardState();
 }
 
-class _NetflixSidebarIconState extends State<NetflixSidebarIcon> {
+class _SearchGridCardState extends State<_SearchGridCard> {
   bool _isFocused = false;
 
   @override
   Widget build(BuildContext context) {
+    final isTv = widget.item['isTv'] == true;
+
     return Focus(
       focusNode: widget.focusNode,
       onFocusChange: (f) => setState(() => _isFocused = f),
-      onKey: (node, event) {
-        if (event is RawKeyDownEvent) {
-          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-            widget.onRightArrow();
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowLeft && widget.isFirstInRow) {
+            widget.onLeftBoundaryHit();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp && widget.isTopRow) {
+            widget.onUpBoundaryHit();
             return KeyEventResult.handled;
           }
           if (event.logicalKey == LogicalKeyboardKey.select ||
@@ -912,138 +368,97 @@ class _NetflixSidebarIconState extends State<NetflixSidebarIcon> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: 40,
-          height: 40,
+          duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: _isFocused ? Colors.white24 : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
             border: Border.all(
               color: _isFocused ? Colors.white : Colors.transparent,
-              width: 1.2,
+              width: _isFocused ? 3.0 : 0.0,
             ),
+            boxShadow: _isFocused
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFFE50914).withOpacity(0.55),
+                      blurRadius: 12,
+                      spreadRadius: 2,
+                    )
+                  ]
+                : [],
           ),
-          child: Icon(
-            widget.icon,
-            color: _isFocused
-                ? Colors.white
-                : widget.isSelected
-                    ? const Color(0xFFE50914)
-                    : Colors.white38,
-            size: 20,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// NETFLIX POSTER CARD (NETFLIX RED/WHITE BORDER & HOVER SCALE)
-// ============================================================================
-class NetflixCard extends StatefulWidget {
-  final FocusNode? focusNode;
-  final dynamic item;
-  final bool isFirstInRow;
-  final VoidCallback onLeftBoundaryHit;
-  final VoidCallback onFocusGained;
-  final VoidCallback onTap;
-
-  const NetflixCard({
-    super.key,
-    this.focusNode,
-    required this.item,
-    this.isFirstInRow = false,
-    required this.onLeftBoundaryHit,
-    required this.onFocusGained,
-    required this.onTap,
-  });
-
-  @override
-  State<NetflixCard> createState() => _NetflixCardState();
-}
-
-class _NetflixCardState extends State<NetflixCard> {
-  bool _isFocused = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Focus(
-      focusNode: widget.focusNode,
-      onFocusChange: (f) {
-        setState(() => _isFocused = f);
-        if (f) widget.onFocusGained();
-      },
-      onKey: (node, event) {
-        if (event is RawKeyDownEvent) {
-          if (event.logicalKey == LogicalKeyboardKey.arrowLeft && widget.isFirstInRow) {
-            widget.onLeftBoundaryHit();
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.select ||
-              event.logicalKey == LogicalKeyboardKey.enter) {
-            widget.onTap();
-            return KeyEventResult.handled;
-          }
-        }
-        return KeyEventResult.ignored;
-      },
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _isFocused ? 1.08 : 1.0,
-          duration: const Duration(milliseconds: 180),
-          child: Container(
-            width: 175,
-            margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: _isFocused ? Colors.white : Colors.transparent,
-                width: 2.2,
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                widget.item['poster'],
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
               ),
-              boxShadow: _isFocused
-                  ? [
-                      BoxShadow(
-                        color: const Color(0xFFE50914).withOpacity(0.55),
-                        blurRadius: 14,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : [],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    widget.item['backdrop'],
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
+              Positioned(
+                top: 6,
+                right: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: isTv ? const Color(0xFFE50914) : Colors.black87,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.white24, width: 0.8),
                   ),
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      color: Colors.black87,
-                      child: Text(
-                        widget.item['title'],
+                  child: Text(
+                    isTv ? 'SERIES' : 'MOVIE',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [Colors.black, Colors.transparent],
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.item['title'] ?? '',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 11,
+                          fontSize: 13,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${widget.item['rating']} ★',
+                            style: const TextStyle(color: Color(0xFF46D369), fontSize: 11),
+                          ),
+                          Text(
+                            '${widget.item['year']}',
+                            style: const TextStyle(color: Colors.white60, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
