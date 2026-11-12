@@ -38,7 +38,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   List<dynamic> allSouthMovies = [];
   List<dynamic> allHollywoodMovies = [];
 
-  // Dedicated Web Series Section (200+ Items Each) - UPDATED
+  // Dedicated Web Series Section (200+ Items Each)
   List<dynamic> allHindiSeries = [];
   List<dynamic> allNetflixSeries = [];
   List<dynamic> allAmazonSeries = [];
@@ -97,57 +97,82 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
   Future<void> _fetchProviders() async {
     try {
-      final res = await http.get(Uri.parse(TvConfig.gistUrl)).timeout(const Duration(seconds: 8));
+      final sep = TvConfig.gistUrl.contains('?') ? '&' : '?';
+      final url = '${TvConfig.gistUrl}${sep}t=${DateTime.now().millisecondsSinceEpoch}';
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
         activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
       }
     } catch (_) {}
   }
 
-  // Fast Instant Render for Home Screen
+  // Fast Parallel Instant Render for Home Screen (5x Faster)
   Future<void> _fetchHomeCatalogContent() async {
-    try {
-      // 1. Netflix Latest (Movies in IN region - Hindi + English)
-      final netflixRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
-      if (netflixRes.statusCode == 200) {
-        homeNetflixList = _parseTvList(jsonDecode(netflixRes.body)['results']);
-        if (homeNetflixList.isNotEmpty) activeShowcaseItem = homeNetflixList.first;
-      }
+    await Future.wait([
+      // 1. Netflix Latest
+      () async {
+        try {
+          final netflixRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 6));
+          if (netflixRes.statusCode == 200) {
+            homeNetflixList = _parseTvList(jsonDecode(netflixRes.body)['results']);
+            if (homeNetflixList.isNotEmpty) activeShowcaseItem = homeNetflixList.first;
+          }
+        } catch (_) {}
+      }(),
 
-      // 2. Prime Video Latest (Movies in IN region - Hindi + English)
-      final primeRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 8));
-      if (primeRes.statusCode == 200) {
-        homePrimeList = _parseTvList(jsonDecode(primeRes.body)['results']);
-      }
+      // 2. Prime Video Latest
+      () async {
+        try {
+          final primeRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 6));
+          if (primeRes.statusCode == 200) {
+            homePrimeList = _parseTvList(jsonDecode(primeRes.body)['results']);
+            if (activeShowcaseItem == null && homePrimeList.isNotEmpty) {
+              activeShowcaseItem = homePrimeList.first;
+            }
+          }
+        } catch (_) {}
+      }(),
 
-      // 3. Hotstar & Disney Specials (Latest Releases)
-      final hotstarRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 8));
-      if (hotstarRes.statusCode == 200) {
-        homeHotstarList = _parseTvList(jsonDecode(hotstarRes.body)['results']);
-      }
+      // 3. Hotstar & Disney Specials
+      () async {
+        try {
+          final hotstarRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 6));
+          if (hotstarRes.statusCode == 200) {
+            homeHotstarList = _parseTvList(jsonDecode(hotstarRes.body)['results']);
+          }
+        } catch (_) {}
+      }(),
 
-      // 4. Hindi Web Series (Filtered OTT Only - No Daily Soaps)
-      final hindiTvRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=5')).timeout(const Duration(seconds: 8));
-      if (hindiTvRes.statusCode == 200) {
-        homeHindiSeriesList = _parseTvList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
-            .where((item) => !isSoapShow(item['title'] ?? ''))
-            .toList();
-      }
+      // 4. Hindi Web Series
+      () async {
+        try {
+          final hindiTvRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=5')).timeout(const Duration(seconds: 6));
+          if (hindiTvRes.statusCode == 200) {
+            homeHindiSeriesList = _parseTvList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
+                .where((item) => !isSoapShow(item['title'] ?? ''))
+                .toList();
+          }
+        } catch (_) {}
+      }(),
 
-      // 5. Global Web Series (Trending Hits)
-      final engTvRes = await http.get(Uri.parse(
-          '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 8));
-      if (engTvRes.statusCode == 200) {
-        homeEnglishSeriesList = _parseTvList(jsonDecode(engTvRes.body)['results'], isTv: true);
-      }
-    } catch (_) {}
+      // 5. Global Web Series
+      () async {
+        try {
+          final engTvRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 6));
+          if (engTvRes.statusCode == 200) {
+            homeEnglishSeriesList = _parseTvList(jsonDecode(engTvRes.body)['results'], isTv: true);
+          }
+        } catch (_) {}
+      }(),
+    ]);
   }
 
-  // Deep Fetch 200+ Titles via Multi-page Pagination
+  // Deep Fetch 200+ Titles via Parallel Multi-page Pagination
   Future<void> _fetchDeepCatalogs() async {
     final sortQuery = _catalogSortType == 'latest'
         ? 'primary_release_date.desc'
@@ -156,74 +181,63 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         ? 'first_air_date.desc'
         : 'popularity.desc';
 
-    // 1. Bollywood Movies (200+)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&sort_by=$sortQuery',
-      isTv: false,
-      onDone: (list) {
-        if (mounted) setState(() => allBollywoodMovies = list);
-      },
-    );
-
-    // 2. South Movies (200+)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=$sortQuery',
-      isTv: false,
-      onDone: (list) {
-        if (mounted) setState(() => allSouthMovies = list);
-      },
-    );
-
-    // 3. Hollywood Movies (200+)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&sort_by=$sortQuery',
-      isTv: false,
-      onDone: (list) {
-        if (mounted) setState(() => allHollywoodMovies = list);
-      },
-    );
-
-    // 4. Hindi Web Series (200+ Pure OTT Shows)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5&sort_by=$sortTvQuery',
-      isTv: true,
-      onDone: (list) {
-        if (mounted) {
-          setState(() => allHindiSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
-        }
-      },
-    );
-
-    // 5. All Netflix Series (200+ Netflix Originals & Shows)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766&sort_by=$sortTvQuery',
-      isTv: true,
-      onDone: (list) {
-        if (mounted) {
-          setState(() => allNetflixSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
-        }
-      },
-    );
-
-    // 6. All Amazon Series (200+ Prime Video Originals & Shows)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766&sort_by=$sortTvQuery',
-      isTv: true,
-      onDone: (list) {
-        if (mounted) {
-          setState(() => allAmazonSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
-        }
-      },
-    );
-
-    // 7. South Web Series (200+)
-    _fetchPages(
-      baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml&sort_by=$sortTvQuery',
-      isTv: true,
-      onDone: (list) {
-        if (mounted) setState(() => allSouthSeries = list);
-      },
-    );
+    await Future.wait([
+      _fetchPages(
+        baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&sort_by=$sortQuery',
+        isTv: false,
+        onDone: (list) {
+          if (mounted) setState(() => allBollywoodMovies = list);
+        },
+      ),
+      _fetchPages(
+        baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=$sortQuery',
+        isTv: false,
+        onDone: (list) {
+          if (mounted) setState(() => allSouthMovies = list);
+        },
+      ),
+      _fetchPages(
+        baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&sort_by=$sortQuery',
+        isTv: false,
+        onDone: (list) {
+          if (mounted) setState(() => allHollywoodMovies = list);
+        },
+      ),
+      _fetchPages(
+        baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5&sort_by=$sortTvQuery',
+        isTv: true,
+        onDone: (list) {
+          if (mounted) {
+            setState(() => allHindiSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
+          }
+        },
+      ),
+      _fetchPages(
+        baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766&sort_by=$sortTvQuery',
+        isTv: true,
+        onDone: (list) {
+          if (mounted) {
+            setState(() => allNetflixSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
+          }
+        },
+      ),
+      _fetchPages(
+        baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766&sort_by=$sortTvQuery',
+        isTv: true,
+        onDone: (list) {
+          if (mounted) {
+            setState(() => allAmazonSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
+          }
+        },
+      ),
+      _fetchPages(
+        baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml&sort_by=$sortTvQuery',
+        isTv: true,
+        onDone: (list) {
+          if (mounted) setState(() => allSouthSeries = list);
+        },
+      ),
+    ]);
   }
 
   Future<void> _fetchPages({
@@ -231,16 +245,20 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     required bool isTv,
     required Function(List<dynamic>) onDone,
   }) async {
-    var accumulated = [];
-    for (int p = 1; p <= 10; p++) {
+    final pageFutures = List.generate(8, (index) async {
+      final p = index + 1;
       try {
         final res = await http.get(Uri.parse('$baseUrl&page=$p')).timeout(const Duration(seconds: 6));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body)['results'];
-          accumulated.addAll(_parseTvList(data, isTv: isTv));
+          return _parseTvList(data, isTv: isTv);
         }
       } catch (_) {}
-    }
+      return <dynamic>[];
+    });
+
+    final results = await Future.wait(pageFutures);
+    final accumulated = results.expand((e) => e).toList();
     onDone(accumulated);
   }
 
@@ -785,7 +803,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                               ),
                             ],
 
-                            // TAB 4: DEDICATED WEB SERIES SECTION (200+ CATALOG) - UPDATED
+                            // TAB 4: DEDICATED WEB SERIES SECTION (200+ CATALOG)
                             if (_selectedNavIndex == 4) ...[
                               _buildCategoryHeader('All Web Series (Hindi, Netflix, Amazon & South)'),
                               if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
