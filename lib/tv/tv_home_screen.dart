@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'tmdb_config.dart';
 import 'category_grid_screen.dart';
 import 'stream_resolver_sheet.dart';
+import 'tv_search_screen.dart';
 
 class TvHomeScreen extends StatefulWidget {
   const TvHomeScreen({super.key});
@@ -95,28 +96,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   Future<void> _fetchProviders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final cached = prefs.getString('cached_tv_providers');
-    if (cached != null && cached.isNotEmpty) {
-      try {
-        activeProviders = jsonDecode(cached) as List<dynamic>;
-      } catch (_) {}
-    }
-
     try {
-      final freshUrl =
-          '${TvConfig.gistUrl}?t=${DateTime.now().millisecondsSinceEpoch}';
-      final res =
-          await http.get(Uri.parse(freshUrl)).timeout(const Duration(seconds: 12));
+      final res = await http.get(Uri.parse(TvConfig.gistUrl)).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
-        final decoded = jsonDecode(res.body);
-        final list = decoded is List
-            ? decoded
-            : (decoded['active_providers'] ?? decoded['providers'] ?? []);
-        if (list is List && list.isNotEmpty) {
-          activeProviders = list;
-          await prefs.setString('cached_tv_providers', jsonEncode(list));
-        }
+        activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
       }
     } catch (_) {}
   }
@@ -303,7 +286,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         context: context,
         builder: (ctx) => TvEpisodeDialog(
           item: item,
-          providers: activeProviders,
           onSelected: (season, episode) {
             _showTvStreamDialog(item, season: season, episode: episode);
           },
@@ -725,150 +707,156 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           Expanded(
             child: isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.only(bottom: 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // TAB 2: MAIN HOME (LATEST MIX)
-                        if (_selectedNavIndex == 2 || _selectedNavIndex <= 1) ...[
-                          if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
-                          if (continueWatchingList.isNotEmpty)
-                            _buildNetflixRow(
-                              'Continue Watching',
-                              continueWatchingList,
-                              '',
-                              isFirstRow: true,
-                            ),
-                          if (homeNetflixList.isNotEmpty)
-                            _buildNetflixRow(
-                              'Latest Netflix Blockbusters (Hindi + Global)',
-                              homeNetflixList,
-                              '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
-                              isFirstRow: continueWatchingList.isEmpty,
-                            ),
-                          if (homePrimeList.isNotEmpty)
-                            _buildNetflixRow(
-                              'Amazon Prime Video Hits',
-                              homePrimeList,
-                              '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN',
-                            ),
-                          if (homeHotstarList.isNotEmpty)
-                            _buildNetflixRow(
-                              'Disney+ Hotstar & Cinema Specials',
-                              homeHotstarList,
-                              '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN',
-                            ),
-                          if (homeHindiSeriesList.isNotEmpty)
-                            _buildNetflixRow(
-                              'Latest Hindi Web Series',
-                              homeHindiSeriesList,
-                              '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
-                              isTv: true,
-                            ),
-                          if (homeEnglishSeriesList.isNotEmpty)
-                            _buildNetflixRow(
-                              'Global Hits On The Air',
-                              homeEnglishSeriesList,
-                              '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US',
-                              isTv: true,
-                            ),
-                        ],
+                : _selectedNavIndex == 1
+                    ? TvSearchScreen(
+                        searchBoxFocusNode: _firstContentCardFocus,
+                        onLeftBoundaryHit: _jumpFocusToSidebar,
+                        onItemSelected: _onTvItemSelect,
+                      )
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // TAB 2: MAIN HOME (LATEST MIX)
+                            if (_selectedNavIndex == 2 || _selectedNavIndex == 0) ...[
+                              if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
+                              if (continueWatchingList.isNotEmpty)
+                                _buildNetflixRow(
+                                  'Continue Watching',
+                                  continueWatchingList,
+                                  '',
+                                  isFirstRow: true,
+                                ),
+                              if (homeNetflixList.isNotEmpty)
+                                _buildNetflixRow(
+                                  'Latest Netflix Blockbusters (Hindi + Global)',
+                                  homeNetflixList,
+                                  '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
+                                  isFirstRow: continueWatchingList.isEmpty,
+                                ),
+                              if (homePrimeList.isNotEmpty)
+                                _buildNetflixRow(
+                                  'Amazon Prime Video Hits',
+                                  homePrimeList,
+                                  '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN',
+                                ),
+                              if (homeHotstarList.isNotEmpty)
+                                _buildNetflixRow(
+                                  'Disney+ Hotstar & Cinema Specials',
+                                  homeHotstarList,
+                                  '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN',
+                                ),
+                              if (homeHindiSeriesList.isNotEmpty)
+                                _buildNetflixRow(
+                                  'Latest Hindi Web Series',
+                                  homeHindiSeriesList,
+                                  '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
+                                  isTv: true,
+                                ),
+                              if (homeEnglishSeriesList.isNotEmpty)
+                                _buildNetflixRow(
+                                  'Global Hits On The Air',
+                                  homeEnglishSeriesList,
+                                  '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US',
+                                  isTv: true,
+                                ),
+                            ],
 
-                        // TAB 3: DEDICATED MOVIES SECTION (200+ CATALOG)
-                        if (_selectedNavIndex == 3) ...[
-                          _buildCategoryHeader('All Movies (200+ Titles Per Hub)'),
-                          if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
-                          _buildNetflixRow(
-                            'Bollywood Hit Movies',
-                            allBollywoodMovies.isNotEmpty ? allBollywoodMovies : homeNetflixList,
-                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
-                            isFirstRow: true,
-                          ),
-                          _buildNetflixRow(
-                            'South Indian Blockbusters (Hindi Dubbed)',
-                            allSouthMovies.isNotEmpty ? allSouthMovies : homePrimeList,
-                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn',
-                          ),
-                          _buildNetflixRow(
-                            'Hollywood Blockbusters (Hindi Dubbed & Global)',
-                            allHollywoodMovies.isNotEmpty ? allHollywoodMovies : homeHotstarList,
-                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}',
-                          ),
-                        ],
+                            // TAB 3: DEDICATED MOVIES SECTION (200+ CATALOG)
+                            if (_selectedNavIndex == 3) ...[
+                              _buildCategoryHeader('All Movies (200+ Titles Per Hub)'),
+                              if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
+                              _buildNetflixRow(
+                                'Bollywood Hit Movies',
+                                allBollywoodMovies.isNotEmpty ? allBollywoodMovies : homeNetflixList,
+                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
+                                isFirstRow: true,
+                              ),
+                              _buildNetflixRow(
+                                'South Indian Blockbusters (Hindi Dubbed)',
+                                allSouthMovies.isNotEmpty ? allSouthMovies : homePrimeList,
+                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn',
+                              ),
+                              _buildNetflixRow(
+                                'Hollywood Blockbusters (Hindi Dubbed & Global)',
+                                allHollywoodMovies.isNotEmpty ? allHollywoodMovies : homeHotstarList,
+                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}',
+                              ),
+                            ],
 
-                        // TAB 4: DEDICATED WEB SERIES SECTION (200+ CATALOG) - UPDATED
-                        if (_selectedNavIndex == 4) ...[
-                          _buildCategoryHeader('All Web Series (Hindi, Netflix, Amazon & South)'),
-                          if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
-                          _buildNetflixRow(
-                            'All Hindi Web Series',
-                            allHindiSeries.isNotEmpty ? allHindiSeries : homeHindiSeriesList,
-                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
-                            isFirstRow: true,
-                            isTv: true,
-                          ),
-                          _buildNetflixRow(
-                            'All Netflix Series',
-                            allNetflixSeries.isNotEmpty ? allNetflixSeries : homeEnglishSeriesList,
-                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766',
-                            isTv: true,
-                          ),
-                          _buildNetflixRow(
-                            'All Amazon Series',
-                            allAmazonSeries.isNotEmpty ? allAmazonSeries : homeHindiSeriesList,
-                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766',
-                            isTv: true,
-                          ),
-                          _buildNetflixRow(
-                            'All South Indian Web Series',
-                            allSouthSeries,
-                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml',
-                            isTv: true,
-                          ),
-                        ],
+                            // TAB 4: DEDICATED WEB SERIES SECTION (200+ CATALOG) - UPDATED
+                            if (_selectedNavIndex == 4) ...[
+                              _buildCategoryHeader('All Web Series (Hindi, Netflix, Amazon & South)'),
+                              if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
+                              _buildNetflixRow(
+                                'All Hindi Web Series',
+                                allHindiSeries.isNotEmpty ? allHindiSeries : homeHindiSeriesList,
+                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
+                                isFirstRow: true,
+                                isTv: true,
+                              ),
+                              _buildNetflixRow(
+                                'All Netflix Series',
+                                allNetflixSeries.isNotEmpty ? allNetflixSeries : homeEnglishSeriesList,
+                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766',
+                                isTv: true,
+                              ),
+                              _buildNetflixRow(
+                                'All Amazon Series',
+                                allAmazonSeries.isNotEmpty ? allAmazonSeries : homeHindiSeriesList,
+                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766',
+                                isTv: true,
+                              ),
+                              _buildNetflixRow(
+                                'All South Indian Web Series',
+                                allSouthSeries,
+                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml',
+                                isTv: true,
+                              ),
+                            ],
 
-                        // TAB 5: EXPLORE ALL
-                        if (_selectedNavIndex == 5) ...[
-                          _buildCategoryHeader('Explore All Collections'),
-                          _buildNetflixRow(
-                            'Bollywood Top Rated',
-                            homeNetflixList,
-                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
-                            isFirstRow: true,
-                          ),
-                          _buildNetflixRow(
-                            'South Indian Hits',
-                            homePrimeList,
-                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn',
-                          ),
-                          _buildNetflixRow(
-                            'Hollywood Dubbed Hits',
-                            homeHotstarList,
-                            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}',
-                          ),
-                          _buildNetflixRow(
-                            'Hindi Originals',
-                            homeHindiSeriesList,
-                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
-                            isTv: true,
-                          ),
-                          _buildNetflixRow(
-                            'Netflix Originals',
-                            allNetflixSeries.isNotEmpty ? allNetflixSeries : homeEnglishSeriesList,
-                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766',
-                            isTv: true,
-                          ),
-                          _buildNetflixRow(
-                            'Amazon Prime Originals',
-                            allAmazonSeries.isNotEmpty ? allAmazonSeries : homeHindiSeriesList,
-                            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766',
-                            isTv: true,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
+                            // TAB 5: EXPLORE ALL
+                            if (_selectedNavIndex == 5) ...[
+                              _buildCategoryHeader('Explore All Collections'),
+                              _buildNetflixRow(
+                                'Bollywood Top Rated',
+                                homeNetflixList,
+                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
+                                isFirstRow: true,
+                              ),
+                              _buildNetflixRow(
+                                'South Indian Hits',
+                                homePrimeList,
+                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn',
+                              ),
+                              _buildNetflixRow(
+                                'Hollywood Dubbed Hits',
+                                homeHotstarList,
+                                '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}',
+                              ),
+                              _buildNetflixRow(
+                                'Hindi Originals',
+                                homeHindiSeriesList,
+                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
+                                isTv: true,
+                              ),
+                              _buildNetflixRow(
+                                'Netflix Originals',
+                                allNetflixSeries.isNotEmpty ? allNetflixSeries : homeEnglishSeriesList,
+                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766',
+                                isTv: true,
+                              ),
+                              _buildNetflixRow(
+                                'Amazon Prime Originals',
+                                allAmazonSeries.isNotEmpty ? allAmazonSeries : homeHindiSeriesList,
+                                '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766',
+                                isTv: true,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
           ),
         ],
       ),
