@@ -95,10 +95,28 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   Future<void> _fetchProviders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('cached_tv_providers');
+    if (cached != null && cached.isNotEmpty) {
+      try {
+        activeProviders = jsonDecode(cached) as List<dynamic>;
+      } catch (_) {}
+    }
+
     try {
-      final res = await http.get(Uri.parse(TvConfig.gistUrl)).timeout(const Duration(seconds: 8));
+      final freshUrl =
+          '${TvConfig.gistUrl}?t=${DateTime.now().millisecondsSinceEpoch}';
+      final res =
+          await http.get(Uri.parse(freshUrl)).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
-        activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
+        final decoded = jsonDecode(res.body);
+        final list = decoded is List
+            ? decoded
+            : (decoded['active_providers'] ?? decoded['providers'] ?? []);
+        if (list is List && list.isNotEmpty) {
+          activeProviders = list;
+          await prefs.setString('cached_tv_providers', jsonEncode(list));
+        }
       }
     } catch (_) {}
   }
@@ -285,6 +303,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         context: context,
         builder: (ctx) => TvEpisodeDialog(
           item: item,
+          providers: activeProviders,
           onSelected: (season, episode) {
             _showTvStreamDialog(item, season: season, episode: episode);
           },
