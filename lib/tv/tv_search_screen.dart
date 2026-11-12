@@ -23,6 +23,7 @@ class TvSearchScreen extends StatefulWidget {
 
 class _TvSearchScreenState extends State<TvSearchScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _firstGridItemFocus = FocusNode();
   Timer? _debounce;
   List<dynamic> _results = [];
   bool _isLoading = false;
@@ -32,16 +33,22 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   void initState() {
     super.initState();
     _fetchTrending();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.searchBoxFocusNode.requestFocus();
+      }
+    });
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
+    _firstGridItemFocus.dispose();
     super.dispose();
   }
 
-  // जब सर्च बॉक्स खाली हो तो Trending दिखाएँ
   Future<void> _fetchTrending() async {
     setState(() {
       _isLoading = true;
@@ -66,8 +73,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     }
   }
 
-  // टाइप करने के 500ms बाद TMDB Search कॉल करें
   void _onSearchChanged(String query) {
+    setState(() {});
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
       final cleanQuery = query.trim();
@@ -111,7 +118,6 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
     for (var m in list) {
       final mediaType = (m['media_type'] ?? '').toString();
-      // केवल Movie और TV Series लें (Actors/Person हटा दें)
       if (mediaType != 'movie' && mediaType != 'tv') continue;
       if (m['poster_path'] == null && m['backdrop_path'] == null) continue;
 
@@ -141,64 +147,83 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     return parsed;
   }
 
+  KeyEventResult _handleSearchBoxKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+          _searchController.text.isEmpty) {
+        widget.onLeftBoundaryHit();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+          _results.isNotEmpty) {
+        SystemChannels.textInput.invokeMethod('TextInput.hide');
+        _firstGridItemFocus.requestFocus();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.select ||
+          event.logicalKey == LogicalKeyboardKey.enter) {
+        SystemChannels.textInput.invokeMethod('TextInput.show');
+        return KeyEventResult.ignored;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
+    widget.searchBoxFocusNode.onKeyEvent = _handleSearchBoxKey;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 22, 24, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ==================================================================
-          // SEARCH INPUT BAR (TV REMOTE FRIENDLY)
-          // ==================================================================
           Row(
             children: [
               Expanded(
-                child: Focus(
-                  onKeyEvent: (node, event) {
-                    if (event is KeyDownEvent &&
-                        event.logicalKey == LogicalKeyboardKey.arrowLeft &&
-                        _searchController.text.isEmpty) {
-                      widget.onLeftBoundaryHit();
-                      return KeyEventResult.handled;
-                    }
-                    return KeyEventResult.ignored;
+                child: TextField(
+                  focusNode: widget.searchBoxFocusNode,
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  onTap: () {
+                    widget.searchBoxFocusNode.requestFocus();
+                    SystemChannels.textInput.invokeMethod('TextInput.show');
                   },
-                  child: TextField(
-                    focusNode: widget.searchBoxFocusNode,
-                    controller: _searchController,
-                    onChanged: _onSearchChanged,
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (val) {
-                      if (val.trim().isNotEmpty) _performSearch(val.trim());
-                    },
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
-                    cursorColor: const Color(0xFFE50914),
-                    decoration: InputDecoration(
-                      hintText: 'Search Movies, Web Series, South, Hindi...',
-                      hintStyle: const TextStyle(color: Colors.white38, fontSize: 15),
-                      prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFE50914), size: 24),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.close_rounded, color: Colors.white70),
-                              onPressed: () {
-                                _searchController.clear();
-                                _fetchTrending();
-                                widget.searchBoxFocusNode.requestFocus();
-                              },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: const Color(0xFF222222),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Colors.white24, width: 1.2),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Colors.white, width: 2.2),
-                      ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (val) {
+                    if (val.trim().isNotEmpty) {
+                      _performSearch(val.trim());
+                    }
+                    if (_results.isNotEmpty) {
+                      _firstGridItemFocus.requestFocus();
+                    }
+                  },
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  cursorColor: const Color(0xFFE50914),
+                  decoration: InputDecoration(
+                    hintText: 'Search Movies, Web Series, South, Hindi...',
+                    hintStyle: const TextStyle(color: Colors.white38, fontSize: 15),
+                    prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFE50914), size: 24),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                            onPressed: () {
+                              _searchController.clear();
+                              _fetchTrending();
+                              widget.searchBoxFocusNode.requestFocus();
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFF222222),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.white24, width: 1.2),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.white, width: 2.2),
                     ),
                   ),
                 ),
@@ -208,9 +233,6 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
           const SizedBox(height: 16),
 
-          // ==================================================================
-          // SECTION HEADER
-          // ==================================================================
           Row(
             children: [
               Icon(
@@ -234,9 +256,6 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
           const SizedBox(height: 12),
 
-          // ==================================================================
-          // RESULTS GRID (5 COLUMNS)
-          // ==================================================================
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
@@ -258,10 +277,16 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                         itemBuilder: (ctx, idx) {
                           final item = _results[idx];
                           final isFirstInRow = (idx % 5 == 0);
+                          final isTopRow = (idx < 5);
 
                           return _SearchGridCard(
+                            focusNode: idx == 0 ? _firstGridItemFocus : null,
                             item: item,
                             isFirstInRow: isFirstInRow,
+                            isTopRow: isTopRow,
+                            onUpBoundaryHit: () {
+                              widget.searchBoxFocusNode.requestFocus();
+                            },
                             onLeftBoundaryHit: widget.onLeftBoundaryHit,
                             onTap: () => widget.onItemSelected(item),
                           );
@@ -275,14 +300,20 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 }
 
 class _SearchGridCard extends StatefulWidget {
+  final FocusNode? focusNode;
   final dynamic item;
   final bool isFirstInRow;
+  final bool isTopRow;
+  final VoidCallback onUpBoundaryHit;
   final VoidCallback onLeftBoundaryHit;
   final VoidCallback onTap;
 
   const _SearchGridCard({
+    this.focusNode,
     required this.item,
     required this.isFirstInRow,
+    required this.isTopRow,
+    required this.onUpBoundaryHit,
     required this.onLeftBoundaryHit,
     required this.onTap,
   });
@@ -299,11 +330,16 @@ class _SearchGridCardState extends State<_SearchGridCard> {
     final isTv = widget.item['isTv'] == true;
 
     return Focus(
+      focusNode: widget.focusNode,
       onFocusChange: (f) => setState(() => _isFocused = f),
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent) {
           if (event.logicalKey == LogicalKeyboardKey.arrowLeft && widget.isFirstInRow) {
             widget.onLeftBoundaryHit();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp && widget.isTopRow) {
+            widget.onUpBoundaryHit();
             return KeyEventResult.handled;
           }
           if (event.logicalKey == LogicalKeyboardKey.select ||
@@ -343,7 +379,6 @@ class _SearchGridCardState extends State<_SearchGridCard> {
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
               ),
-              // Top Badge (MOVIE / SERIES)
               Positioned(
                 top: 6,
                 right: 6,
@@ -364,7 +399,6 @@ class _SearchGridCardState extends State<_SearchGridCard> {
                   ),
                 ),
               ),
-              // Bottom Title & Rating
               Positioned(
                 bottom: 0,
                 left: 0,
