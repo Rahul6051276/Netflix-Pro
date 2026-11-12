@@ -68,8 +68,8 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
       );
 
       await _controller.initialize();
-      _controller.setVolume(_volume);
-      _controller.play();
+      await _controller.setVolume(_volume);
+      await _controller.play();
 
       if (mounted) {
         setState(() => _isInit = true);
@@ -77,7 +77,15 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
       }
 
       _controller.addListener(() {
-        if (mounted) setState(() {});
+        if (!mounted) return;
+        // Agar movie chal rahi hai aur controls dikh rahe hain par timer band hai, to timer chalu kar do
+        if (_controller.value.isPlaying &&
+            _showControls &&
+            !_isLocked &&
+            (_controlsTimer == null || !_controlsTimer!.isActive)) {
+          _startHideTimer();
+        }
+        setState(() {});
       });
     } catch (e) {
       if (mounted) {
@@ -91,7 +99,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
 
   void _startHideTimer() {
     _controlsTimer?.cancel();
-    _controlsTimer = Timer(const Duration(seconds: 4), () {
+    _controlsTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && _controller.value.isPlaying && !_isLocked) {
         setState(() => _showControls = false);
       }
@@ -111,18 +119,23 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
       } else {
         _startHideTimer();
       }
+    } else {
+      _controlsTimer?.cancel();
     }
   }
 
   void _togglePlayPause() {
     if (!_isInit || _isLocked) return;
     setState(() {
-      _controller.value.isPlaying ? _controller.pause() : _controller.play();
+      if (_controller.value.isPlaying) {
+        _controller.pause();
+        _controlsTimer?.cancel();
+      } else {
+        _controller.play();
+        _startHideTimer();
+      }
       _showControls = true;
     });
-    if (_controller.value.isPlaying) {
-      _startHideTimer();
-    }
   }
 
   void _seekRelative(int seconds) {
@@ -135,6 +148,7 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
     if (newPos > totalDur) newPos = totalDur;
 
     _controller.seekTo(newPos);
+    setState(() => _showControls = true);
     _startHideTimer();
   }
 
@@ -302,179 +316,183 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
               ),
             ),
 
-          // 5. Full Player Controls (Lock hone par hide ho jayenge)
+          // 5. Full Player Controls (Lock hone par hide ho jayenge + 3 sec auto-hide)
           if (_showControls && _isInit && !_isLocked)
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black87,
-                    Colors.transparent,
-                    Colors.transparent,
-                    Colors.black87,
-                  ],
-                  stops: [0.0, 0.22, 0.72, 1.0],
+            Listener(
+              onPointerDown: (_) => _controlsTimer?.cancel(),
+              onPointerUp: (_) => _startHideTimer(),
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black87,
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.black87,
+                    ],
+                    stops: [0.0, 0.22, 0.72, 1.0],
+                  ),
                 ),
-              ),
-              child: Stack(
-                children: [
-                  // Top Bar
-                  Positioned(
-                    top: 20,
-                    left: 20,
-                    right: 20,
-                    child: Row(
-                      children: [
-                        InkWell(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.black45,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white24),
-                            ),
-                            child: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Text(
-                            widget.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                child: Stack(
+                  children: [
+                    // Top Bar
+                    Positioned(
+                      top: 20,
+                      left: 20,
+                      right: 20,
+                      child: Row(
+                        children: [
+                          InkWell(
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.black45,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white24),
+                              ),
+                              child: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
                             ),
                           ),
-                        ),
-                        InkWell(
-                          onTap: _cycleScaleMode,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF181818).withOpacity(0.9),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFFE50914), width: 1.5),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              widget.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.aspect_ratio, color: Color(0xFFE50914), size: 18),
-                                const SizedBox(width: 6),
-                                Text(
-                                  scaleNames[_scaleMode],
-                                  style: const TextStyle(
-                                    color: Color(0xFFE50914),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
+                          ),
+                          InkWell(
+                            onTap: _cycleScaleMode,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF181818).withOpacity(0.9),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFFE50914), width: 1.5),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.aspect_ratio, color: Color(0xFFE50914), size: 18),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    scaleNames[_scaleMode],
+                                    style: const TextStyle(
+                                      color: Color(0xFFE50914),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
 
-                  // Center 30s Seek & Play/Pause Buttons (Dono Seek Fixed: () =>)
-                  Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        InkWell(
-                          onTap: () => _seekRelative(-30),
-                          child: Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.black45,
-                              border: Border.all(color: Colors.white24, width: 1.5),
-                            ),
-                            child: const Icon(Icons.replay_30, color: Colors.white, size: 34),
-                          ),
-                        ),
-                        const SizedBox(width: 44),
-                        InkWell(
-                          onTap: _togglePlayPause,
-                          child: Container(
-                            width: 68,
-                            height: 68,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFFE50914),
-                              border: Border.all(color: Colors.white30, width: 2),
-                            ),
-                            child: Icon(
-                              _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                              color: Colors.white,
-                              size: 42,
+                    // Center 30s Seek & Play/Pause Buttons
+                    Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          InkWell(
+                            onTap: () => _seekRelative(-30),
+                            child: Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.black45,
+                                border: Border.all(color: Colors.white24, width: 1.5),
+                              ),
+                              child: const Icon(Icons.replay_30, color: Colors.white, size: 34),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 44),
-                        InkWell(
-                          onTap: () => _seekRelative(30),
-                          child: Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.black45,
-                              border: Border.all(color: Colors.white24, width: 1.5),
+                          const SizedBox(width: 44),
+                          InkWell(
+                            onTap: _togglePlayPause,
+                            child: Container(
+                              width: 68,
+                              height: 68,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFFE50914),
+                                border: Border.all(color: Colors.white30, width: 2),
+                              ),
+                              child: Icon(
+                                _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                                color: Colors.white,
+                                size: 42,
+                              ),
                             ),
-                            child: const Icon(Icons.forward_30, color: Colors.white, size: 34),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 44),
+                          InkWell(
+                            onTap: () => _seekRelative(30),
+                            child: Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.black45,
+                                border: Border.all(color: Colors.white24, width: 1.5),
+                              ),
+                              child: const Icon(Icons.forward_30, color: Colors.white, size: 34),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
 
-                  // Bottom Progress Bar
-                  Positioned(
-                    bottom: 16,
-                    left: 24,
-                    right: 24,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        VideoProgressIndicator(
-                          _controller,
-                          allowScrubbing: true,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          colors: const VideoProgressColors(
-                            playedColor: Color(0xFFE50914),
-                            bufferedColor: Colors.white38,
-                            backgroundColor: Colors.white12,
+                    // Bottom Progress Bar
+                    Positioned(
+                      bottom: 16,
+                      left: 24,
+                      right: 24,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          VideoProgressIndicator(
+                            _controller,
+                            allowScrubbing: true,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            colors: const VideoProgressColors(
+                              playedColor: Color(0xFFE50914),
+                              bufferedColor: Colors.white38,
+                              backgroundColor: Colors.white12,
+                            ),
                           ),
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _formatDuration(_controller.value.position),
-                              style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
-                            ),
-                            Text(
-                              _formatDuration(_controller.value.duration),
-                              style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ],
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _formatDuration(_controller.value.position),
+                                style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                _formatDuration(_controller.value.duration),
+                                style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
 
-          // 6. SCREEN LOCK BUTTON (SABSE TOP LAYER PAR HAI TAHO HAR BAAR CLICK REGISTER HO)
+          // 6. SCREEN LOCK BUTTON
           if (_showControls && _isInit)
             Positioned(
               left: 20,
