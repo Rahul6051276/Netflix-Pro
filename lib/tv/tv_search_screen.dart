@@ -23,63 +23,49 @@ class TvSearchScreen extends StatefulWidget {
 
 class _TvSearchScreenState extends State<TvSearchScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _inputFocusNode = FocusNode();
   final FocusNode _firstGridItemFocus = FocusNode();
   Timer? _debounce;
   List<dynamic> _results = [];
   bool _isLoading = false;
-  bool _isShowingTrending = true;
+  bool _hasSearched = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchTrending();
+    // जब Sidebar से focus भेजा जाए तो सीधे TextField के असली FocusNode पर ट्रांसफर करें
+    widget.searchBoxFocusNode.addListener(_forwardFocusToInput);
+  }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        widget.searchBoxFocusNode.requestFocus();
-      }
-    });
+  void _forwardFocusToInput() {
+    if (widget.searchBoxFocusNode.hasFocus && mounted) {
+      _inputFocusNode.requestFocus();
+    }
   }
 
   @override
   void dispose() {
+    widget.searchBoxFocusNode.removeListener(_forwardFocusToInput);
     _debounce?.cancel();
     _searchController.dispose();
+    _inputFocusNode.dispose();
     _firstGridItemFocus.dispose();
     super.dispose();
-  }
-
-  Future<void> _fetchTrending() async {
-    setState(() {
-      _isLoading = true;
-      _isShowingTrending = true;
-    });
-
-    try {
-      final url =
-          '${TvConfig.tmdbBase}/trending/all/day?api_key=${TvConfig.tmdbKey}&language=en-US';
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final rawList = jsonDecode(res.body)['results'] ?? [];
-        if (mounted) {
-          setState(() {
-            _results = _parseSearchResults(rawList);
-            _isLoading = false;
-          });
-        }
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
-    }
   }
 
   void _onSearchChanged(String query) {
     setState(() {});
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () {
+    _debounce = Timer(const Duration(milliseconds: 450), () {
       final cleanQuery = query.trim();
       if (cleanQuery.isEmpty) {
-        _fetchTrending();
+        if (mounted) {
+          setState(() {
+            _results = [];
+            _hasSearched = false;
+            _isLoading = false;
+          });
+        }
       } else {
         _performSearch(cleanQuery);
       }
@@ -89,7 +75,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   Future<void> _performSearch(String query) async {
     setState(() {
       _isLoading = true;
-      _isShowingTrending = false;
+      _hasSearched = true;
     });
 
     try {
@@ -106,6 +92,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
             _isLoading = false;
           });
         }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
       }
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
@@ -147,151 +135,160 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     return parsed;
   }
 
-  KeyEventResult _handleSearchBoxKey(FocusNode node, KeyEvent event) {
-    if (event is KeyDownEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
-          _searchController.text.isEmpty) {
-        widget.onLeftBoundaryHit();
-        return KeyEventResult.handled;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
-          _results.isNotEmpty) {
-        SystemChannels.textInput.invokeMethod('TextInput.hide');
-        _firstGridItemFocus.requestFocus();
-        return KeyEventResult.handled;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.select ||
-          event.logicalKey == LogicalKeyboardKey.enter) {
-        SystemChannels.textInput.invokeMethod('TextInput.show');
-        return KeyEventResult.ignored;
-      }
-    }
-    return KeyEventResult.ignored;
-  }
-
   @override
   Widget build(BuildContext context) {
-    widget.searchBoxFocusNode.onKeyEvent = _handleSearchBoxKey;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 22, 24, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  focusNode: widget.searchBoxFocusNode,
-                  controller: _searchController,
-                  onChanged: _onSearchChanged,
-                  onTap: () {
-                    widget.searchBoxFocusNode.requestFocus();
-                    SystemChannels.textInput.invokeMethod('TextInput.show');
-                  },
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: (val) {
-                    if (val.trim().isNotEmpty) {
-                      _performSearch(val.trim());
-                    }
-                    if (_results.isNotEmpty) {
-                      _firstGridItemFocus.requestFocus();
-                    }
-                  },
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                  cursorColor: const Color(0xFFE50914),
-                  decoration: InputDecoration(
-                    hintText: 'Search Movies, Web Series, South, Hindi...',
-                    hintStyle: const TextStyle(color: Colors.white38, fontSize: 15),
-                    prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFE50914), size: 24),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.close_rounded, color: Colors.white70),
-                            onPressed: () {
-                              _searchController.clear();
-                              _fetchTrending();
-                              widget.searchBoxFocusNode.requestFocus();
-                            },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: const Color(0xFF222222),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.white24, width: 1.2),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.white, width: 2.2),
-                    ),
-                  ),
+          // ==================================================================
+          // SEARCH INPUT BAR (PROPER ANDROID TV IME CONNECTION)
+          // ==================================================================
+          Focus(
+            skipTraversal: true,
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent) {
+                // बॉक्स खाली होने पर Left दबाने से वापस Sidebar पर जाएँ
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+                    _searchController.text.isEmpty) {
+                  widget.onLeftBoundaryHit();
+                  return KeyEventResult.handled;
+                }
+                // रिजल्ट आने पर Down दबाने से नीचे पोस्टर पर जाएँ
+                if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+                    _results.isNotEmpty) {
+                  _firstGridItemFocus.requestFocus();
+                  return KeyEventResult.handled;
+                }
+              }
+              return KeyEventResult.ignored;
+            },
+            child: TextField(
+              focusNode: _inputFocusNode,
+              autofocus: true,
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (val) {
+                if (val.trim().isNotEmpty) {
+                  _performSearch(val.trim());
+                }
+              },
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              cursorColor: const Color(0xFFE50914),
+              decoration: InputDecoration(
+                hintText: 'Search Movies, Web Series, South, Hindi...',
+                hintStyle: const TextStyle(color: Colors.white38, fontSize: 15),
+                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFE50914), size: 24),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _results = [];
+                            _hasSearched = false;
+                          });
+                          _inputFocusNode.requestFocus();
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xFF222222),
+                contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Colors.white24, width: 1.2),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Colors.white, width: 2.2),
                 ),
               ),
-            ],
+            ),
           ),
 
           const SizedBox(height: 16),
 
-          Row(
-            children: [
-              Icon(
-                _isShowingTrending ? Icons.local_fire_department_rounded : Icons.movie_filter_rounded,
-                color: const Color(0xFFE50914),
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _isShowingTrending
-                    ? 'Trending Searches Today'
-                    : 'Search Results (${_results.length})',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+          // ==================================================================
+          // HEADER (केवल सर्च करने पर ही दिखेगा)
+          // ==================================================================
+          if (_hasSearched) ...[
+            Row(
+              children: [
+                const Icon(
+                  Icons.movie_filter_rounded,
+                  color: Color(0xFFE50914),
+                  size: 20,
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 8),
+                Text(
+                  'Search Results (${_results.length})',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
 
-          const SizedBox(height: 12),
-
+          // ==================================================================
+          // SEARCH RESULTS GRID (NO DEFAULT TRENDING ITEMS)
+          // ==================================================================
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
-                : _results.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No results found for "${_searchController.text}"',
-                          style: const TextStyle(color: Colors.white54, fontSize: 15),
+                : !_hasSearched
+                    ? const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.search_rounded, color: Colors.white24, size: 54),
+                            SizedBox(height: 10),
+                            Text(
+                              'Type any Movie or Web Series name above to search',
+                              style: TextStyle(color: Colors.white54, fontSize: 15),
+                            ),
+                          ],
                         ),
                       )
-                    : GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 5,
-                          crossAxisSpacing: 14,
-                          mainAxisSpacing: 16,
-                          childAspectRatio: 0.68,
-                        ),
-                        itemCount: _results.length,
-                        itemBuilder: (ctx, idx) {
-                          final item = _results[idx];
-                          final isFirstInRow = (idx % 5 == 0);
-                          final isTopRow = (idx < 5);
+                    : _results.isEmpty
+                        ? Center(
+                            child: Text(
+                              'No results found for "${_searchController.text}"',
+                              style: const TextStyle(color: Colors.white54, fontSize: 15),
+                            ),
+                          )
+                        : GridView.builder(
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 5,
+                              crossAxisSpacing: 14,
+                              mainAxisSpacing: 16,
+                              childAspectRatio: 0.68,
+                            ),
+                            itemCount: _results.length,
+                            itemBuilder: (ctx, idx) {
+                              final item = _results[idx];
+                              final isFirstInRow = (idx % 5 == 0);
+                              final isTopRow = (idx < 5);
 
-                          return _SearchGridCard(
-                            focusNode: idx == 0 ? _firstGridItemFocus : null,
-                            item: item,
-                            isFirstInRow: isFirstInRow,
-                            isTopRow: isTopRow,
-                            onUpBoundaryHit: () {
-                              widget.searchBoxFocusNode.requestFocus();
+                              return _SearchGridCard(
+                                focusNode: idx == 0 ? _firstGridItemFocus : null,
+                                item: item,
+                                isFirstInRow: isFirstInRow,
+                                isTopRow: isTopRow,
+                                onUpBoundaryHit: () {
+                                  _inputFocusNode.requestFocus();
+                                },
+                                onLeftBoundaryHit: widget.onLeftBoundaryHit,
+                                onTap: () => widget.onItemSelected(item),
+                              );
                             },
-                            onLeftBoundaryHit: widget.onLeftBoundaryHit,
-                            onTap: () => widget.onItemSelected(item),
-                          );
-                        },
-                      ),
+                          ),
           ),
         ],
       ),
