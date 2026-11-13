@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'tmdb_config.dart';
 import 'stream_resolver_sheet.dart';
+import 'media_detail_sheet.dart';
 
 class MobileCategoryGridScreen extends StatefulWidget {
   final String title;
@@ -94,32 +95,12 @@ class _MobileCategoryGridScreenState extends State<MobileCategoryGridScreen> {
   }
 
   void _onGridItemClick(dynamic item) {
-    if (item['isTv'] == true) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) => MobileEpisodeSheet(
-          item: item,
-          onSelected: (season, episode) {
-            _showDirectStreamSheet(item, season: season, episode: episode);
-          },
-        ),
-      );
-    } else {
-      _showDirectStreamSheet(item);
-    }
-  }
-
-  void _showDirectStreamSheet(dynamic item, {int? season, int? episode}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => MobileStreamSheet(
+      builder: (ctx) => MediaDetailSheet(
         item: item,
-        season: season,
-        episode: episode,
         providers: widget.providers,
         onPlaySaved: widget.onPlaySaved,
       ),

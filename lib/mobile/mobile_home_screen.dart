@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'tmdb_config.dart';
 import 'category_grid_screen.dart';
 import 'stream_resolver_sheet.dart';
+import 'media_detail_sheet.dart';
 
 class MobileRootScreen extends StatefulWidget {
   const MobileRootScreen({super.key});
@@ -29,7 +30,6 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 
   Future<void> _fetchGlobalProviders() async {
     final prefs = await SharedPreferences.getInstance();
-    // 1. Pehle saved servers load karo taaki zero delay rahe
     final cached = prefs.getString('cached_active_providers');
     if (cached != null && cached.isNotEmpty && mounted) {
       try {
@@ -39,7 +39,6 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
       } catch (_) {}
     }
 
-    // 2. Fresh Gist data fetch karo (without GitHub cache)
     try {
       final freshUrl =
           '${MobileConfig.gistUrl}?t=${DateTime.now().millisecondsSinceEpoch}';
@@ -253,33 +252,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   void _onItemSelect(dynamic item) {
-    if (item['isTv'] == true) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) => MobileEpisodeSheet(
-          item: item,
-          providers: widget.providers,
-          onSelected: (season, episode) {
-            _showMobileStreamSheet(item, season: season, episode: episode);
-          },
-        ),
-      );
-    } else {
-      _showMobileStreamSheet(item);
-    }
-  }
-
-  void _showMobileStreamSheet(dynamic item, {int? season, int? episode}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => MobileStreamSheet(
+      builder: (ctx) => MediaDetailSheet(
         item: item,
-        season: season,
-        episode: episode,
         providers: widget.providers,
         onPlaySaved: () => _loadContinueWatching(),
       ),
@@ -312,7 +290,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     await prefs.setString('my_watchlist', jsonEncode(list));
   }
 
-  // AUTO-SLIDING BANNER
   Widget _buildSlidingBanner(List<dynamic> items) {
     if (items.isEmpty) return const SizedBox.shrink();
     final bannerItems = items.take(5).toList();
@@ -381,7 +358,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     );
   }
 
-  // CIRCULAR PREVIEWS ROW
   Widget _buildCircularPreviewsRow(List<dynamic> items) {
     if (items.isEmpty) return const SizedBox.shrink();
     final previewItems = items.take(10).toList();
@@ -628,7 +604,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   ),
                 ),
 
-                // NETFLIX PRO CENTERED HEADER BAR
                 Positioned(
                   top: 0,
                   left: 0,
@@ -815,42 +790,16 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
                     final item = searchResults[idx];
                     return InkWell(
                       onTap: () {
-                        if (item['isTv'] == true) {
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (_) => MobileEpisodeSheet(
-                              item: item,
-                              providers: widget.providers,
-                              onSelected: (season, ep) {
-                                showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (_) => MobileStreamSheet(
-                                    item: item,
-                                    season: season,
-                                    episode: ep,
-                                    providers: widget.providers,
-                                    onPlaySaved: widget.onPlaySaved ?? () {},
-                                  ),
-                                );
-                              },
-                            ),
-                          );
-                        } else {
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (_) => MobileStreamSheet(
-                              item: item,
-                              providers: widget.providers,
-                              onPlaySaved: widget.onPlaySaved ?? () {},
-                            ),
-                          );
-                        }
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => MediaDetailSheet(
+                            item: item,
+                            providers: widget.providers,
+                            onPlaySaved: widget.onPlaySaved ?? () {},
+                          ),
+                        );
                       },
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(6),
@@ -868,7 +817,7 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
 }
 
 // ============================================================================
-// 3. MY LIST SCREEN (WORKING PLAY & AUTO-SYNC WITHOUT RELOAD LOOP)
+// 3. MY LIST SCREEN
 // ============================================================================
 class MobileMyListScreen extends StatefulWidget {
   final List<dynamic> providers;
@@ -905,33 +854,12 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
   }
 
   void _onItemSelect(dynamic item) {
-    if (item['isTv'] == true) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) => MobileEpisodeSheet(
-          item: item,
-          providers: widget.providers,
-          onSelected: (season, episode) {
-            _showMobileStreamSheet(item, season: season, episode: episode);
-          },
-        ),
-      );
-    } else {
-      _showMobileStreamSheet(item);
-    }
-  }
-
-  void _showMobileStreamSheet(dynamic item, {int? season, int? episode}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => MobileStreamSheet(
+      builder: (ctx) => MediaDetailSheet(
         item: item,
-        season: season,
-        episode: episode,
         providers: widget.providers,
         onPlaySaved: () => _loadWatchlist(),
       ),
@@ -1007,7 +935,7 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
 }
 
 // ============================================================================
-// 4. MORE SCREEN (OTT WEB SERIES HUB WITH PURE HINDI DISCOVERY)
+// 4. MORE SCREEN
 // ============================================================================
 class MobileMoreScreen extends StatelessWidget {
   final List<dynamic> providers;
@@ -1024,7 +952,6 @@ class MobileMoreScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // 1. Netflix Web Series
           ListTile(
             leading: const Icon(Icons.video_collection, color: Color(0xFFE50914)),
             title: const Text('Netflix Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -1045,8 +972,6 @@ class MobileMoreScreen extends StatelessWidget {
             },
           ),
           const Divider(color: Colors.white24),
-
-          // 2. Amazon Web Series
           ListTile(
             leading: const Icon(Icons.video_library, color: Color(0xFFE50914)),
             title: const Text('Amazon Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -1067,8 +992,6 @@ class MobileMoreScreen extends StatelessWidget {
             },
           ),
           const Divider(color: Colors.white24),
-
-          // 3. Disney+ Hotstar Web Series
           ListTile(
             leading: const Icon(Icons.live_tv, color: Color(0xFFE50914)),
             title: const Text('Disney+ Hotstar Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -1089,8 +1012,6 @@ class MobileMoreScreen extends StatelessWidget {
             },
           ),
           const Divider(color: Colors.white24),
-
-          // 4. Zee5 Web Series
           ListTile(
             leading: const Icon(Icons.tv_rounded, color: Color(0xFFE50914)),
             title: const Text('Zee5 Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -1111,8 +1032,6 @@ class MobileMoreScreen extends StatelessWidget {
             },
           ),
           const Divider(color: Colors.white24),
-
-          // 5. SonyLIV Web Series
           ListTile(
             leading: const Icon(Icons.monitor_rounded, color: Color(0xFFE50914)),
             title: const Text('SonyLIV Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
