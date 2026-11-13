@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version_tag:
-        description: 'Release Tag (e.g. v1.0.30)'
+        description: 'Release Tag (e.g. v1.0.31)'
         required: true
-        default: 'v1.0.30'
+        default: 'v1.0.31'
 
 permissions:
   contents: write
@@ -35,37 +35,48 @@ jobs:
       - name: Setup & Build Netflix Pro App
         run: |
           flutter create --org com.netflixpro --project-name netflix_pro netflix_build_temp
-          
+
           rm -rf netflix_build_temp/lib
           cp -r lib netflix_build_temp/
           cp pubspec.yaml netflix_build_temp/pubspec.yaml
           cp icon.png netflix_build_temp/icon.png
-          
-          # Clean App Name set karein
+
+          # Clean App Name & Permissions
           sed -i 's/android:label="[^"]*"/android:label="Netflix Pro"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
-          
-          # Internet & Cleartext HTTP permissions
           sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET" />\n<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' netflix_build_temp/android/app/src/main/AndroidManifest.xml
           sed -i 's/<application/<application android:usesCleartextTraffic="true"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
-          
+
+          # Copy Native Kotlin Media3 Player Files
+          mkdir -p netflix_build_temp/android/app/src/main/kotlin/com/netflixpro/netflix_pro
+          mkdir -p netflix_build_temp/android/app/src/main/res/layout
+          cp native_android/MainActivity.kt netflix_build_temp/android/app/src/main/kotlin/com/netflixpro/netflix_pro/MainActivity.kt
+          cp native_android/CinemaPictureEffect.kt netflix_build_temp/android/app/src/main/kotlin/com/netflixpro/netflix_pro/CinemaPictureEffect.kt
+          cp native_android/CinemaPlayerActivity.kt netflix_build_temp/android/app/src/main/kotlin/com/netflixpro/netflix_pro/CinemaPlayerActivity.kt
+          cp native_android/activity_cinema_player.xml netflix_build_temp/android/app/src/main/res/layout/activity_cinema_player.xml
+
+          # Register CinemaPlayerActivity in AndroidManifest.xml
+          sed -i 's|</application>|    <activity android:name=".CinemaPlayerActivity" android:exported="false" android:screenOrientation="sensorLandscape" android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation" />\n    </application>|' netflix_build_temp/android/app/src/main/AndroidManifest.xml
+
+          # Add Media3 ExoPlayer 1.4.1 dependencies
+          if [ -f netflix_build_temp/android/app/build.gradle.kts ]; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' netflix_build_temp/android/app/build.gradle.kts
+            printf '\ndependencies {\n    implementation("androidx.media3:media3-exoplayer:1.4.1")\n    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")\n    implementation("androidx.media3:media3-exoplayer-dash:1.4.1")\n    implementation("androidx.media3:media3-ui:1.4.1")\n    implementation("androidx.media3:media3-effect:1.4.1")\n    implementation("androidx.media3:media3-common:1.4.1")\n}\n' >> netflix_build_temp/android/app/build.gradle.kts
+          else
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/; s/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/' netflix_build_temp/android/app/build.gradle
+            printf '\ndependencies {\n    implementation "androidx.media3:media3-exoplayer:1.4.1"\n    implementation "androidx.media3:media3-exoplayer-hls:1.4.1"\n    implementation "androidx.media3:media3-exoplayer-dash:1.4.1"\n    implementation "androidx.media3:media3-ui:1.4.1"\n    implementation "androidx.media3:media3-effect:1.4.1"\n    implementation "androidx.media3:media3-common:1.4.1"\n}\n' >> netflix_build_temp/android/app/build.gradle
+          fi
+
           cd netflix_build_temp
           flutter pub get
           dart run flutter_launcher_icons
 
-          # -------------------------------------------------------------
           # 1. BUILD MOBILE APK
-          # -------------------------------------------------------------
           flutter build apk --release -t lib/mobile/main.dart
           cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-Mobile.apk
 
-          # -------------------------------------------------------------
           # 2. CONFIGURE & BUILD ANDROID TV APK
-          # -------------------------------------------------------------
-          # Add TV Features & Leanback Category
           sed -i '/<application/i <uses-feature android:name="android.hardware.touchscreen" android:required="false" />\n<uses-feature android:name="android.software.leanback" android:required="false" />' android/app/src/main/AndroidManifest.xml
           sed -i '/android.intent.category.LAUNCHER/a <category android:name="android.intent.category.LEANBACK_LAUNCHER" />' android/app/src/main/AndroidManifest.xml
-          
-          # Force TV Landscape Orientation in Activity
           sed -i 's/android:name=".MainActivity"/android:name=".MainActivity" android:screenOrientation="landscape"/' android/app/src/main/AndroidManifest.xml
 
           flutter build apk --release -t lib/tv/main.dart
@@ -78,8 +89,8 @@ jobs:
           name: "Netflix Pro ${{ github.event.inputs.version_tag }}"
           body: |
             ## Netflix Pro ${{ github.event.inputs.version_tag }}
-            * **Netflix-Pro-Mobile.apk**: Touch UI, ±30s Controls, Stream Selector
-            * **Netflix-Pro-TV.apk**: Android TV 16:9 Landscape UI with Remote Navigation
+            * **Netflix-Pro-Mobile.apk**: Touch UI + Kotlin Media3 HDR Player
+            * **Netflix-Pro-TV.apk**: Android TV 16:9 UI + Kotlin Media3 HDR Player
           files: |
             Netflix-Pro-Mobile.apk
             Netflix-Pro-TV.apk
