@@ -159,23 +159,25 @@ class MediaDetailSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
 
-                  // Watch Now Button
+                  // Watch Now Button (Sahi syntax: ElevatedButton ke andar onPressed)
                   SizedBox(
                     width: double.infinity,
                     height: 44,
-                    child: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE50914),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                    ),
-                    onPressed: () => _openStreamOrEpisodes(context),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.play_arrow, size: 20),
-                        SizedBox(width: 6),
-                        Text('Watch Now', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                      ],
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFE50914),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      ),
+                      onPressed: () => _openStreamOrEpisodes(context),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.play_arrow, size: 20),
+                          SizedBox(width: 6),
+                          Text('Watch Now', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
                     ),
                   ),
 
