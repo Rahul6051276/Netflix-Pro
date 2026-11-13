@@ -41,30 +41,84 @@ jobs:
           cp pubspec.yaml netflix_build_temp/pubspec.yaml
           cp icon.png netflix_build_temp/icon.png
 
-          # Clean App Name & Permissions
-          sed -i 's/android:label="[^"]*"/android:label="Netflix Pro"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
-          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET" />\n<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' netflix_build_temp/android/app/src/main/AndroidManifest.xml
-          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' netflix_build_temp/android/app/src/main/AndroidManifest.xml
-
           # Copy Native Kotlin Media3 Player Files
           mkdir -p netflix_build_temp/android/app/src/main/kotlin/com/netflixpro/netflix_pro
           mkdir -p netflix_build_temp/android/app/src/main/res/layout
+          rm -f netflix_build_temp/android/app/src/main/java/com/netflixpro/netflix_pro/MainActivity.java
           cp native_android/MainActivity.kt netflix_build_temp/android/app/src/main/kotlin/com/netflixpro/netflix_pro/MainActivity.kt
           cp native_android/CinemaPictureEffect.kt netflix_build_temp/android/app/src/main/kotlin/com/netflixpro/netflix_pro/CinemaPictureEffect.kt
           cp native_android/CinemaPlayerActivity.kt netflix_build_temp/android/app/src/main/kotlin/com/netflixpro/netflix_pro/CinemaPlayerActivity.kt
           cp native_android/activity_cinema_player.xml netflix_build_temp/android/app/src/main/res/layout/activity_cinema_player.xml
 
-          # Register CinemaPlayerActivity in AndroidManifest.xml
-          sed -i 's|</application>|    <activity android:name=".CinemaPlayerActivity" android:exported="false" android:screenOrientation="sensorLandscape" android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation" />\n    </application>|' netflix_build_temp/android/app/src/main/AndroidManifest.xml
+          # Patch AndroidManifest.xml & Gradle safely using Python (no sed / or | conflicts)
+          python3 - << 'PYEOF'
+          import pathlib, re
 
-          # Add Media3 ExoPlayer 1.4.1 dependencies
-          if [ -f netflix_build_temp/android/app/build.gradle.kts ]; then
-            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' netflix_build_temp/android/app/build.gradle.kts
-            printf '\ndependencies {\n    implementation("androidx.media3:media3-exoplayer:1.4.1")\n    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")\n    implementation("androidx.media3:media3-exoplayer-dash:1.4.1")\n    implementation("androidx.media3:media3-ui:1.4.1")\n    implementation("androidx.media3:media3-effect:1.4.1")\n    implementation("androidx.media3:media3-common:1.4.1")\n}\n' >> netflix_build_temp/android/app/build.gradle.kts
-          else
-            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/; s/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/' netflix_build_temp/android/app/build.gradle
-            printf '\ndependencies {\n    implementation "androidx.media3:media3-exoplayer:1.4.1"\n    implementation "androidx.media3:media3-exoplayer-hls:1.4.1"\n    implementation "androidx.media3:media3-exoplayer-dash:1.4.1"\n    implementation "androidx.media3:media3-ui:1.4.1"\n    implementation "androidx.media3:media3-effect:1.4.1"\n    implementation "androidx.media3:media3-common:1.4.1"\n}\n' >> netflix_build_temp/android/app/build.gradle
-          fi
+          mp = pathlib.Path("netflix_build_temp/android/app/src/main/AndroidManifest.xml")
+          m = mp.read_text()
+
+          m = re.sub(r'android:label="[^"]*"', 'android:label="Netflix Pro"', m)
+
+          perms = (
+              '    <uses-permission android:name="android.permission.INTERNET" />\n'
+              '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'
+          )
+          if "android.permission.INTERNET" not in m:
+              m = m.replace("<application", perms + "    <application", 1)
+
+          if "usesCleartextTraffic" not in m:
+              m = m.replace("<application", '<application android:usesCleartextTraffic="true"', 1)
+
+          cinema_activity = """
+                  <activity
+                      android:name=".CinemaPlayerActivity"
+                      android:exported="false"
+                      android:screenOrientation="sensorLandscape"
+                      android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+                      android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation" />
+          """
+          if ".CinemaPlayerActivity" not in m:
+              m = m.replace("</application>", cinema_activity + "    </application>", 1)
+
+          mp.write_text(m)
+
+          gkts = pathlib.Path("netflix_build_temp/android/app/build.gradle.kts")
+          ggroovy = pathlib.Path("netflix_build_temp/android/app/build.gradle")
+          is_kts = gkts.exists()
+          gp = gkts if is_kts else ggroovy
+          g = gp.read_text()
+
+          if is_kts:
+              g = re.sub(r'minSdk\s*=\s*[^\s]+', 'minSdk = 21', g)
+              g = re.sub(r'minSdkVersion\s+[^\s]+', 'minSdk = 21', g)
+              deps = (
+                  '    implementation("androidx.media3:media3-exoplayer:1.4.1")\n'
+                  '    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")\n'
+                  '    implementation("androidx.media3:media3-exoplayer-dash:1.4.1")\n'
+                  '    implementation("androidx.media3:media3-ui:1.4.1")\n'
+                  '    implementation("androidx.media3:media3-effect:1.4.1")\n'
+                  '    implementation("androidx.media3:media3-common:1.4.1")\n'
+              )
+          else:
+              g = re.sub(r'minSdk\s*=\s*[^\s]+', 'minSdk = 21', g)
+              g = re.sub(r'minSdkVersion\s+[^\s]+', 'minSdkVersion 21', g)
+              deps = (
+                  '    implementation "androidx.media3:media3-exoplayer:1.4.1"\n'
+                  '    implementation "androidx.media3:media3-exoplayer-hls:1.4.1"\n'
+                  '    implementation "androidx.media3:media3-exoplayer-dash:1.4.1"\n'
+                  '    implementation "androidx.media3:media3-ui:1.4.1"\n'
+                  '    implementation "androidx.media3:media3-effect:1.4.1"\n'
+                  '    implementation "androidx.media3:media3-common:1.4.1"\n'
+              )
+
+          if "media3-exoplayer" not in g:
+              if re.search(r'\bdependencies\s*\{', g):
+                  g = re.sub(r'(\bdependencies\s*\{)', r'\1\n' + deps, g, count=1)
+              else:
+                  g += "\ndependencies {\n" + deps + "\n}\n"
+
+          gp.write_text(g)
+          PYEOF
 
           cd netflix_build_temp
           flutter pub get
@@ -75,9 +129,37 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-Mobile.apk
 
           # 2. CONFIGURE & BUILD ANDROID TV APK
-          sed -i '/<application/i <uses-feature android:name="android.hardware.touchscreen" android:required="false" />\n<uses-feature android:name="android.software.leanback" android:required="false" />' android/app/src/main/AndroidManifest.xml
-          sed -i '/android.intent.category.LAUNCHER/a <category android:name="android.intent.category.LEANBACK_LAUNCHER" />' android/app/src/main/AndroidManifest.xml
-          sed -i 's/android:name=".MainActivity"/android:name=".MainActivity" android:screenOrientation="landscape"/' android/app/src/main/AndroidManifest.xml
+          python3 - << 'PYEOF'
+          import pathlib
+
+          mp = pathlib.Path("android/app/src/main/AndroidManifest.xml")
+          m = mp.read_text()
+
+          tv_features = (
+              '    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />\n'
+              '    <uses-feature android:name="android.software.leanback" android:required="false" />\n'
+          )
+          if "android.software.leanback" not in m:
+              m = m.replace("<application", tv_features + "    <application", 1)
+
+          if "LEANBACK_LAUNCHER" not in m:
+              m = m.replace(
+                  '<category android:name="android.intent.category.LAUNCHER"/>',
+                  '<category android:name="android.intent.category.LAUNCHER"/>\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>',
+                  1,
+              ).replace(
+                  '<category android:name="android.intent.category.LAUNCHER" />',
+                  '<category android:name="android.intent.category.LAUNCHER" />\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />',
+                  1,
+              )
+
+          if 'android:name=".MainActivity"' in m:
+              after_main = m.split('android:name=".MainActivity"', 1)[1].split('>', 1)[0]
+              if 'android:screenOrientation=' not in after_main:
+                  m = m.replace('android:name=".MainActivity"', 'android:name=".MainActivity"\n            android:screenOrientation="landscape"', 1)
+
+          mp.write_text(m)
+          PYEOF
 
           flutter build apk --release -t lib/tv/main.dart
           cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-TV.apk
