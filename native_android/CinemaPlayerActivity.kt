@@ -5,20 +5,27 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
+import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -28,12 +35,15 @@ import android.widget.TextView
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -50,87 +60,340 @@ import kotlin.math.abs
 @OptIn(UnstableApi::class)
 class CinemaPlayerActivity : Activity() {
 
-    private lateinit var playerView: PlayerView
-    private lateinit var exoPlayer: ExoPlayer
+    private var player: ExoPlayer? = null
     private lateinit var trackSelector: DefaultTrackSelector
+    private lateinit var playerView: PlayerView
+    private lateinit var currentMediaItem: MediaItem
 
-    private lateinit var hudOverlay: FrameLayout
+    private lateinit var hudContainer: FrameLayout
     private lateinit var loadingSpinner: ProgressBar
-    private lateinit var titleText: TextView
-    private lateinit var specBadge: TextView
-    private lateinit var timeText: TextView
-    private lateinit var seekBar: SeekBar
+    private lateinit var feedbackBadge: TextView
+    private lateinit var titleView: TextView
+    private lateinit var infoBadgeView: TextView
     private lateinit var playPauseBtn: Button
-    private lateinit var presetBtn: Button
     private lateinit var aspectBtn: Button
-    private lateinit var splitBtn: Button
-    private lateinit var toastBadge: TextView
+    private lateinit var speedBtn: Button
+    private lateinit var pictureBtn: Button
+    private lateinit var timeCurrentView: TextView
+    private lateinit var timeTotalView: TextView
+    private lateinit var seekBar: SeekBar
+    private lateinit var errorOverlay: LinearLayout
+    private lateinit var errorMessageView: TextView
 
-    private val cinemaEffect = CinemaPictureEffect()
     private val handler = Handler(Looper.getMainLooper())
-
-    private var currentPreset = PicturePreset.VIVID_CINEMA
-    private var effectsAttached: Boolean? = null
-    private var splitCompare = false
     private var hudVisible = true
-    private var isSeeking = false
-    private var resizeIndex = 0
-    private var currentSpeed = 1.0f
+    private var isSeekingFromUser = false
+    private var isShaderAttached = false
 
-    private val resizeModes = listOf(
-        AspectRatioFrameLayout.RESIZE_MODE_FIT to "FIT",
-        AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "ZOOM",
-        AspectRatioFrameLayout.RESIZE_MODE_FILL to "STRETCH",
-        AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH to "16:9",
-        AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT to "4:3"
+    private val resizeModes = intArrayOf(
+        AspectRatioFrameLayout.RESIZE_MODE_FIT,
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+        AspectRatioFrameLayout.RESIZE_MODE_FILL
     )
+    private val resizeLabels = arrayOf("Fit", "Zoom", "Fill")
+    private var resizeIndex = 0
+
+    private val speeds = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+    private var speedIndex = 1
+
+    private val prefs by lazy {
+        getSharedPreferences("netflix_pro_player_prefs", Context.MODE_PRIVATE)
+    }
 
     private val hideHudRunnable = Runnable { setHudVisible(false) }
-    private val hideToastRunnable = Runnable { toastBadge.visibility = View.GONE }
+    private val hideFeedbackRunnable = Runnable { feedbackBadge.visibility = View.GONE }
     private val progressRunnable = object : Runnable {
         override fun run() {
-            if (::exoPlayer.isInitialized && !isSeeking) {
-                val dur = exoPlayer.duration.coerceAtLeast(0L)
-                val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
-                if (dur > 0L) {
-                    seekBar.max = 1000
-                    seekBar.progress = ((pos * 1000L) / dur).toInt().coerceIn(0, 1000)
-                }
-                timeText.text = "${formatTime(pos)} / ${formatTime(dur)}"
-            }
-            handler.postDelayed(this, 500L)
+            updateProgressUi()
+            handler.postDelayed(this, 500)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             window.colorMode = ActivityInfo.COLOR_MODE_HDR
         }
-        setContentView(R.layout.activity_cinema_player)
-        enterImmersiveFullscreen()
 
-        val root = findViewById<FrameLayout>(R.id.player_root)
-        playerView = findViewById(R.id.player_view)
+        val savedName = prefs.getString("picture_preset_v2", PicturePreset.JUST_PLAYER.name)
+        val initialPreset = PicturePreset.values().firstOrNull { it.name == savedName }
+            ?: PicturePreset.JUST_PLAYER
+        CinemaPictureEngineState.currentPreset = initialPreset
 
-        val prefs = getSharedPreferences("cinema_player_prefs", Context.MODE_PRIVATE)
-        val savedPresetName = prefs.getString("preset", PicturePreset.VIVID_CINEMA.name)
-        currentPreset = runCatching { PicturePreset.valueOf(savedPresetName ?: "") }
-            .getOrDefault(PicturePreset.VIVID_CINEMA)
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
 
-        buildHudOverlay(root)
-        setupTouchGestures(root)
-        initPlayer()
-    }
+        val inflated = LayoutInflater.from(this).inflate(R.layout.activity_cinema_player, root, false)
+        root.addView(inflated)
 
-    private fun initPlayer() {
+        val foundPlayerView = findPlayerView(root)
+            ?: PlayerView(this).also {
+                it.useController = false
+                root.addView(it, 0)
+            }
+        playerView = foundPlayerView
+        playerView.useController = false
+
+        buildGestureAndHudLayers(root)
+        setContentView(root)
+        enableImmersiveFullscreen()
+
         val streamUrl = intent.getStringExtra("url")?.trim().orEmpty()
         val movieTitle = intent.getStringExtra("title")?.trim().orEmpty().ifEmpty { "Netflix Pro" }
-        val userAgent = intent.getStringExtra("userAgent")?.trim().orEmpty()
-            .ifEmpty { "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CinemaTV/1.0" }
+        val userAgent = intent.getStringExtra("userAgent")?.trim().orEmpty().ifEmpty { "NetflixPro/1.0" }
 
-        titleText.text = movieTitle
+        titleView.text = movieTitle
+        pictureBtn.text = if (initialPreset == PicturePreset.JUST_PLAYER) "Pure HDR" else initialPreset.displayName
 
+        if (streamUrl.isEmpty()) {
+            showError("Stream URL खाली है।")
+            return
+        }
+
+        initExoPlayer(streamUrl, movieTitle, userAgent, initialPreset)
+        scheduleHideHud()
+    }
+
+    private fun findPlayerView(view: View): PlayerView? {
+        if (view is PlayerView) return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                val found = findPlayerView(view.getChildAt(i))
+                if (found != null) return found
+            }
+        }
+        return null
+    }
+
+    private fun buildGestureAndHudLayers(root: FrameLayout) {
+        val gestureLayer = View(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        setupTouchGestures(gestureLayer)
+        root.addView(gestureLayer)
+
+        loadingSpinner = ProgressBar(this).apply {
+            layoutParams = FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER)
+            visibility = View.VISIBLE
+        }
+        root.addView(loadingSpinner)
+
+        feedbackBadge = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(dp(18), dp(10), dp(18), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#CC141414"))
+                cornerRadius = dp(24).toFloat()
+                setStroke(dp(1), Color.parseColor("#44FFFFFF"))
+            }
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER_HORIZONTAL or Gravity.TOP
+            ).apply {
+                topMargin = dp(76)
+            }
+        }
+        root.addView(feedbackBadge)
+
+        hudContainer = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        // Top Bar
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(22))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.parseColor("#DD000000"), Color.TRANSPARENT)
+            )
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP
+            )
+        }
+
+        val backBtn = createHudButton("← Back") { finish() }
+        titleView = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+            typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(12), 0, dp(10), 0)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        infoBadgeView = TextView(this).apply {
+            text = "HDR"
+            setTextColor(Color.parseColor("#46D369"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#3346D369"))
+                cornerRadius = dp(6).toFloat()
+            }
+            visibility = View.GONE
+        }
+        pictureBtn = createHudButton("Pure HDR") { showPicturePresetDialog() }
+        val tracksBtn = createHudButton("Tracks") { showTracksDialog() }
+        aspectBtn = createHudButton("Fit") { cycleAspectRatio() }
+        speedBtn = createHudButton("1.0x") { cyclePlaybackSpeed() }
+
+        topBar.addView(backBtn)
+        topBar.addView(titleView)
+        topBar.addView(infoBadgeView)
+        topBar.addView(spacer(dp(6)))
+        topBar.addView(pictureBtn)
+        topBar.addView(spacer(dp(6)))
+        topBar.addView(tracksBtn)
+        topBar.addView(spacer(dp(6)))
+        topBar.addView(aspectBtn)
+        topBar.addView(spacer(dp(6)))
+        topBar.addView(speedBtn)
+        hudContainer.addView(topBar)
+
+        // Center Transport Buttons
+        val centerBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+        }
+        val rwBtn = createHudButton("↺ 15s", big = true) { seekBy(-15_000L) }
+        playPauseBtn = createHudButton("❚❚", big = true) { togglePlayPause() }
+        val fwBtn = createHudButton("15s ↻", big = true) { seekBy(15_000L) }
+        centerBar.addView(rwBtn)
+        centerBar.addView(spacer(dp(20)))
+        centerBar.addView(playPauseBtn)
+        centerBar.addView(spacer(dp(20)))
+        centerBar.addView(fwBtn)
+        hudContainer.addView(centerBar)
+
+        // Bottom Seekbar Row
+        val bottomBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(22), dp(20), dp(18))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.BOTTOM_TOP,
+                intArrayOf(Color.parseColor("#DD000000"), Color.TRANSPARENT)
+            )
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
+            )
+        }
+        timeCurrentView = TextView(this).apply {
+            text = "00:00"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        }
+        seekBar = SeekBar(this).apply {
+            max = 1000
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                leftMargin = dp(12)
+                rightMargin = dp(12)
+            }
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (fromUser) {
+                        val dur = player?.duration ?: 0L
+                        if (dur > 0) {
+                            timeCurrentView.text = formatTime((dur * progress) / 1000L)
+                        }
+                    }
+                }
+
+                override fun onStartTrackingTouch(sb: SeekBar?) {
+                    isSeekingFromUser = true
+                    handler.removeCallbacks(hideHudRunnable)
+                }
+
+                override fun onStopTrackingTouch(sb: SeekBar?) {
+                    isSeekingFromUser = false
+                    val dur = player?.duration ?: 0L
+                    if (dur > 0 && sb != null) {
+                        player?.seekTo((dur * sb.progress) / 1000L)
+                    }
+                    scheduleHideHud()
+                }
+            })
+        }
+        timeTotalView = TextView(this).apply {
+            text = "00:00"
+            setTextColor(Color.parseColor("#B3FFFFFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        }
+        bottomBar.addView(timeCurrentView)
+        bottomBar.addView(seekBar)
+        bottomBar.addView(timeTotalView)
+        hudContainer.addView(bottomBar)
+
+        root.addView(hudContainer)
+
+        // Error Overlay
+        errorOverlay = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#E6000000"))
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        errorMessageView = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            gravity = Gravity.CENTER
+        }
+        val retryBtn = createHudButton("Retry") {
+            errorOverlay.visibility = View.GONE
+            loadingSpinner.visibility = View.VISIBLE
+            player?.prepare()
+            player?.playWhenReady = true
+        }
+        val closeBtn = createHudButton("Close") { finish() }
+        val errBtns = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(16), 0, 0)
+            addView(retryBtn)
+            addView(spacer(dp(12)))
+            addView(closeBtn)
+        }
+        errorOverlay.addView(errorMessageView)
+        errorOverlay.addView(errBtns)
+        root.addView(errorOverlay)
+    }
+
+    private fun initExoPlayer(url: String, title: String, userAgent: String, preset: PicturePreset) {
         trackSelector = DefaultTrackSelector(this).apply {
             setParameters(
                 buildUponParameters()
@@ -147,6 +410,7 @@ class CinemaPlayerActivity : Activity() {
             .setUserAgent(userAgent)
 
         val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
+
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(15_000, 50_000, 1_500, 3_000)
             .setPrioritizeTimeOverSizeThresholds(true)
@@ -156,351 +420,205 @@ class CinemaPlayerActivity : Activity() {
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)
 
-        exoPlayer = ExoPlayer.Builder(this, renderersFactory)
+        val exo = ExoPlayer.Builder(this, renderersFactory)
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setLoadControl(loadControl)
             .build()
 
-        exoPlayer.setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                .build(),
-            true
-        )
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
+        exo.setAudioAttributes(audioAttributes, true)
 
-        applyPicturePreset(currentPreset, reprepareIfNeeded = false)
-        playerView.player = exoPlayer
+        if (preset.useShader) {
+            exo.setVideoEffects(listOf(CinemaPictureEffect()))
+            isShaderAttached = true
+        } else {
+            // Pure Just Player path: ZERO OpenGL shader -> Direct Hardware SurfaceView & HDR
+            isShaderAttached = false
+        }
 
-        val lower = streamUrl.lowercase(Locale.ROOT)
+        val lower = url.lowercase(Locale.ROOT)
         val itemBuilder = MediaItem.Builder()
-            .setUri(Uri.parse(streamUrl))
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(movieTitle).build())
-
+            .setUri(Uri.parse(url))
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
         when {
             lower.contains(".m3u8") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
             lower.contains(".mpd") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
         }
+        currentMediaItem = itemBuilder.build()
 
-        exoPlayer.setMediaItem(itemBuilder.build())
-        exoPlayer.addListener(object : Player.Listener {
+        exo.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 loadingSpinner.visibility = if (state == Player.STATE_BUFFERING) View.VISIBLE else View.GONE
-                if (state == Player.STATE_READY) {
-                    updateTelemetryBadge()
-                }
+                updatePlayPauseLabel()
+                updateProgressUi()
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                playPauseBtn.text = if (isPlaying) "PAUSE" else "PLAY"
-                if (isPlaying) scheduleHudHide() else handler.removeCallbacks(hideHudRunnable)
+                updatePlayPauseLabel()
             }
 
-            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                updateTelemetryBadge()
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                updateInfoBadge()
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                updateInfoBadge()
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 loadingSpinner.visibility = View.GONE
-                showToastBadge("Playback Error: ${error.errorCodeName}")
+                showError("Playback Error: ${error.localizedMessage ?: error.errorCodeName}")
             }
         })
 
-        exoPlayer.prepare()
-        exoPlayer.playWhenReady = true
+        playerView.player = exo
+        exo.setMediaItem(currentMediaItem)
+        exo.prepare()
+        exo.playWhenReady = true
+        player = exo
         handler.post(progressRunnable)
-        scheduleHudHide()
     }
 
-    private fun applyPicturePreset(preset: PicturePreset, reprepareIfNeeded: Boolean) {
-        currentPreset = preset
-        CinemaPictureState.settings = preset.settings
-        presetBtn.text = preset.label
-        getSharedPreferences("cinema_player_prefs", Context.MODE_PRIVATE)
-            .edit().putString("preset", preset.name).apply()
+    private fun applyPicturePreset(preset: PicturePreset) {
+        CinemaPictureEngineState.currentPreset = preset
+        prefs.edit().putString("picture_preset_v2", preset.name).apply()
+        pictureBtn.text = if (preset == PicturePreset.JUST_PLAYER) "Pure HDR" else preset.displayName
 
-        val shouldEnableEffect = preset.settings.enabled
-        if (effectsAttached != shouldEnableEffect) {
-            val pos = if (::exoPlayer.isInitialized) exoPlayer.currentPosition else 0L
-            val playing = if (::exoPlayer.isInitialized) exoPlayer.playWhenReady else true
-            exoPlayer.setVideoEffects(if (shouldEnableEffect) listOf(cinemaEffect) else emptyList())
-            if (reprepareIfNeeded && ::exoPlayer.isInitialized) {
-                exoPlayer.prepare()
-                if (pos > 0L) exoPlayer.seekTo(pos)
-                exoPlayer.playWhenReady = playing
-            }
-            effectsAttached = shouldEnableEffect
+        val exo = player ?: return
+        val needsShader = preset.useShader
+        if (needsShader != isShaderAttached) {
+            val pos = exo.currentPosition.coerceAtLeast(0L)
+            val wasPlaying = exo.playWhenReady
+            exo.stop()
+            exo.setVideoEffects(if (needsShader) listOf(CinemaPictureEffect()) else emptyList())
+            isShaderAttached = needsShader
+            exo.setMediaItem(currentMediaItem, pos)
+            exo.prepare()
+            exo.playWhenReady = wasPlaying
         }
-
-        if (!shouldEnableEffect) {
-            splitCompare = false
-            CinemaPictureState.splitCompareX = 0f
-            splitBtn.text = "SPLIT"
-        }
-        showToastBadge("Picture: ${preset.label}")
+        showFeedback(preset.displayName)
     }
 
-    private fun updateTelemetryBadge() {
-        val vf = exoPlayer.videoFormat
-        val res = if (vf != null && vf.height > 0) "${vf.width}x${vf.height}" else "HD"
-        val isHdr = vf?.colorInfo?.let {
-            it.colorTransfer == C.COLOR_TRANSFER_ST2084 || it.colorTransfer == C.COLOR_TRANSFER_HLG
-        } == true
-        specBadge.text = if (isHdr) "$res • HDR" else "$res • ${currentPreset.label}"
-    }
-
-    private fun buildHudOverlay(root: FrameLayout) {
-        loadingSpinner = ProgressBar(this).apply {
-            isIndeterminate = true
-            visibility = View.VISIBLE
-        }
-        root.addView(
-            loadingSpinner,
-            FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER)
-        )
-
-        toastBadge = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            textSize = 14f
-            setPadding(dp(18), dp(10), dp(18), dp(10))
-            background = pillDrawable("#CC141414", "#E50914")
-            visibility = View.GONE
-        }
-        root.addView(
-            toastBadge,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            ).apply { topMargin = dp(24) }
-        )
-
-        hudOverlay = FrameLayout(this)
-
-        val topBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(24), dp(18), dp(24), dp(18))
-            setBackgroundColor(Color.parseColor("#99000000"))
-        }
-
-        val backBtn = makeHudButton("BACK") { finish() }
-        titleText = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            textSize = 18f
-            setPadding(dp(14), 0, dp(10), 0)
-            maxLines = 1
-        }
-        specBadge = TextView(this).apply {
-            setTextColor(Color.parseColor("#46D369"))
-            textSize = 12f
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            background = pillDrawable("#66000000", "#46D369")
-        }
-
-        presetBtn = makeHudButton(currentPreset.label) { openPictureMenu() }
-        splitBtn = makeHudButton("SPLIT") {
-            if (!currentPreset.settings.enabled) {
-                showToastBadge("Enable Vivid/HDR preset first")
-            } else {
-                splitCompare = !splitCompare
-                CinemaPictureState.splitCompareX = if (splitCompare) 0.5f else 0f
-                splitBtn.text = if (splitCompare) "SPLIT ON" else "SPLIT"
-                showToastBadge(if (splitCompare) "Left: Raw | Right: Enhanced" else "Split Off")
-            }
-        }
-        val tracksBtn = makeHudButton("AUDIO / SUB") { openTracksDialog() }
-
-        topBar.addView(backBtn)
-        topBar.addView(titleText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        topBar.addView(specBadge)
-        topBar.addView(View(this), LinearLayout.LayoutParams(dp(10), 1))
-        topBar.addView(presetBtn)
-        topBar.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
-        topBar.addView(splitBtn)
-        topBar.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
-        topBar.addView(tracksBtn)
-
-        hudOverlay.addView(
-            topBar,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP
-            )
-        )
-
-        val bottomBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(14), dp(24), dp(18))
-            setBackgroundColor(Color.parseColor("#B3000000"))
-        }
-
-        seekBar = SeekBar(this).apply {
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                    if (fromUser && ::exoPlayer.isInitialized) {
-                        val dur = exoPlayer.duration.coerceAtLeast(0L)
-                        exoPlayer.seekTo((dur * progress) / 1000L)
-                    }
-                }
-                override fun onStartTrackingTouch(sb: SeekBar?) { isSeeking = true }
-                override fun onStopTrackingTouch(sb: SeekBar?) {
-                    isSeeking = false
-                    scheduleHudHide()
-                }
-            })
-        }
-        bottomBox.addView(seekBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-
-        val ctrlRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(8), 0, 0)
-        }
-
-        val rewBtn = makeHudButton("-15s") { seekBy(-15_000L) }
-        playPauseBtn = makeHudButton("PAUSE", accent = true) { togglePlayPause() }
-        val fwdBtn = makeHudButton("+15s") { seekBy(15_000L) }
-
-        timeText = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            setPadding(dp(16), 0, 0, 0)
-        }
-
-        val speedBtn = makeHudButton("1.0x") {
-            val speeds = listOf(1.0f, 1.25f, 1.5f, 2.0f, 0.75f)
-            currentSpeed = speeds[(speeds.indexOf(currentSpeed) + 1) % speeds.size]
-            exoPlayer.setPlaybackSpeed(currentSpeed)
-            (it as Button).text = "${currentSpeed}x"
-            showToastBadge("Speed: ${currentSpeed}x")
-        }
-
-        aspectBtn = makeHudButton("FIT") { cycleAspectRatio() }
-
-        ctrlRow.addView(rewBtn)
-        ctrlRow.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
-        ctrlRow.addView(playPauseBtn)
-        ctrlRow.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
-        ctrlRow.addView(fwdBtn)
-        ctrlRow.addView(timeText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        ctrlRow.addView(speedBtn)
-        ctrlRow.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
-        ctrlRow.addView(aspectBtn)
-
-        bottomBox.addView(ctrlRow)
-
-        hudOverlay.addView(
-            bottomBox,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM
-            )
-        )
-
-        root.addView(hudOverlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-    }
-
-    private fun makeHudButton(label: String, accent: Boolean = false, onClick: (View) -> Unit): Button {
-        return Button(this).apply {
-            text = label
-            setTextColor(Color.WHITE)
-            textSize = 12f
-            isAllCaps = false
-            isFocusable = true
-            isFocusableInTouchMode = false
-            setPadding(dp(14), dp(6), dp(14), dp(6))
-            background = pillDrawable(if (accent) "#E50914" else "#33FFFFFF", if (accent) "#FFFFFF" else "#66FFFFFF")
-            setOnFocusChangeListener { v, hasFocus ->
-                v.scaleX = if (hasFocus) 1.08f else 1.0f
-                v.scaleY = if (hasFocus) 1.08f else 1.0f
-                v.background = pillDrawable(
-                    if (hasFocus) "#E50914" else if (accent) "#CC0914" else "#33FFFFFF",
-                    if (hasFocus) "#FFFFFF" else "#66FFFFFF"
-                )
-            }
-            setOnClickListener {
-                onClick(it)
-                scheduleHudHide()
-            }
-        }
-    }
-
-    private fun openPictureMenu() {
+    private fun showPicturePresetDialog() {
+        handler.removeCallbacks(hideHudRunnable)
         val presets = PicturePreset.values()
-        val names = presets.map {
-            if (it == currentPreset) "✓ ${it.label}" else it.label
-        }.toTypedArray()
+        val labels = presets.map { "${it.displayName}\n${it.tagline}" }.toTypedArray()
+        val checked = presets.indexOf(CinemaPictureEngineState.currentPreset).coerceAtLeast(0)
 
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("Picture Quality Mode")
-            .setItems(names) { _, which ->
-                applyPicturePreset(presets[which], reprepareIfNeeded = true)
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                applyPicturePreset(presets[which])
+                dialog.dismiss()
+                scheduleHideHud()
             }
-            .setNeutralButton("Reset Vivid") { _, _ ->
-                applyPicturePreset(PicturePreset.VIVID_CINEMA, reprepareIfNeeded = true)
-            }
+            .setOnCancelListener { scheduleHideHud() }
             .show()
     }
 
-    private fun openTracksDialog() {
-        val tracks = exoPlayer.currentTracks
-        val options = mutableListOf<Pair<String, () -> Unit>>()
+    private fun showTracksDialog() {
+        val exo = player ?: return
+        handler.removeCallbacks(hideHudRunnable)
+        val tracks = exo.currentTracks
 
-        options.add("Subtitles: OFF" to {
-            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
-        })
+        val items = mutableListOf<String>()
+        val actions = mutableListOf<() -> Unit>()
 
         tracks.groups.forEach { group ->
-            for (i in 0 until group.length) {
-                if (!group.isTrackSupported(i)) continue
-                val fmt = group.getTrackFormat(i)
-                val selected = if (group.isTrackSelected(i)) "✓ " else ""
-                when (group.type) {
-                    C.TRACK_TYPE_AUDIO -> {
-                        val lang = fmt.language ?: "Track ${i + 1}"
-                        options.add("${selected}Audio: ${fmt.label ?: lang}" to {
-                            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+            if (group.type == C.TRACK_TYPE_AUDIO) {
+                for (i in 0 until group.length) {
+                    if (group.isTrackSupported(i)) {
+                        val fmt = group.getTrackFormat(i)
+                        val selected = if (group.isTrackSelected(i)) "✓ " else ""
+                        items.add("${selected}Audio: ${formatTrackName(fmt, "Track ${i + 1}")}")
+                        actions.add {
+                            exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
                                 .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                                 .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
                                 .build()
-                        })
-                    }
-                    C.TRACK_TYPE_TEXT -> {
-                        val lang = fmt.language ?: "Sub ${i + 1}"
-                        options.add("${selected}Sub: ${fmt.label ?: lang}" to {
-                            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
-                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
-                                .build()
-                        })
-                    }
-                    C.TRACK_TYPE_VIDEO -> {
-                        if (fmt.height > 0) {
-                            options.add("${selected}Video: ${fmt.width}x${fmt.height}" to {
-                                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
-                                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
-                                    .build()
-                            })
                         }
                     }
                 }
             }
         }
 
-        val labels = options.map { it.first }.toTypedArray()
+        items.add("Subtitles: Off")
+        actions.add {
+            exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .build()
+        }
+        tracks.groups.forEach { group ->
+            if (group.type == C.TRACK_TYPE_TEXT) {
+                for (i in 0 until group.length) {
+                    if (group.isTrackSupported(i)) {
+                        val fmt = group.getTrackFormat(i)
+                        val selected = if (group.isTrackSelected(i)) "✓ " else ""
+                        items.add("${selected}Subtitle: ${formatTrackName(fmt, "Sub ${i + 1}")}")
+                        actions.add {
+                            exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
+                                .build()
+                        }
+                    }
+                }
+            }
+        }
+
+        items.add("Video Quality: Auto")
+        actions.add {
+            exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                .build()
+        }
+        tracks.groups.forEach { group ->
+            if (group.type == C.TRACK_TYPE_VIDEO) {
+                for (i in 0 until group.length) {
+                    if (group.isTrackSupported(i)) {
+                        val fmt = group.getTrackFormat(i)
+                        val selected = if (group.isTrackSelected(i)) "✓ " else ""
+                        val res = if (fmt.height > 0) "${fmt.width}x${fmt.height}" else "Video ${i + 1}"
+                        items.add("${selected}Quality: $res")
+                        actions.add {
+                            exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+                                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
+                                .build()
+                        }
+                    }
+                }
+            }
+        }
+
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Audio, Video & Subtitles")
-            .setItems(labels) { _, which -> options[which].second.invoke() }
+            .setTitle("Audio, Subtitles & Quality")
+            .setItems(items.toTypedArray()) { _, which ->
+                actions[which].invoke()
+                scheduleHideHud()
+            }
+            .setOnCancelListener { scheduleHideHud() }
             .show()
     }
 
-    private fun setupTouchGestures(root: View) {
+    private fun formatTrackName(fmt: Format, fallback: String): String {
+        val lang = fmt.language?.let { Locale(it).displayLanguage }?.takeIf { it.isNotBlank() }
+        return listOfNotNull(fmt.label, lang).distinct().joinToString(" • ").ifBlank { fallback }
+    }
+
+    private fun setupTouchGestures(view: View) {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+
+        var startX = 0f
+        var startY = 0f
+        var draggingVertical = false
+        var startVol = 0
+        var startBrightness = 0.5f
+
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 setHudVisible(!hudVisible)
@@ -508,168 +626,279 @@ class CinemaPlayerActivity : Activity() {
             }
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (e.x < root.width / 2f) seekBy(-15_000L) else seekBy(15_000L)
-                return true
-            }
-
-            override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
-                if (abs(dy) < abs(dx) || root.height <= 0) return false
-                val delta = dy / root.height
-                if (e2.x < root.width / 2f) {
-                    val lp = window.attributes
-                    val cur = if (lp.screenBrightness >= 0f) lp.screenBrightness else 0.5f
-                    val next = (cur + delta * 1.4f).coerceIn(0.05f, 1.0f)
-                    lp.screenBrightness = next
-                    window.attributes = lp
-                    showToastBadge("Brightness: ${(next * 100).toInt()}%")
+                if (e.x < view.width / 2f) {
+                    seekBy(-15_000L)
                 } else {
-                    val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-                    val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                    if (abs(dy) > 16f) {
-                        val nextVol = (curVol + if (dy > 0) 1 else -1).coerceIn(0, maxVol)
-                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, nextVol, 0)
-                        showToastBadge("Volume: ${(nextVol * 100) / maxVol}%")
-                    }
+                    seekBy(15_000L)
                 }
                 return true
             }
         })
 
-        root.setOnTouchListener { _, event ->
+        view.setOnTouchListener { v, event ->
             detector.onTouchEvent(event)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = event.x
+                    startY = event.y
+                    draggingVertical = false
+                    startVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    val curB = window.attributes.screenBrightness
+                    startBrightness = if (curB < 0f) 0.5f else curB
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.x - startX
+                    val dy = startY - event.y
+                    if (!draggingVertical && abs(dy) > dp(18) && abs(dy) > abs(dx)) {
+                        draggingVertical = true
+                    }
+                    if (draggingVertical && v.height > 0) {
+                        val deltaRatio = dy / (v.height * 0.65f)
+                        if (startX < v.width / 2f) {
+                            val newB = (startBrightness + deltaRatio).coerceIn(0.05f, 1.0f)
+                            val lp = window.attributes
+                            lp.screenBrightness = newB
+                            window.attributes = lp
+                            showFeedback("Brightness ${(newB * 100).toInt()}%")
+                        } else {
+                            val newVol = (startVol + deltaRatio * maxVol).toInt().coerceIn(0, maxVol)
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                            showFeedback("Volume ${(newVol * 100) / maxVol}%")
+                        }
+                    }
+                }
+            }
             true
         }
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN) {
-            when (event.keyCode) {
-                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    togglePlayPause()
-                    setHudVisible(true)
-                    return true
-                }
-                KeyEvent.KEYCODE_DPAD_LEFT -> if (!hudVisible) {
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                togglePlayPause()
+                setHudVisible(true)
+                true
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (!hudVisible) {
                     seekBy(-15_000L)
-                    return true
-                }
-                KeyEvent.KEYCODE_DPAD_RIGHT -> if (!hudVisible) {
-                    seekBy(15_000L)
-                    return true
-                }
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> if (!hudVisible) {
-                    togglePlayPause()
-                    setHudVisible(true)
-                    return true
-                }
-                KeyEvent.KEYCODE_DPAD_UP -> if (!hudVisible) {
-                    setHudVisible(true)
-                    openPictureMenu()
-                    return true
-                }
-                KeyEvent.KEYCODE_DPAD_DOWN -> if (!hudVisible) {
-                    cycleAspectRatio()
-                    return true
-                }
-                KeyEvent.KEYCODE_BACK -> if (hudVisible) {
-                    setHudVisible(false)
-                    return true
+                    true
+                } else {
+                    scheduleHideHud()
+                    super.onKeyDown(keyCode, event)
                 }
             }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (!hudVisible) {
+                    seekBy(15_000L)
+                    true
+                } else {
+                    scheduleHideHud()
+                    super.onKeyDown(keyCode, event)
+                }
+            }
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (!hudVisible) {
+                    setHudVisible(true)
+                    playPauseBtn.requestFocus()
+                    true
+                } else {
+                    scheduleHideHud()
+                    super.onKeyDown(keyCode, event)
+                }
+            }
+            KeyEvent.KEYCODE_BACK -> {
+                if (hudVisible) {
+                    setHudVisible(false)
+                    true
+                } else {
+                    finish()
+                    true
+                }
+            }
+            else -> super.onKeyDown(keyCode, event)
         }
-        return super.dispatchKeyEvent(event)
     }
 
     private fun togglePlayPause() {
-        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+        val exo = player ?: return
+        if (exo.isPlaying) {
+            exo.pause()
+            showFeedback("Paused")
+        } else {
+            exo.play()
+            showFeedback("Playing")
+        }
+        updatePlayPauseLabel()
+        scheduleHideHud()
     }
 
     private fun seekBy(deltaMs: Long) {
-        val dur = exoPlayer.duration.coerceAtLeast(0L)
-        val target = (exoPlayer.currentPosition + deltaMs).coerceIn(0L, if (dur > 0) dur else Long.MAX_VALUE)
-        exoPlayer.seekTo(target)
-        showToastBadge(if (deltaMs > 0) "+${deltaMs / 1000}s" else "${deltaMs / 1000}s")
+        val exo = player ?: return
+        val dur = exo.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+        val target = (exo.currentPosition + deltaMs).coerceIn(0L, dur)
+        exo.seekTo(target)
+        showFeedback(if (deltaMs < 0) "↺ -15s" else "+15s ↻")
+        updateProgressUi()
+        if (hudVisible) scheduleHideHud()
     }
 
     private fun cycleAspectRatio() {
         resizeIndex = (resizeIndex + 1) % resizeModes.size
-        val (mode, label) = resizeModes[resizeIndex]
-        playerView.resizeMode = mode
-        aspectBtn.text = label
-        showToastBadge("Screen: $label")
+        playerView.resizeMode = resizeModes[resizeIndex]
+        aspectBtn.text = resizeLabels[resizeIndex]
+        showFeedback("Aspect: ${resizeLabels[resizeIndex]}")
+        scheduleHideHud()
+    }
+
+    private fun cyclePlaybackSpeed() {
+        speedIndex = (speedIndex + 1) % speeds.size
+        val speed = speeds[speedIndex]
+        player?.setPlaybackSpeed(speed)
+        speedBtn.text = "${speed}x"
+        showFeedback("Speed ${speed}x")
+        scheduleHideHud()
+    }
+
+    private fun updateInfoBadge() {
+        val vf = player?.videoFormat ?: return
+        val resTag = when {
+            vf.height >= 2160 -> "4K"
+            vf.height >= 1440 -> "2K"
+            vf.height >= 1080 -> "1080p"
+            vf.height >= 720 -> "720p"
+            vf.height > 0 -> "${vf.height}p"
+            else -> ""
+        }
+        val hdrTag = when (vf.colorInfo?.colorTransfer) {
+            C.COLOR_TRANSFER_ST2084 -> " • HDR10"
+            C.COLOR_TRANSFER_HLG -> " • HLG"
+            else -> ""
+        }
+        val badge = "$resTag$hdrTag".trim()
+        if (badge.isNotEmpty()) {
+            infoBadgeView.text = badge
+            infoBadgeView.visibility = View.VISIBLE
+        }
+    }
+
+    private fun updatePlayPauseLabel() {
+        playPauseBtn.text = if (player?.isPlaying == true) "❚❚" else "▶"
+    }
+
+    private fun updateProgressUi() {
+        val exo = player ?: return
+        val dur = exo.duration
+        val pos = exo.currentPosition.coerceAtLeast(0L)
+        if (!isSeekingFromUser && dur > 0) {
+            timeCurrentView.text = formatTime(pos)
+            timeTotalView.text = formatTime(dur)
+            seekBar.progress = ((pos * 1000L) / dur).toInt().coerceIn(0, 1000)
+        }
     }
 
     private fun setHudVisible(visible: Boolean) {
         hudVisible = visible
-        hudOverlay.visibility = if (visible) View.VISIBLE else View.GONE
-        if (visible) {
-            playPauseBtn.requestFocus()
-            scheduleHudHide()
-        } else {
-            handler.removeCallbacks(hideHudRunnable)
-        }
-    }
-
-    private fun scheduleHudHide() {
+        hudContainer.visibility = if (visible) View.VISIBLE else View.GONE
         handler.removeCallbacks(hideHudRunnable)
-        if (::exoPlayer.isInitialized && exoPlayer.isPlaying) {
-            handler.postDelayed(hideHudRunnable, 4500L)
+        if (visible) scheduleHideHud()
+    }
+
+    private fun scheduleHideHud() {
+        handler.removeCallbacks(hideHudRunnable)
+        handler.postDelayed(hideHudRunnable, 4500)
+    }
+
+    private fun showFeedback(msg: String) {
+        feedbackBadge.text = msg
+        feedbackBadge.visibility = View.VISIBLE
+        handler.removeCallbacks(hideFeedbackRunnable)
+        handler.postDelayed(hideFeedbackRunnable, 900)
+    }
+
+    private fun showError(msg: String) {
+        errorMessageView.text = msg
+        errorOverlay.visibility = View.VISIBLE
+    }
+
+    private fun createHudButton(label: String, big: Boolean = false, onClick: () -> Unit): Button {
+        return Button(this).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (big) 16f else 12f)
+            typeface = Typeface.DEFAULT_BOLD
+            isFocusable = true
+            isFocusableInTouchMode = false
+            minWidth = 0
+            minHeight = 0
+            setPadding(dp(if (big) 20 else 12), dp(if (big) 12 else 7), dp(if (big) 20 else 12), dp(if (big) 12 else 7))
+            background = createFocusablePill()
+            setOnClickListener { onClick() }
         }
     }
 
-    private fun showToastBadge(text: String) {
-        toastBadge.text = text
-        toastBadge.visibility = View.VISIBLE
-        handler.removeCallbacks(hideToastRunnable)
-        handler.postDelayed(hideToastRunnable, 1300L)
-    }
-
-    private fun enterImmersiveFullscreen() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.let {
-                it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                )
+    private fun createFocusablePill(): StateListDrawable {
+        val focused = GradientDrawable().apply {
+            setColor(Color.parseColor("#E50914"))
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(2), Color.WHITE)
+        }
+        val normal = GradientDrawable().apply {
+            setColor(Color.parseColor("#88181818"))
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(1), Color.parseColor("#33FFFFFF"))
+        }
+        return StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), focused)
+            addState(intArrayOf(android.R.attr.state_pressed), focused)
+            addState(intArrayOf(), normal)
         }
     }
 
-    private fun pillDrawable(fillHex: String, strokeHex: String): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(10).toFloat()
-            setColor(Color.parseColor(fillHex))
-            setStroke(dp(1), Color.parseColor(strokeHex))
-        }
+    private fun spacer(widthPx: Int): View = View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(widthPx, 1)
     }
 
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun formatTime(ms: Long): String {
-        if (ms <= 0L) return "00:00"
-        val sec = ms / 1000L
-        val h = sec / 3600L
-        val m = (sec % 3600L) / 60L
-        val s = sec % 60L
+        val totalSec = (ms / 1000L).coerceAtLeast(0L)
+        val h = totalSec / 3600
+        val m = (totalSec % 3600) / 60
+        val s = totalSec % 60
         return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
         else String.format(Locale.US, "%02d:%02d", m, s)
     }
 
-    override fun onStop() {
-        super.onStop()
-        if (::exoPlayer.isInitialized) exoPlayer.pause()
+    private fun enableImmersiveFullscreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let { controller ->
+                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                )
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        player?.pause()
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
-        CinemaPictureState.splitCompareX = 0f
-        if (::exoPlayer.isInitialized) exoPlayer.release()
+        player?.release()
+        player = null
         super.onDestroy()
     }
 }

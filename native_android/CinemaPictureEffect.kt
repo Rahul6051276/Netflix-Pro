@@ -12,48 +12,89 @@ import androidx.media3.effect.BaseGlShaderProgram
 import androidx.media3.effect.GlEffect
 import androidx.media3.effect.GlShaderProgram
 
-data class PictureSettings(
-    val enabled: Boolean = true,
-    val brightness: Float = 0.02f,
-    val contrast: Float = 1.20f,
-    val saturation: Float = 1.32f,
-    val vibrance: Float = 0.42f,
-    val blackLevel: Float = -0.04f,
-    val warmth: Float = 0.04f,
-    val sharpness: Float = 0.28f,
-    val gamma: Float = 0.95f
-)
-
-enum class PicturePreset(val label: String, val settings: PictureSettings) {
-    VIVID_CINEMA(
-        "Vivid Cinema",
-        PictureSettings(true, 0.02f, 1.20f, 1.32f, 0.42f, -0.04f, 0.04f, 0.28f, 0.95f)
+enum class PicturePreset(
+    val displayName: String,
+    val tagline: String,
+    val useShader: Boolean,
+    val brightness: Float,
+    val contrast: Float,
+    val saturation: Float,
+    val vibrance: Float,
+    val shadowLift: Float,
+    val warmth: Float,
+    val sharpness: Float,
+    val gamma: Float
+) {
+    JUST_PLAYER(
+        displayName = "Just Player Pure (Default)",
+        tagline = "Direct Hardware SurfaceView • True HDR10 / Natural Color",
+        useShader = false,
+        brightness = 0f,
+        contrast = 1f,
+        saturation = 1f,
+        vibrance = 0f,
+        shadowLift = 0f,
+        warmth = 0f,
+        sharpness = 0f,
+        gamma = 1f
     ),
-    HDR_BOOST(
-        "HDR Boost",
-        PictureSettings(true, 0.05f, 1.26f, 1.24f, 0.50f, -0.05f, 0.02f, 0.38f, 0.92f)
+    CINEMA_NATURAL(
+        displayName = "Cinema Natural",
+        tagline = "Subtle clarity • Natural skin tones • Zero red tint",
+        useShader = true,
+        brightness = 0.01f,
+        contrast = 1.06f,
+        saturation = 1.06f,
+        vibrance = 0.12f,
+        shadowLift = 0.015f,
+        warmth = 0.00f,
+        sharpness = 0.18f,
+        gamma = 0.97f
     ),
-    FILMMAKER(
-        "Filmmaker",
-        PictureSettings(true, 0.00f, 1.14f, 1.12f, 0.18f, -0.02f, 0.10f, 0.12f, 0.98f)
+    BRIGHT_SDR(
+        displayName = "Bright Shadow Boost",
+        tagline = "Lifts dark scenes cleanly • Best for dark prints",
+        useShader = true,
+        brightness = 0.03f,
+        contrast = 1.04f,
+        saturation = 1.07f,
+        vibrance = 0.14f,
+        shadowLift = 0.035f,
+        warmth = 0.00f,
+        sharpness = 0.20f,
+        gamma = 0.90f
     ),
-    CRISP_SPORTS(
-        "Crisp Sports",
-        PictureSettings(true, 0.04f, 1.18f, 1.26f, 0.34f, -0.01f, -0.06f, 0.50f, 0.94f)
+    CRISP_4K(
+        displayName = "Crisp 4K Clarity",
+        tagline = "Extra edge sharpness • Cool balanced tone",
+        useShader = true,
+        brightness = 0.01f,
+        contrast = 1.08f,
+        saturation = 1.06f,
+        vibrance = 0.12f,
+        shadowLift = 0.01f,
+        warmth = -0.03f,
+        sharpness = 0.36f,
+        gamma = 0.96f
     ),
-    NIGHT_THEATER(
-        "Night Theater",
-        PictureSettings(true, 0.03f, 1.08f, 1.15f, 0.22f, 0.03f, 0.16f, 0.18f, 1.04f)
-    ),
-    NATIVE_HDR(
-        "Native HDR (Raw)",
-        PictureSettings(false, 0f, 1f, 1f, 0f, 0f, 0f, 0f, 1f)
+    NIGHT_SOFT(
+        displayName = "Night Soft",
+        tagline = "Gentle eye-comfort • Balanced shadows",
+        useShader = true,
+        brightness = 0.00f,
+        contrast = 1.02f,
+        saturation = 1.02f,
+        vibrance = 0.06f,
+        shadowLift = 0.025f,
+        warmth = 0.03f,
+        sharpness = 0.12f,
+        gamma = 0.95f
     )
 }
 
-object CinemaPictureState {
-    @Volatile var settings: PictureSettings = PicturePreset.VIVID_CINEMA.settings
-    @Volatile var splitCompareX: Float = 0f
+object CinemaPictureEngineState {
+    @Volatile
+    var currentPreset: PicturePreset = PicturePreset.JUST_PLAYER
 }
 
 @OptIn(UnstableApi::class)
@@ -69,7 +110,7 @@ class CinemaPictureEffect : GlEffect {
 private class CinemaPictureShaderProgram(useHdr: Boolean) :
     BaseGlShaderProgram(useHdr, 1) {
 
-    private val glProgram = GlProgram(VERTEX_SHADER, FRAGMENT_SHADER)
+    private val glProgram: GlProgram = GlProgram(VERTEX_SHADER, FRAGMENT_SHADER)
     private var texWidth = 1920
     private var texHeight = 1080
 
@@ -81,7 +122,8 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
 
     override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
         try {
-            val s = CinemaPictureState.settings
+            val s = CinemaPictureEngineState.currentPreset
+
             glProgram.use()
             glProgram.setSamplerTexIdUniform("uTexSampler", inputTexId, 0)
             glProgram.setBufferAttribute(
@@ -96,11 +138,10 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
             glProgram.setFloatUniform("uContrast", s.contrast)
             glProgram.setFloatUniform("uSaturation", s.saturation)
             glProgram.setFloatUniform("uVibrance", s.vibrance)
-            glProgram.setFloatUniform("uBlackLevel", s.blackLevel)
+            glProgram.setFloatUniform("uShadowLift", s.shadowLift)
             glProgram.setFloatUniform("uWarmth", s.warmth)
             glProgram.setFloatUniform("uSharpness", s.sharpness)
-            glProgram.setFloatUniform("uGamma", s.gamma.coerceIn(0.6f, 1.5f))
-            glProgram.setFloatUniform("uSplitCompare", CinemaPictureState.splitCompareX)
+            glProgram.setFloatUniform("uGamma", s.gamma.coerceIn(0.75f, 1.25f))
             glProgram.bindAttributesAndUniforms()
 
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
@@ -140,48 +181,47 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
             uniform float uContrast;
             uniform float uSaturation;
             uniform float uVibrance;
-            uniform float uBlackLevel;
+            uniform float uShadowLift;
             uniform float uWarmth;
             uniform float uSharpness;
             uniform float uGamma;
-            uniform float uSplitCompare;
             varying vec2 vTexSamplingCoord;
 
             void main() {
                 vec4 center = texture2D(uTexSampler, vTexSamplingCoord);
-                if (uSplitCompare > 0.001 && vTexSamplingCoord.x < uSplitCompare) {
-                    if (abs(vTexSamplingCoord.x - uSplitCompare) < 0.0025) {
-                        gl_FragColor = vec4(0.90, 0.04, 0.08, 1.0);
-                    } else {
-                        gl_FragColor = center;
-                    }
-                    return;
-                }
-
                 vec3 color = center.rgb;
 
+                // 1. Subtle 5-tap clarity sharpening
                 if (uSharpness > 0.01) {
                     vec3 n = texture2D(uTexSampler, vTexSamplingCoord + vec2(0.0, uTexelSize.y)).rgb;
                     vec3 s = texture2D(uTexSampler, vTexSamplingCoord - vec2(0.0, uTexelSize.y)).rgb;
                     vec3 e = texture2D(uTexSampler, vTexSamplingCoord + vec2(uTexelSize.x, 0.0)).rgb;
                     vec3 w = texture2D(uTexSampler, vTexSamplingCoord - vec2(uTexelSize.x, 0.0)).rgb;
                     vec3 blur = (n + s + e + w) * 0.25;
-                    color = clamp(color + (color - blur) * (uSharpness * 1.15), 0.0, 1.0);
+                    vec3 detail = color - blur;
+                    color = clamp(color + detail * (uSharpness * 0.9), 0.0, 1.0);
                 }
 
-                color = clamp(color + vec3(uBrightness + uBlackLevel * (1.0 - color)), 0.0, 1.0);
+                // 2. Smooth shadow lift (never crushes dark scenes)
+                float lumaIn = dot(color, vec3(0.2126, 0.7152, 0.0722));
+                float shadowWeight = (1.0 - lumaIn) * (1.0 - lumaIn);
+                color = clamp(color + vec3(uBrightness + uShadowLift * shadowWeight), 0.0, 1.0);
+
+                // 3. Gentle contrast & gamma
                 color = clamp((color - 0.5) * uContrast + 0.5, 0.0, 1.0);
                 color = pow(max(color, vec3(0.0001)), vec3(uGamma));
 
+                // 4. Natural skin-safe vibrance & saturation
                 float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
                 float maxC = max(color.r, max(color.g, color.b));
                 float minC = min(color.r, min(color.g, color.b));
-                float vibBoost = 1.0 + uVibrance * (1.0 - clamp(maxC - minC, 0.0, 1.0));
+                float currentSat = maxC - minC;
+                float vibBoost = 1.0 + uVibrance * (1.0 - clamp(currentSat, 0.0, 1.0));
                 color = mix(vec3(luma), color, uSaturation * vibBoost);
 
-                color.r += uWarmth * 0.14;
-                color.g += uWarmth * 0.03;
-                color.b -= uWarmth * 0.14;
+                // 5. Minimal color temperature adjustment
+                color.r += uWarmth * 0.06;
+                color.b -= uWarmth * 0.06;
 
                 gl_FragColor = vec4(clamp(color, 0.0, 1.0), center.a);
             }
