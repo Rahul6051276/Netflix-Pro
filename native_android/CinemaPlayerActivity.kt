@@ -66,6 +66,7 @@ class CinemaPlayerActivity : Activity() {
     private lateinit var currentMediaItem: MediaItem
 
     private lateinit var hudContainer: FrameLayout
+    private lateinit var unlockBtn: Button
     private lateinit var loadingSpinner: ProgressBar
     private lateinit var feedbackBadge: TextView
     private lateinit var titleView: TextView
@@ -82,6 +83,7 @@ class CinemaPlayerActivity : Activity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var hudVisible = true
+    private var isScreenLocked = false
     private var isSeekingFromUser = false
     private var isShaderAttached = false
 
@@ -101,6 +103,7 @@ class CinemaPlayerActivity : Activity() {
     }
 
     private val hideHudRunnable = Runnable { setHudVisible(false) }
+    private val hideUnlockRunnable = Runnable { unlockBtn.visibility = View.GONE }
     private val hideFeedbackRunnable = Runnable { feedbackBadge.visibility = View.GONE }
     private val progressRunnable = object : Runnable {
         override fun run() {
@@ -216,7 +219,7 @@ class CinemaPlayerActivity : Activity() {
             )
         }
 
-        // Top Bar
+        // Top Bar (Clean & Spacious)
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -255,21 +258,15 @@ class CinemaPlayerActivity : Activity() {
             visibility = View.GONE
         }
         pictureBtn = createHudButton("Pure HDR") { showPicturePresetDialog() }
-        val tracksBtn = createHudButton("Tracks") { showTracksDialog() }
-        aspectBtn = createHudButton("Fit") { cycleAspectRatio() }
-        speedBtn = createHudButton("1.0x") { cyclePlaybackSpeed() }
+        val lockBtn = createHudButton("🔒 Lock") { lockScreen() }
 
         topBar.addView(backBtn)
         topBar.addView(titleView)
         topBar.addView(infoBadgeView)
-        topBar.addView(spacer(dp(6)))
+        topBar.addView(spacer(dp(8)))
         topBar.addView(pictureBtn)
-        topBar.addView(spacer(dp(6)))
-        topBar.addView(tracksBtn)
-        topBar.addView(spacer(dp(6)))
-        topBar.addView(aspectBtn)
-        topBar.addView(spacer(dp(6)))
-        topBar.addView(speedBtn)
+        topBar.addView(spacer(dp(8)))
+        topBar.addView(lockBtn)
         hudContainer.addView(topBar)
 
         // Center Transport Buttons
@@ -292,19 +289,27 @@ class CinemaPlayerActivity : Activity() {
         centerBar.addView(fwBtn)
         hudContainer.addView(centerBar)
 
-        // Bottom Seekbar Row
-        val bottomBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(22), dp(20), dp(18))
+        // Bottom Bar (Seekbar + Dedicated Action Buttons)
+        val bottomPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(22), dp(20), dp(14))
             background = GradientDrawable(
                 GradientDrawable.Orientation.BOTTOM_TOP,
-                intArrayOf(Color.parseColor("#DD000000"), Color.TRANSPARENT)
+                intArrayOf(Color.parseColor("#E6000000"), Color.TRANSPARENT)
             )
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
+            )
+        }
+
+        val seekRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
         timeCurrentView = TextView(this).apply {
@@ -349,12 +354,50 @@ class CinemaPlayerActivity : Activity() {
             setTextColor(Color.parseColor("#B3FFFFFF"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         }
-        bottomBar.addView(timeCurrentView)
-        bottomBar.addView(seekBar)
-        bottomBar.addView(timeTotalView)
-        hudContainer.addView(bottomBar)
+        seekRow.addView(timeCurrentView)
+        seekRow.addView(seekBar)
+        seekRow.addView(timeTotalView)
+
+        val actionsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        val audioBtn = createHudButton("🔊 Audio") { showAudioDialog() }
+        val subQualBtn = createHudButton("Sub / Quality") { showSubAndQualityDialog() }
+        aspectBtn = createHudButton("Fit") { cycleAspectRatio() }
+        speedBtn = createHudButton("1.0x") { cyclePlaybackSpeed() }
+
+        actionsRow.addView(audioBtn)
+        actionsRow.addView(spacer(dp(10)))
+        actionsRow.addView(subQualBtn)
+        actionsRow.addView(spacer(dp(10)))
+        actionsRow.addView(aspectBtn)
+        actionsRow.addView(spacer(dp(10)))
+        actionsRow.addView(speedBtn)
+
+        bottomPanel.addView(seekRow)
+        bottomPanel.addView(actionsRow)
+        hudContainer.addView(bottomPanel)
 
         root.addView(hudContainer)
+
+        // Floating Unlock Button (Visible only when locked)
+        unlockBtn = createHudButton("🔓 Unlock Screen", big = true) { unlockScreen() }.apply {
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            ).apply {
+                bottomMargin = dp(32)
+            }
+        }
+        root.addView(unlockBtn)
 
         // Error Overlay
         errorOverlay = LinearLayout(this).apply {
@@ -391,6 +434,28 @@ class CinemaPlayerActivity : Activity() {
         errorOverlay.addView(errorMessageView)
         errorOverlay.addView(errBtns)
         root.addView(errorOverlay)
+    }
+
+    private fun lockScreen() {
+        isScreenLocked = true
+        setHudVisible(false)
+        showUnlockPillTemporarily()
+        showFeedback("Screen Locked")
+    }
+
+    private fun unlockScreen() {
+        isScreenLocked = false
+        handler.removeCallbacks(hideUnlockRunnable)
+        unlockBtn.visibility = View.GONE
+        setHudVisible(true)
+        showFeedback("Screen Unlocked")
+    }
+
+    private fun showUnlockPillTemporarily() {
+        unlockBtn.visibility = View.VISIBLE
+        unlockBtn.requestFocus()
+        handler.removeCallbacks(hideUnlockRunnable)
+        handler.postDelayed(hideUnlockRunnable, 2800)
     }
 
     private fun initExoPlayer(url: String, title: String, userAgent: String, preset: PicturePreset) {
@@ -436,7 +501,6 @@ class CinemaPlayerActivity : Activity() {
             exo.setVideoEffects(listOf(CinemaPictureEffect()))
             isShaderAttached = true
         } else {
-            // Pure Just Player path: ZERO OpenGL shader -> Direct Hardware SurfaceView & HDR
             isShaderAttached = false
         }
 
@@ -520,7 +584,85 @@ class CinemaPlayerActivity : Activity() {
             .show()
     }
 
-    private fun showTracksDialog() {
+    private fun showAudioDialog() {
+        val exo = player ?: return
+        handler.removeCallbacks(hideHudRunnable)
+        val tracks = exo.currentTracks
+
+        val labels = mutableListOf<String>()
+        val actions = mutableListOf<() -> Unit>()
+        var checkedIndex = 0
+
+        labels.add("Auto (Default Audio)")
+        actions.add {
+            exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .setPreferredAudioLanguage(null)
+                .build()
+            showFeedback("Audio: Auto")
+        }
+
+        tracks.groups.forEach { group ->
+            if (group.type == C.TRACK_TYPE_AUDIO) {
+                for (i in 0 until group.length) {
+                    val fmt = group.getTrackFormat(i)
+                    val supported = group.isTrackSupported(i)
+                    val selected = group.isTrackSelected(i)
+                    val ch = when (fmt.channelCount) {
+                        1 -> "Mono"
+                        2 -> "Stereo"
+                        6 -> "5.1"
+                        8 -> "7.1"
+                        else -> if (fmt.channelCount > 0) "${fmt.channelCount}ch" else ""
+                    }
+                    val codec = fmt.sampleMimeType?.substringAfter("/")?.uppercase(Locale.ROOT) ?: ""
+                    val titlePart = formatTrackName(fmt, "Audio Track ${labels.size}")
+                    val meta = listOf(ch, codec).filter { it.isNotBlank() }.joinToString(" ")
+                    val suffix = if (!supported) " [Device Unsupported]" else ""
+                    val fullLabel = if (meta.isNotBlank()) "$titlePart ($meta)$suffix" else "$titlePart$suffix"
+
+                    if (selected) checkedIndex = labels.size
+                    labels.add(fullLabel)
+                    actions.add {
+                        if (!supported) {
+                            showFeedback("Audio format unsupported by device")
+                        } else {
+                            val builder = exo.trackSelectionParameters.buildUpon()
+                                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
+                            if (!fmt.language.isNullOrBlank()) {
+                                builder.setPreferredAudioLanguage(fmt.language)
+                            }
+                            exo.trackSelectionParameters = builder.build()
+                            showFeedback("Audio: $titlePart")
+                        }
+                    }
+                }
+            }
+        }
+
+        if (labels.size == 1) {
+            labels.add("Single audio stream only")
+            actions.add { }
+        }
+
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Audio Track")
+            .setSingleChoiceItems(labels.toTypedArray(), checkedIndex) { dialog, which ->
+                actions[which].invoke()
+                dialog.dismiss()
+                scheduleHideHud()
+            }
+            .setNegativeButton("Close") { dialog, _ ->
+                dialog.dismiss()
+                scheduleHideHud()
+            }
+            .setOnCancelListener { scheduleHideHud() }
+            .show()
+    }
+
+    private fun showSubAndQualityDialog() {
         val exo = player ?: return
         handler.removeCallbacks(hideHudRunnable)
         val tracks = exo.currentTracks
@@ -528,29 +670,12 @@ class CinemaPlayerActivity : Activity() {
         val items = mutableListOf<String>()
         val actions = mutableListOf<() -> Unit>()
 
-        tracks.groups.forEach { group ->
-            if (group.type == C.TRACK_TYPE_AUDIO) {
-                for (i in 0 until group.length) {
-                    if (group.isTrackSupported(i)) {
-                        val fmt = group.getTrackFormat(i)
-                        val selected = if (group.isTrackSelected(i)) "✓ " else ""
-                        items.add("${selected}Audio: ${formatTrackName(fmt, "Track ${i + 1}")}")
-                        actions.add {
-                            exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
-                                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-                                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
-                                .build()
-                        }
-                    }
-                }
-            }
-        }
-
         items.add("Subtitles: Off")
         actions.add {
             exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                 .build()
+            showFeedback("Subtitles Off")
         }
         tracks.groups.forEach { group ->
             if (group.type == C.TRACK_TYPE_TEXT) {
@@ -558,12 +683,14 @@ class CinemaPlayerActivity : Activity() {
                     if (group.isTrackSupported(i)) {
                         val fmt = group.getTrackFormat(i)
                         val selected = if (group.isTrackSelected(i)) "✓ " else ""
-                        items.add("${selected}Subtitle: ${formatTrackName(fmt, "Sub ${i + 1}")}")
+                        val name = formatTrackName(fmt, "Subtitle ${i + 1}")
+                        items.add("${selected}Subtitle: $name")
                         actions.add {
                             exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
                                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                                 .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
                                 .build()
+                            showFeedback("Subtitle: $name")
                         }
                     }
                 }
@@ -575,6 +702,7 @@ class CinemaPlayerActivity : Activity() {
             exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
                 .build()
+            showFeedback("Quality: Auto")
         }
         tracks.groups.forEach { group ->
             if (group.type == C.TRACK_TYPE_VIDEO) {
@@ -588,6 +716,7 @@ class CinemaPlayerActivity : Activity() {
                             exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
                                 .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
                                 .build()
+                            showFeedback("Quality: $res")
                         }
                     }
                 }
@@ -595,7 +724,7 @@ class CinemaPlayerActivity : Activity() {
         }
 
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Audio, Subtitles & Quality")
+            .setTitle("Subtitles & Video Quality")
             .setItems(items.toTypedArray()) { _, which ->
                 actions[which].invoke()
                 scheduleHideHud()
@@ -605,7 +734,10 @@ class CinemaPlayerActivity : Activity() {
     }
 
     private fun formatTrackName(fmt: Format, fallback: String): String {
-        val lang = fmt.language?.let { Locale(it).displayLanguage }?.takeIf { it.isNotBlank() }
+        val lang = fmt.language
+            ?.takeIf { it.isNotBlank() && it != "und" }
+            ?.let { Locale(it).displayLanguage }
+            ?.takeIf { it.isNotBlank() }
         return listOfNotNull(fmt.label, lang).distinct().joinToString(" • ").ifBlank { fallback }
     }
 
@@ -621,11 +753,19 @@ class CinemaPlayerActivity : Activity() {
 
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                setHudVisible(!hudVisible)
+                if (isScreenLocked) {
+                    showUnlockPillTemporarily()
+                } else {
+                    setHudVisible(!hudVisible)
+                }
                 return true
             }
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (isScreenLocked) {
+                    showUnlockPillTemporarily()
+                    return true
+                }
                 if (e.x < view.width / 2f) {
                     seekBy(-15_000L)
                 } else {
@@ -637,6 +777,8 @@ class CinemaPlayerActivity : Activity() {
 
         view.setOnTouchListener { v, event ->
             detector.onTouchEvent(event)
+            if (isScreenLocked) return@setOnTouchListener true
+
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = event.x
@@ -673,6 +815,17 @@ class CinemaPlayerActivity : Activity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (isScreenLocked) {
+            if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+                if (unlockBtn.visibility == View.VISIBLE) {
+                    unlockScreen()
+                    return true
+                }
+            }
+            showUnlockPillTemporarily()
+            return true
+        }
+
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                 togglePlayPause()
@@ -801,12 +954,14 @@ class CinemaPlayerActivity : Activity() {
         hudVisible = visible
         hudContainer.visibility = if (visible) View.VISIBLE else View.GONE
         handler.removeCallbacks(hideHudRunnable)
-        if (visible) scheduleHideHud()
+        if (visible && !isScreenLocked) scheduleHideHud()
     }
 
     private fun scheduleHideHud() {
         handler.removeCallbacks(hideHudRunnable)
-        handler.postDelayed(hideHudRunnable, 4500)
+        if (!isScreenLocked) {
+            handler.postDelayed(hideHudRunnable, 4500)
+        }
     }
 
     private fun showFeedback(msg: String) {
@@ -826,13 +981,13 @@ class CinemaPlayerActivity : Activity() {
             text = label
             isAllCaps = false
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (big) 16f else 12f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (big) 15f else 12f)
             typeface = Typeface.DEFAULT_BOLD
             isFocusable = true
             isFocusableInTouchMode = false
             minWidth = 0
             minHeight = 0
-            setPadding(dp(if (big) 20 else 12), dp(if (big) 12 else 7), dp(if (big) 20 else 12), dp(if (big) 12 else 7))
+            setPadding(dp(if (big) 18 else 12), dp(if (big) 11 else 7), dp(if (big) 18 else 12), dp(if (big) 11 else 7))
             background = createFocusablePill()
             setOnClickListener { onClick() }
         }
