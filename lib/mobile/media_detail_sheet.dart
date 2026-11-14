@@ -298,7 +298,7 @@ class _DirectAutoStreamLauncherScreenState
   }
 
   Future<void> _resolveAllAndLaunch() async {
-    final resolved = >[];
+    final List> resolved = [];
     final activeProvs = await _getProviders();
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
@@ -323,7 +323,9 @@ class _DirectAutoStreamLauncherScreenState
 
     // 1. Xtream IPTV (Livebox Pro, etc.) - Fastest Direct Links
     for (var prov in activeProvs) {
-      if (prov['type'] == 'xtream') {
+      final provType = (prov['type'] ?? '').toString();
+
+      if (provType == 'xtream') {
         final host = (prov['xc_host'] ?? prov['host'] ?? '')
             .toString()
             .replaceAll(RegExp(r'/+$'), '');
@@ -443,7 +445,7 @@ class _DirectAutoStreamLauncherScreenState
       }
 
       // 2. Stremio Addons (HDHub4u, PenguPlay, etc.)
-      if (type == 'stremio' && imdbId != null && imdbId.isNotEmpty) {
+      if (provType == 'stremio' && imdbId != null && imdbId.isNotEmpty) {
         final base =
             (prov['url'] ?? '').toString().replaceAll('/manifest.json', '');
         final streamPath = isTv
