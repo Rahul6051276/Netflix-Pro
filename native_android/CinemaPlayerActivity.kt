@@ -30,6 +30,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.annotation.OptIn
@@ -54,11 +55,19 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import org.json.JSONArray
 import java.util.Locale
 import kotlin.math.abs
 
 @OptIn(UnstableApi::class)
 class CinemaPlayerActivity : Activity() {
+
+    private data class StreamSourceItem(
+        val server: String,
+        val title: String,
+        val url: String,
+        val isHindi: Boolean
+    )
 
     private var player: ExoPlayer? = null
     private lateinit var trackSelector: DefaultTrackSelector
@@ -75,11 +84,20 @@ class CinemaPlayerActivity : Activity() {
     private lateinit var aspectBtn: Button
     private lateinit var speedBtn: Button
     private lateinit var pictureBtn: Button
+    private lateinit var sourcesBtn: Button
     private lateinit var timeCurrentView: TextView
     private lateinit var timeTotalView: TextView
     private lateinit var seekBar: SeekBar
     private lateinit var errorOverlay: LinearLayout
     private lateinit var errorMessageView: TextView
+
+    // Sources Side Panel
+    private lateinit var sourcesOverlay: FrameLayout
+    private lateinit var sourcesListContainer: LinearLayout
+    private var streamSources = mutableListOf<StreamSourceItem>()
+    private var activeSourceIndex = 0
+    private var currentUserAgent = "NetflixPro/1.0"
+    private var currentMovieTitle = "Netflix Pro"
 
     private val handler = Handler(Looper.getMainLooper())
     private var hudVisible = true
@@ -144,24 +162,59 @@ class CinemaPlayerActivity : Activity() {
         playerView = foundPlayerView
         playerView.useController = false
 
+        parseIncomingSources()
         buildGestureAndHudLayers(root)
+        buildSourcesSidePanel(root)
         setContentView(root)
         enableImmersiveFullscreen()
 
-        val streamUrl = intent.getStringExtra("url")?.trim().orEmpty()
-        val movieTitle = intent.getStringExtra("title")?.trim().orEmpty().ifEmpty { "Netflix Pro" }
-        val userAgent = intent.getStringExtra("userAgent")?.trim().orEmpty().ifEmpty { "NetflixPro/1.0" }
+        val rawUrl = intent.getStringExtra("url")?.trim().orEmpty()
+        currentMovieTitle = intent.getStringExtra("title")?.trim().orEmpty().ifEmpty { "Netflix Pro" }
+        currentUserAgent = intent.getStringExtra("userAgent")?.trim().orEmpty().ifEmpty { "NetflixPro/1.0" }
 
-        titleView.text = movieTitle
+        val startUrl = if (streamSources.isNotEmpty()) {
+            activeSourceIndex = activeSourceIndex.coerceIn(0, streamSources.size - 1)
+            streamSources[activeSourceIndex].url
+        } else {
+            rawUrl
+        }
+
+        titleView.text = currentMovieTitle
         pictureBtn.text = if (initialPreset == PicturePreset.JUST_PLAYER) "Pure HDR" else initialPreset.displayName
+        sourcesBtn.text = if (streamSources.isNotEmpty()) "Sources (${streamSources.size})" else "Sources"
 
-        if (streamUrl.isEmpty()) {
+        if (startUrl.isEmpty()) {
             showError("Stream URL खाली है।")
             return
         }
 
-        initExoPlayer(streamUrl, movieTitle, userAgent, initialPreset)
+        initExoPlayer(startUrl, currentMovieTitle, currentUserAgent, initialPreset)
         scheduleHideHud()
+    }
+
+    private fun parseIncomingSources() {
+        streamSources.clear()
+        activeSourceIndex = intent.getIntExtra("initialIndex", 0)
+        val jsonStr = intent.getStringExtra("sourcesJson")?.trim().orEmpty()
+        if (jsonStr.isNotEmpty()) {
+            try {
+                val arr = JSONArray(jsonStr)
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    val u = obj.optString("url", "").trim()
+                    if (u.isNotEmpty()) {
+                        streamSources.add(
+                            StreamSourceItem(
+                                server = obj.optString("server", "Server ${i + 1}"),
+                                title = obj.optString("title", "Stream ${i + 1}"),
+                                url = u,
+                                isHindi = obj.optBoolean("isHindi", false)
+                            )
+                        )
+                    }
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     private fun findPlayerView(view: View): PlayerView? {
@@ -219,7 +272,7 @@ class CinemaPlayerActivity : Activity() {
             )
         }
 
-        // Top Bar (Clean & Spacious)
+        // Top Bar (Clean & Spacious + Sources Button)
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -257,12 +310,17 @@ class CinemaPlayerActivity : Activity() {
             }
             visibility = View.GONE
         }
+        sourcesBtn = createHudButton("Sources") { openSourcesPanel() }.apply {
+            background = createSourcesPill()
+        }
         pictureBtn = createHudButton("Pure HDR") { showPicturePresetDialog() }
         val lockBtn = createHudButton("🔒 Lock") { lockScreen() }
 
         topBar.addView(backBtn)
         topBar.addView(titleView)
         topBar.addView(infoBadgeView)
+        topBar.addView(spacer(dp(8)))
+        topBar.addView(sourcesBtn)
         topBar.addView(spacer(dp(8)))
         topBar.addView(pictureBtn)
         topBar.addView(spacer(dp(8)))
@@ -422,18 +480,320 @@ class CinemaPlayerActivity : Activity() {
             player?.prepare()
             player?.playWhenReady = true
         }
+        val switchSrcErrBtn = createHudButton("Switch Source") {
+            errorOverlay.visibility = View.GONE
+            openSourcesPanel()
+        }
         val closeBtn = createHudButton("Close") { finish() }
         val errBtns = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(0, dp(16), 0, 0)
             addView(retryBtn)
+            if (streamSources.size > 1) {
+                addView(spacer(dp(12)))
+                addView(switchSrcErrBtn)
+            }
             addView(spacer(dp(12)))
             addView(closeBtn)
         }
         errorOverlay.addView(errorMessageView)
         errorOverlay.addView(errBtns)
         root.addView(errorOverlay)
+    }
+
+    // =========================================================================
+    // HOTSTAR / IPTV RIGHT SIDE PANEL: "Select Stream Source"
+    // =========================================================================
+    private fun buildSourcesSidePanel(root: FrameLayout) {
+        sourcesOverlay = FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#99000000"))
+            visibility = View.GONE
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { closeSourcesPanel() }
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        val drawerWidth = (resources.displayMetrics.widthPixels * 0.48f)
+            .toInt()
+            .coerceIn(dp(310), dp(430))
+
+        val drawer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#F20F1117"))
+            setPadding(dp(18), dp(18), dp(18), dp(16))
+            isClickable = true
+            layoutParams = FrameLayout.LayoutParams(
+                drawerWidth,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.END
+            )
+        }
+
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val headerTexts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val headerTitle = TextView(this).apply {
+            text = "Select Stream Source"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        val headerSub = TextView(this).apply {
+            text = "Hindi servers listed first • Tap to play"
+            setTextColor(Color.parseColor("#F5C518"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(0, dp(2), 0, 0)
+        }
+        headerTexts.addView(headerTitle)
+        headerTexts.addView(headerSub)
+
+        val closeDrawerBtn = Button(this).apply {
+            text = "✕"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            minWidth = 0
+            minHeight = 0
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#2A2E39"))
+            }
+            setOnClickListener { closeSourcesPanel() }
+        }
+
+        headerRow.addView(headerTexts)
+        headerRow.addView(closeDrawerBtn)
+        drawer.addView(headerRow)
+
+        val scrollView = ScrollView(this).apply {
+            setPadding(0, dp(14), 0, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        }
+
+        sourcesListContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        scrollView.addView(sourcesListContainer)
+        drawer.addView(scrollView)
+        sourcesOverlay.addView(drawer)
+        root.addView(sourcesOverlay)
+    }
+
+    private fun openSourcesPanel() {
+        handler.removeCallbacks(hideHudRunnable)
+        refreshSourcesListUi()
+        sourcesOverlay.visibility = View.VISIBLE
+    }
+
+    private fun closeSourcesPanel() {
+        sourcesOverlay.visibility = View.GONE
+        scheduleHideHud()
+    }
+
+    private fun refreshSourcesListUi() {
+        sourcesListContainer.removeAllViews()
+
+        if (streamSources.isEmpty()) {
+            val emptyTxt = TextView(this).apply {
+                text = "Single stream active"
+                setTextColor(Color.parseColor("#99FFFFFF"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setPadding(dp(8), dp(24), dp(8), dp(8))
+            }
+            sourcesListContainer.addView(emptyTxt)
+            return
+        }
+
+        streamSources.forEachIndexed { index, src ->
+            val isSelected = index == activeSourceIndex
+
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = GradientDrawable().apply {
+                    setColor(if (isSelected) Color.parseColor("#1A2B4C") else Color.parseColor("#161922"))
+                    cornerRadius = dp(10).toFloat()
+                    setStroke(
+                        dp(if (isSelected) 2 else 1),
+                        if (isSelected) Color.parseColor("#2E8B57") else Color.parseColor("#2C3240")
+                    )
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(10)
+                }
+                setOnClickListener {
+                    switchToStreamSource(index)
+                }
+            }
+
+            val leftCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            // Badges Row: [Server] [HINDI] [Quality]
+            val badgesRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            val serverBadge = makeTagBadge(
+                text = src.server,
+                bgHex = if (src.server.contains("Livebox", true) || src.server.contains("IPTV", true)) "#16A34A" else "#2563EB",
+                fgHex = "#FFFFFF"
+            )
+            badgesRow.addView(serverBadge)
+
+            if (src.isHindi) {
+                badgesRow.addView(spacer(dp(6)))
+                badgesRow.addView(makeTagBadge("HINDI", "#FACC15", "#111111"))
+            }
+
+            val qTag = extractQualityTag(src.title)
+            if (qTag.isNotEmpty()) {
+                badgesRow.addView(spacer(dp(6)))
+                badgesRow.addView(makeTagBadge(qTag, "#1E3A8A", "#93C5FD"))
+            }
+
+            val titleTxt = TextView(this).apply {
+                text = if (src.isHindi) "${src.title} • Hindi" else src.title
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+                typeface = Typeface.DEFAULT_BOLD
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+                setPadding(0, dp(7), dp(8), dp(3))
+            }
+
+            val subTxt = TextView(this).apply {
+                text = "${src.server} • ${if (src.isHindi) "HINDI DUBBED / AUDIO" else "ORIGINAL HD"}"
+                setTextColor(Color.parseColor("#8E96A4"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }
+
+            leftCol.addView(badgesRow)
+            leftCol.addView(titleTxt)
+            leftCol.addView(subTxt)
+
+            val rightIcon = TextView(this).apply {
+                text = if (isSelected) "✓" else "▶"
+                gravity = Gravity.CENTER
+                setTextColor(if (isSelected) Color.BLACK else Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                typeface = Typeface.DEFAULT_BOLD
+                layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
+                if (isSelected) {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.parseColor("#22C55E"))
+                    }
+                }
+            }
+
+            card.addView(leftCol)
+            card.addView(rightIcon)
+            sourcesListContainer.addView(card)
+        }
+    }
+
+    private fun makeTagBadge(text: String, bgHex: String, fgHex: String): TextView {
+        return TextView(this).apply {
+            this.text = text
+            setTextColor(Color.parseColor(fgHex))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(dp(7), dp(2), dp(7), dp(2))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor(bgHex))
+                cornerRadius = dp(4).toFloat()
+            }
+        }
+    }
+
+    private fun extractQualityTag(title: String): String {
+        val low = title.lowercase(Locale.ROOT)
+        return when {
+            low.contains("2160") || low.contains("4k") -> "4K UHD"
+            low.contains("1080") -> "1080p FHD"
+            low.contains("720") -> "720p HD"
+            low.contains("480") -> "480p"
+            else -> "HD"
+        }
+    }
+
+    private fun switchToStreamSource(index: Int) {
+        if (index !in streamSources.indices) return
+        val exo = player ?: return
+        activeSourceIndex = index
+        val selected = streamSources[index]
+
+        closeSourcesPanel()
+        loadingSpinner.visibility = View.VISIBLE
+        errorOverlay.visibility = View.GONE
+
+        val lower = selected.url.lowercase(Locale.ROOT)
+        val itemBuilder = MediaItem.Builder()
+            .setUri(Uri.parse(selected.url))
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(currentMovieTitle).build())
+        when {
+            lower.contains(".m3u8") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            lower.contains(".mpd") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+        }
+        currentMediaItem = itemBuilder.build()
+
+        exo.stop()
+        exo.setMediaItem(currentMediaItem)
+        exo.prepare()
+        exo.playWhenReady = true
+        showFeedback("Playing: ${selected.server}")
+    }
+
+    private fun createSourcesPill(): StateListDrawable {
+        val focused = GradientDrawable().apply {
+            setColor(Color.parseColor("#1D4ED8"))
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(2), Color.WHITE)
+        }
+        val normal = GradientDrawable().apply {
+            setColor(Color.parseColor("#2563EB"))
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(1), Color.parseColor("#66FFFFFF"))
+        }
+        return StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), focused)
+            addState(intArrayOf(android.R.attr.state_pressed), focused)
+            addState(intArrayOf(), normal)
+        }
     }
 
     private fun lockScreen() {
@@ -535,7 +895,12 @@ class CinemaPlayerActivity : Activity() {
 
             override fun onPlayerError(error: PlaybackException) {
                 loadingSpinner.visibility = View.GONE
-                showError("Playback Error: ${error.localizedMessage ?: error.errorCodeName}")
+                // Agar pehla server fail ho toh automatically agle ready server par switch kare
+                if (activeSourceIndex + 1 < streamSources.size) {
+                    switchToStreamSource(activeSourceIndex + 1)
+                } else {
+                    showError("Playback Error: ${error.localizedMessage ?: error.errorCodeName}")
+                }
             }
         })
 
@@ -815,6 +1180,14 @@ class CinemaPlayerActivity : Activity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (sourcesOverlay.visibility == View.VISIBLE) {
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                closeSourcesPanel()
+                return true
+            }
+            return super.onKeyDown(keyCode, event)
+        }
+
         if (isScreenLocked) {
             if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
                 if (unlockBtn.visibility == View.VISIBLE) {

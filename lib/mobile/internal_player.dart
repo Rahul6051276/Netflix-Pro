@@ -1,18 +1,23 @@
 // ============================================================================
 // NETFLIX PRO MOBILE PLAYER -> NATIVE KOTLIN MEDIA3 EXOPLAYER BRIDGE
 // ============================================================================
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class InternalPlayerScreen extends StatefulWidget {
   final String streamUrl;
   final String title;
+  final List<dynamic> sources;
+  final int initialIndex;
 
   InternalPlayerScreen({
     super.key,
     String? videoUrl,
     String? streamUrl,
     required this.title,
+    this.sources = const [],
+    this.initialIndex = 0,
   }) : streamUrl = (streamUrl != null && streamUrl.isNotEmpty)
             ? streamUrl
             : (videoUrl ?? '');
@@ -44,7 +49,10 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
 
   Future<void> _launchNativeCinemaPlayer() async {
     final cleanUrl = widget.streamUrl.trim();
-    if (cleanUrl.isEmpty) {
+    final encodedSources =
+        widget.sources.isNotEmpty ? jsonEncode(widget.sources) : '';
+
+    if (cleanUrl.isEmpty && encodedSources.isEmpty) {
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -58,6 +66,8 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
       await _playerChannel.invokeMethod('playVideo', {
         'url': cleanUrl,
         'title': widget.title,
+        'sourcesJson': encodedSources,
+        'initialIndex': widget.initialIndex,
         'userAgent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       });

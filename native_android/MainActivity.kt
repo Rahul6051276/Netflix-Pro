@@ -18,8 +18,10 @@ class MainActivity : FlutterActivity() {
                     val url = call.argument<String>("url").orEmpty().trim()
                     val title = call.argument<String>("title").orEmpty().ifBlank { "Netflix Pro" }
                     val userAgent = call.argument<String>("userAgent").orEmpty()
+                    val sourcesJson = call.argument<String>("sourcesJson").orEmpty()
+                    val initialIndex = call.argument<Int>("initialIndex") ?: 0
 
-                    if (url.isEmpty()) {
+                    if (url.isEmpty() && sourcesJson.isEmpty()) {
                         result.error("INVALID_URL", "Empty stream URL", null)
                         return@setMethodCallHandler
                     }
@@ -31,6 +33,8 @@ class MainActivity : FlutterActivity() {
                         putExtra("url", url)
                         putExtra("title", title)
                         putExtra("userAgent", userAgent)
+                        putExtra("sourcesJson", sourcesJson)
+                        putExtra("initialIndex", initialIndex)
                     }
                     startActivityForResult(intent, REQ_PLAYER)
                 } else {
