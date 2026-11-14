@@ -1,12 +1,8 @@
 // ============================================================================
-// PERFECT HOTSTAR STYLE AUTO-STREAM & NATIVE PLAYER LAUNCHER
+// NETFLIX PRO - HOTSTAR STYLE DIRECT STREAM SHEET LAUNCHER
 // ============================================================================
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'tmdb_config.dart';
 import 'stream_resolver_sheet.dart';
-import 'internal_player.dart';
 
 class MediaDetailSheet extends StatelessWidget {
   final dynamic item;
@@ -20,13 +16,11 @@ class MediaDetailSheet extends StatelessWidget {
     required this.onPlaySaved,
   });
 
-  // Watch Now dabate hi direct player khol ke pehla best link auto-play krne ka logic
-  void _autoStreamAndOpenPlayer(BuildContext context) async {
+  void _openStreamOrEpisodes(BuildContext context) {
+    Navigator.pop(context);
     final bool isTv = item['isTv'] == true;
 
-    // Agar TV Series hai toh pehle episode select karwayenge, phir player khulega
     if (isTv) {
-      Navigator.pop(context);
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -35,111 +29,32 @@ class MediaDetailSheet extends StatelessWidget {
           item: item,
           providers: providers,
           onSelected: (season, ep) {
-            _fetchAndPlayDirectly(context, season: season, episode: ep);
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => MobileStreamSheet(
+                item: item,
+                season: season,
+                episode: ep,
+                providers: providers,
+                onPlaySaved: onPlaySaved,
+              ),
+            );
           },
         ),
       );
     } else {
-      Navigator.pop(context);
-      _fetchAndPlayDirectly(context);
-    }
-  }
-
-  Future<void> _fetchAndPlayDirectly(BuildContext context, {int? season, int? episode}) async {
-    // Chhota sa loading dikhayenge taaki background me link fetch ho sake
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => Center(
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE50914), width: 1.5),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              CircularProgressIndicator(color: Color(0xFFE50914)),
-              SizedBox(height: 14),
-              Text(
-                'Starting player & auto-streaming...',
-                style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => MobileStreamSheet(
+          item: item,
+          providers: providers,
+          onPlaySaved: onPlaySaved,
         ),
-      ),
-    );
-
-    try {
-      final targetTmdbId = item['tmdb_id']?.toString() ?? '';
-      final isTv = item['isTv'] == true;
-      final movieTitle = item['title'] ?? 'Untitled';
-      final targetSeason = season ?? 1;
-      final targetEpisode = episode ?? 1;
-
-      var resolvedStreams = [];
-
-      if (targetTmdbId.isNotEmpty) {
-        try {
-          final embedType = isTv ? 'series' : 'movie';
-          final embedUrl = isTv
-              ? 'https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$targetTmdbId?season=$targetSeason&episode=$targetEpisode'
-              : 'https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$targetTmdbId';
-          
-          final res = await http.get(Uri.parse(embedUrl)).timeout(const Duration(seconds: 4));
-          if (res.statusCode == 200) {
-            final data = jsonDecode(res.body);
-            final list = data is List ? data : (data['streams'] ?? []);
-            for (var s in list) {
-              if (s['url'] != null) {
-                resolvedStreams.add({'url': s['url'], 'title': s['title'] ?? movieTitle});
-              }
-            }
-          }
-        } catch (_) {}
-      }
-
-      // Loading dialog band karo
-      if (context.mounted) Navigator.pop(context);
-
-      // Agar streams mil gayi, toh sabse pehli link seedha Native Player me chala do!
-      if (resolvedStreams.isNotEmpty) {
-        final firstStreamUrl = resolvedStreams.first['url'].toString().trim();
-        onPlaySaved(); // Continue watching me save ho jayega
-
-        if (context.mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => InternalPlayerScreen(
-                streamUrl: firstStreamUrl,
-                title: movieTitle,
-              ),
-            ),
-          );
-        }
-      } else {
-        // Agar galti se link na mile, toh fallback ke liye stream sheet khol do taaki user manual select kar sake
-        if (context.mounted) {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (_) => MobileStreamSheet(
-              item: item,
-              season: season,
-              episode: episode,
-              providers: providers,
-              onPlaySaved: onPlaySaved,
-            ),
-          );
-        }
-      }
-    } catch (_) {
-      if (context.mounted) Navigator.pop(context);
+      );
     }
   }
 
@@ -197,7 +112,7 @@ class MediaDetailSheet extends StatelessWidget {
                 right: 0,
                 child: Center(
                   child: GestureDetector(
-                    onTap: () => _autoStreamAndOpenPlayer(context),
+                    onTap: () => _openStreamOrEpisodes(context),
                     child: Container(
                       width: 58,
                       height: 58,
@@ -248,7 +163,7 @@ class MediaDetailSheet extends StatelessWidget {
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                       ),
-                      onPressed: () => _autoStreamAndOpenPlayer(context),
+                      onPressed: () => _openStreamOrEpisodes(context),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
