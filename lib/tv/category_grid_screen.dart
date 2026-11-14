@@ -7,13 +7,13 @@ import 'tmdb_config.dart';
 import 'stream_resolver_sheet.dart';
 
 // ============================================================================
-// FULL SCREEN VERTICAL GRID SCREEN (DIRECT DIALOG - NO POP TO HOME)
+// FULL SCREEN VERTICAL GRID SCREEN (DIRECT NATIVE PLAYER LAUNCH)
 // ============================================================================
 class TVCategoryGridScreen extends StatefulWidget {
   final String title;
   final String baseUrl;
   final bool isTv;
-  final List<dynamic> providers;
+  final List providers;
   final VoidCallback onPlaySaved;
 
   const TVCategoryGridScreen({
@@ -26,7 +26,7 @@ class TVCategoryGridScreen extends StatefulWidget {
   });
 
   @override
-  State<TVCategoryGridScreen> createState() => _TVCategoryGridScreenState();
+  State createState() => _TVCategoryGridScreenState();
 }
 
 class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
@@ -49,7 +49,7 @@ class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
     _fetchGridData();
   }
 
-  Future<void> _fetchGridData() async {
+  Future _fetchGridData() async {
     final sortQuery = sortType == 'latest'
         ? (widget.isTv ? 'first_air_date.desc' : 'primary_release_date.desc')
         : 'popularity.desc';
@@ -105,26 +105,21 @@ class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
         builder: (ctx) => TvEpisodeDialog(
           item: item,
           onSelected: (season, episode) {
-            _showDirectStreamDialog(item, season: season, episode: episode);
+            launchTvDirectNativePlayer(
+              item: item,
+              season: season,
+              episode: episode,
+              onPlaySaved: widget.onPlaySaved,
+            );
           },
         ),
       );
     } else {
-      _showDirectStreamDialog(item);
-    }
-  }
-
-  void _showDirectStreamDialog(dynamic item, {int? season, int? episode}) {
-    showDialog(
-      context: context,
-      builder: (ctx) => TvStreamDialog(
+      launchTvDirectNativePlayer(
         item: item,
-        season: season,
-        episode: episode,
-        providers: widget.providers,
         onPlaySaved: widget.onPlaySaved,
-      ),
-    );
+      );
+    }
   }
 
   @override

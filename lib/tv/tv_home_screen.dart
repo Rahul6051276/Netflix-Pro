@@ -13,36 +13,36 @@ class TvHomeScreen extends StatefulWidget {
   const TvHomeScreen({super.key});
 
   @override
-  State<TvHomeScreen> createState() => _TvHomeScreenState();
+  State createState() => _TvHomeScreenState();
 }
 
 class _TvHomeScreenState extends State<TvHomeScreen> {
   int _selectedNavIndex = 2; // Default Home
-  final List<FocusNode> _sidebarFocusNodes = List.generate(6, (_) => FocusNode());
+  final List _sidebarFocusNodes = List.generate(6, (_) => FocusNode());
   final FocusNode _firstContentCardFocus = FocusNode();
   final FocusNode _watchNowFocusNode = FocusNode();
 
-  List<dynamic> activeProviders = [];
-  List<dynamic> continueWatchingList = [];
+  List activeProviders = [];
+  List continueWatchingList = [];
   dynamic activeShowcaseItem;
 
   // Home Fast Lists
-  List<dynamic> homeNetflixList = [];
-  List<dynamic> homePrimeList = [];
-  List<dynamic> homeHotstarList = [];
-  List<dynamic> homeHindiSeriesList = [];
-  List<dynamic> homeEnglishSeriesList = [];
+  List homeNetflixList = [];
+  List homePrimeList = [];
+  List homeHotstarList = [];
+  List homeHindiSeriesList = [];
+  List homeEnglishSeriesList = [];
 
   // Dedicated Movies Section (200+ Items Each)
-  List<dynamic> allBollywoodMovies = [];
-  List<dynamic> allSouthMovies = [];
-  List<dynamic> allHollywoodMovies = [];
+  List allBollywoodMovies = [];
+  List allSouthMovies = [];
+  List allHollywoodMovies = [];
 
   // Dedicated Web Series Section (200+ Items Each)
-  List<dynamic> allHindiSeries = [];
-  List<dynamic> allNetflixSeries = [];
-  List<dynamic> allAmazonSeries = [];
-  List<dynamic> allSouthSeries = [];
+  List allHindiSeries = [];
+  List allNetflixSeries = [];
+  List allAmazonSeries = [];
+  List allSouthSeries = [];
 
   bool isLoading = true;
   String _catalogSortType = 'latest';
@@ -72,7 +72,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     _firstContentCardFocus.requestFocus();
   }
 
-  Future<void> _loadAllTvData() async {
+  Future _loadAllTvData() async {
     await Future.wait([
       _fetchProviders(),
       _loadContinueWatching(),
@@ -82,20 +82,20 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     _fetchDeepCatalogs();
   }
 
-  Future<void> _loadContinueWatching() async {
+  Future _loadContinueWatching() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       final raw = prefs.getString('continue_watching_tv');
       if (raw != null && raw.isNotEmpty && mounted) {
         setState(() {
-          continueWatchingList = jsonDecode(raw) as List<dynamic>;
+          continueWatchingList = jsonDecode(raw) as List;
         });
       }
     } catch (_) {}
   }
 
-  Future<void> _fetchProviders() async {
+  Future _fetchProviders() async {
     try {
       final sep = TvConfig.gistUrl.contains('?') ? '&' : '?';
       final url = '${TvConfig.gistUrl}${sep}t=${DateTime.now().millisecondsSinceEpoch}';
@@ -107,7 +107,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   // Fast Parallel Instant Render for Home Screen (5x Faster)
-  Future<void> _fetchHomeCatalogContent() async {
+  Future _fetchHomeCatalogContent() async {
     await Future.wait([
       // 1. Netflix Latest
       () async {
@@ -173,7 +173,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   // Deep Fetch 200+ Titles via Parallel Multi-page Pagination
-  Future<void> _fetchDeepCatalogs() async {
+  Future _fetchDeepCatalogs() async {
     final sortQuery = _catalogSortType == 'latest'
         ? 'primary_release_date.desc'
         : 'popularity.desc';
@@ -240,10 +240,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     ]);
   }
 
-  Future<void> _fetchPages({
+  Future _fetchPages({
     required String baseUrl,
     required bool isTv,
-    required Function(List<dynamic>) onDone,
+    required Function(List) onDone,
   }) async {
     final pageFutures = List.generate(8, (index) async {
       final p = index + 1;
@@ -254,7 +254,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           return _parseTvList(data, isTv: isTv);
         }
       } catch (_) {}
-      return <dynamic>[];
+      return [];
     });
 
     final results = await Future.wait(pageFutures);
@@ -272,7 +272,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     });
   }
 
-  List<dynamic> _parseTvList(dynamic list, {bool isTv = false}) {
+  List _parseTvList(dynamic list, {bool isTv = false}) {
     var res = [];
     final currentYear = DateTime.now().year.toString();
     for (var m in (list ?? [])) {
@@ -305,26 +305,21 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         builder: (ctx) => TvEpisodeDialog(
           item: item,
           onSelected: (season, episode) {
-            _showTvStreamDialog(item, season: season, episode: episode);
+            launchTvDirectNativePlayer(
+              item: item,
+              season: season,
+              episode: episode,
+              onPlaySaved: () => _loadContinueWatching(),
+            );
           },
         ),
       );
     } else {
-      _showTvStreamDialog(item);
-    }
-  }
-
-  void _showTvStreamDialog(dynamic item, {int? season, int? episode}) {
-    showDialog(
-      context: context,
-      builder: (ctx) => TvStreamDialog(
+      launchTvDirectNativePlayer(
         item: item,
-        season: season,
-        episode: episode,
-        providers: activeProviders,
         onPlaySaved: () => _loadContinueWatching(),
-      ),
-    );
+      );
+    }
   }
 
   // ============================================================================
@@ -541,7 +536,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   // ============================================================================
   Widget _buildNetflixRow(
     String title,
-    List<dynamic> items,
+    List items,
     String baseUrl, {
     bool isFirstRow = false,
     bool isTv = false,
@@ -902,7 +897,7 @@ class NetflixSidebarIcon extends StatefulWidget {
   });
 
   @override
-  State<NetflixSidebarIcon> createState() => _NetflixSidebarIconState();
+  State createState() => _NetflixSidebarIconState();
 }
 
 class _NetflixSidebarIconState extends State<NetflixSidebarIcon> {
@@ -978,7 +973,7 @@ class NetflixCard extends StatefulWidget {
   });
 
   @override
-  State<NetflixCard> createState() => _NetflixCardState();
+  State createState() => _NetflixCardState();
 }
 
 class _NetflixCardState extends State<NetflixCard> {
