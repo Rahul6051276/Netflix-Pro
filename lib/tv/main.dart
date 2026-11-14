@@ -2,23 +2,36 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'tmdb_config.dart';
 import 'tv_home_screen.dart';
 
-bool _hasPlayedTvIntro = false;
-
-void main() {
+void main() async {
   HttpOverrides.global = TVHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
-  runApp(const NetflixTvApp());
+
+  bool skipIntro = false;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final lastIntroMs = prefs.getInt('tv_last_intro_ms') ?? 0;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    // Agar pichle 4 ghante (14400000 ms) me intro chal chuka hai, to dubara nahi chalega
+    if (nowMs - lastIntroMs < 14400000) {
+      skipIntro = true;
+    }
+  } catch (_) {}
+
+  runApp(NetflixTvApp(skipIntro: skipIntro));
 }
 
 class NetflixTvApp extends StatelessWidget {
-  const NetflixTvApp({super.key});
+  final bool skipIntro;
+
+  const NetflixTvApp({super.key, required this.skipIntro});
 
   @override
   Widget build(BuildContext context) {
@@ -31,15 +44,13 @@ class NetflixTvApp extends StatelessWidget {
         primaryColor: const Color(0xFFE50914),
         fontFamily: 'sans-serif',
       ),
-      home: _hasPlayedTvIntro
-          ? const TvHomeScreen()
-          : const NetflixNIntroScreen(),
+      home: skipIntro ? const TvHomeScreen() : const NetflixNIntroScreen(),
     );
   }
 }
 
 // ============================================================================
-// REAL NETFLIX 'N' RIBBON DRAW + ZOOM-THROUGH ANIMATION (PLAYS ONCE PER LAUNCH)
+// REAL NETFLIX 'N' RIBBON DRAW + ZOOM-THROUGH ANIMATION (STORAGE LOCKED)
 // ============================================================================
 class NetflixNIntroScreen extends StatefulWidget {
   const NetflixNIntroScreen({super.key});
@@ -60,7 +71,7 @@ class _NetflixNIntroScreenState extends State<NetflixNIntroScreen>
   @override
   void initState() {
     super.initState();
-    _hasPlayedTvIntro = true;
+    _saveIntroTimestamp();
 
     _controller = AnimationController(
       vsync: this,
@@ -108,7 +119,7 @@ class _NetflixNIntroScreenState extends State<NetflixNIntroScreen>
       if (status == AnimationStatus.completed && mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 500),
+            transitionDuration: const Duration(milliseconds: 450),
             pageBuilder: (_, __, ___) => const TvHomeScreen(),
             transitionsBuilder: (_, animation, __, child) {
               return FadeTransition(opacity: animation, child: child);
@@ -117,6 +128,14 @@ class _NetflixNIntroScreenState extends State<NetflixNIntroScreen>
         );
       }
     });
+  }
+
+  Future _saveIntroTimestamp() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+          'tv_last_intro_ms', DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {}
   }
 
   @override
