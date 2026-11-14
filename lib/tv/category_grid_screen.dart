@@ -7,7 +7,7 @@ import 'tmdb_config.dart';
 import 'stream_resolver_sheet.dart';
 
 // ============================================================================
-// FULL SCREEN VERTICAL GRID SCREEN (DIRECT NATIVE PLAYER LAUNCH)
+// FULL SCREEN VERTICAL GRID SCREEN (OPENS MEDIA DETAIL SCREEN ON CLICK)
 // ============================================================================
 class TVCategoryGridScreen extends StatefulWidget {
   final String title;
@@ -99,27 +99,14 @@ class _TVCategoryGridScreenState extends State<TVCategoryGridScreen> {
   }
 
   void _handleItemClick(dynamic item) {
-    if (item['isTv'] == true) {
-      showDialog(
-        context: context,
-        builder: (ctx) => TvEpisodeDialog(
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TvMediaDetailScreen(
           item: item,
-          onSelected: (season, episode) {
-            launchTvDirectNativePlayer(
-              item: item,
-              season: season,
-              episode: episode,
-              onPlaySaved: widget.onPlaySaved,
-            );
-          },
+          onPlaySaved: widget.onPlaySaved,
         ),
-      );
-    } else {
-      launchTvDirectNativePlayer(
-        item: item,
-        onPlaySaved: widget.onPlaySaved,
-      );
-    }
+      ),
+    );
   }
 
   @override

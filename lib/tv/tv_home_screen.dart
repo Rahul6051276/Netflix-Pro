@@ -299,27 +299,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   void _onTvItemSelect(dynamic item) {
-    if (item['isTv'] == true) {
-      showDialog(
-        context: context,
-        builder: (ctx) => TvEpisodeDialog(
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TvMediaDetailScreen(
           item: item,
-          onSelected: (season, episode) {
-            launchTvDirectNativePlayer(
-              item: item,
-              season: season,
-              episode: episode,
-              onPlaySaved: () => _loadContinueWatching(),
-            );
-          },
+          onPlaySaved: () => _loadContinueWatching(),
         ),
-      );
-    } else {
-      launchTvDirectNativePlayer(
-        item: item,
-        onPlaySaved: () => _loadContinueWatching(),
-      );
-    }
+      ),
+    );
   }
 
   // ============================================================================

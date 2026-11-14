@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'tmdb_config.dart';
 import 'tv_home_screen.dart';
 
+bool _hasPlayedTvIntro = false;
+
 void main() {
   HttpOverrides.global = TVHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,73 +31,71 @@ class NetflixTvApp extends StatelessWidget {
         primaryColor: const Color(0xFFE50914),
         fontFamily: 'sans-serif',
       ),
-      home: const NetflixNIntroScreen(),
+      home: _hasPlayedTvIntro
+          ? const TvHomeScreen()
+          : const NetflixNIntroScreen(),
     );
   }
 }
 
 // ============================================================================
-// REAL NETFLIX 'N' RIBBON DRAW + ZOOM-THROUGH ANIMATION
+// REAL NETFLIX 'N' RIBBON DRAW + ZOOM-THROUGH ANIMATION (PLAYS ONCE PER LAUNCH)
 // ============================================================================
 class NetflixNIntroScreen extends StatefulWidget {
   const NetflixNIntroScreen({super.key});
 
   @override
-  State<NetflixNIntroScreen> createState() => _NetflixNIntroScreenState();
+  State createState() => _NetflixNIntroScreenState();
 }
 
 class _NetflixNIntroScreenState extends State<NetflixNIntroScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _leftBarProgress;
-  late Animation<double> _diagonalBarProgress;
-  late Animation<double> _rightBarProgress;
-  late Animation<double> _zoomScale;
-  late Animation<double> _fadeOut;
+  late Animation _leftBarProgress;
+  late Animation _diagonalBarProgress;
+  late Animation _rightBarProgress;
+  late Animation _zoomScale;
+  late Animation _fadeOut;
 
   @override
   void initState() {
     super.initState();
+    _hasPlayedTvIntro = true;
 
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2800),
     );
 
-    // 1. Left Vertical Ribbon (Bottom to Top)
-    _leftBarProgress = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _leftBarProgress = Tween(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.0, 0.22, curve: Curves.easeOutCubic),
       ),
     );
 
-    // 2. Center Diagonal Ribbon (Top-Left to Bottom-Right)
-    _diagonalBarProgress = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _diagonalBarProgress = Tween(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.18, 0.42, curve: Curves.easeInOutCubic),
       ),
     );
 
-    // 3. Right Vertical Ribbon (Bottom to Top)
-    _rightBarProgress = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _rightBarProgress = Tween(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.38, 0.60, curve: Curves.easeOutCubic),
       ),
     );
 
-    // 4. Iconic Netflix Zoom-Through Effect (Camera enters the 'N')
-    _zoomScale = Tween<double>(begin: 1.0, end: 22.0).animate(
+    _zoomScale = Tween(begin: 1.0, end: 22.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.70, 1.0, curve: Curves.easeInExpo),
       ),
     );
 
-    // 5. Smooth Fade Out at the end of Zoom
-    _fadeOut = Tween<double>(begin: 1.0, end: 0.0).animate(
+    _fadeOut = Tween(begin: 1.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.82, 1.0, curve: Curves.easeOut),
@@ -140,7 +140,6 @@ class _NetflixNIntroScreenState extends State<NetflixNIntroScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Animated 'N' Logo Canvas
                     Container(
                       width: 150,
                       height: 220,
@@ -164,9 +163,10 @@ class _NetflixNIntroScreenState extends State<NetflixNIntroScreen>
                       ),
                     ),
                     const SizedBox(height: 24),
-                    // Subtle Subtitle before zoom starts
                     Opacity(
-                      opacity: (_rightBarProgress.value * (1.0 - (_zoomScale.value - 1.0).clamp(0.0, 1.0))).clamp(0.0, 1.0),
+                      opacity: (_rightBarProgress.value *
+                              (1.0 - (_zoomScale.value - 1.0).clamp(0.0, 1.0)))
+                          .clamp(0.0, 1.0),
                       child: const Text(
                         'N E T F L I X   P R O',
                         style: TextStyle(
@@ -203,32 +203,22 @@ class _NetflixNPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final double w = size.width;
     final double h = size.height;
-    final double barW = w * 0.28; // Width of each stem of the 'N'
+    final double barW = w * 0.28;
 
-    // Darker Red for Left & Right Vertical Stems (Authentic 3D Ribbon look)
     final Paint sideBarPaint = Paint()
       ..color = const Color(0xFFB1060F)
       ..style = PaintingStyle.fill;
 
-    // 1. Draw Left Stem (grows from bottom to top)
     if (leftProgress > 0) {
       final double currentTop = h * (1.0 - leftProgress);
-      canvas.drawRect(
-        Rect.fromLTRB(0, currentTop, barW, h),
-        sideBarPaint,
-      );
+      canvas.drawRect(Rect.fromLTRB(0, currentTop, barW, h), sideBarPaint);
     }
 
-    // 2. Draw Right Stem (grows from bottom to top)
     if (rightProgress > 0) {
       final double currentTop = h * (1.0 - rightProgress);
-      canvas.drawRect(
-        Rect.fromLTRB(w - barW, currentTop, w, h),
-        sideBarPaint,
-      );
+      canvas.drawRect(Rect.fromLTRB(w - barW, currentTop, w, h), sideBarPaint);
     }
 
-    // 3. Draw Center Diagonal Ribbon with Drop Shadow (Top-Left to Bottom-Right)
     if (diagProgress > 0) {
       final double endXTop = barW + (w - barW) * diagProgress;
       final double endXBottom = (w - barW) * diagProgress;
@@ -241,10 +231,8 @@ class _NetflixNPainter extends CustomPainter {
         ..lineTo(endXBottom, endY)
         ..close();
 
-      // Shadow under diagonal fold
       canvas.drawShadow(diagPath, Colors.black, 14.0, true);
 
-      // Bright Netflix Red Gradient for Center Ribbon
       final Paint diagPaint = Paint()
         ..shader = const LinearGradient(
           begin: Alignment.topLeft,
