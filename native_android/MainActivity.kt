@@ -20,11 +20,10 @@ class MainActivity : FlutterActivity() {
                     val userAgent = call.argument<String>("userAgent").orEmpty()
                     val sourcesJson = call.argument<String>("sourcesJson").orEmpty()
                     val initialIndex = call.argument<Int>("initialIndex") ?: 0
-
-                    if (url.isEmpty() && sourcesJson.isEmpty()) {
-                        result.error("INVALID_URL", "Empty stream URL", null)
-                        return@setMethodCallHandler
-                    }
+                    val tmdbId = call.argument<String>("tmdbId").orEmpty()
+                    val isTv = call.argument<Boolean>("isTv") ?: false
+                    val season = call.argument<Int>("season") ?: 1
+                    val episode = call.argument<Int>("episode") ?: 1
 
                     pendingResult?.success(false)
                     pendingResult = result
@@ -35,6 +34,10 @@ class MainActivity : FlutterActivity() {
                         putExtra("userAgent", userAgent)
                         putExtra("sourcesJson", sourcesJson)
                         putExtra("initialIndex", initialIndex)
+                        putExtra("tmdbId", tmdbId)
+                        putExtra("isTv", isTv)
+                        putExtra("season", season)
+                        putExtra("episode", episode)
                     }
                     startActivityForResult(intent, REQ_PLAYER)
                 } else {
