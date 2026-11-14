@@ -11,7 +11,7 @@ import 'internal_player.dart';
 
 class MediaDetailSheet extends StatelessWidget {
   final dynamic item;
-  final List<dynamic> providers;
+  final List providers;
   final VoidCallback onPlaySaved;
 
   const MediaDetailSheet({
@@ -203,7 +203,7 @@ class _DirectAutoStreamLauncherScreen extends StatefulWidget {
   final dynamic item;
   final int? season;
   final int? episode;
-  final List<dynamic> providers;
+  final List providers;
   final VoidCallback onPlaySaved;
 
   const _DirectAutoStreamLauncherScreen({
@@ -215,8 +215,7 @@ class _DirectAutoStreamLauncherScreen extends StatefulWidget {
   });
 
   @override
-  State<_DirectAutoStreamLauncherScreen> createState() =>
-      _DirectAutoStreamLauncherScreenState();
+  State createState() => _DirectAutoStreamLauncherScreenState();
 }
 
 class _DirectAutoStreamLauncherScreenState
@@ -243,7 +242,7 @@ class _DirectAutoStreamLauncherScreenState
   String _clean(String s) =>
       s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '').trim();
 
-  Future<List<dynamic>> _getProviders() async {
+  Future _getProviders() async {
     if (widget.providers.isNotEmpty) return widget.providers;
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString('cached_active_providers');
@@ -272,14 +271,14 @@ class _DirectAutoStreamLauncherScreenState
     return [];
   }
 
-  Future<void> _saveContinueWatching() async {
+  Future _saveContinueWatching() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
       final raw = prefs.getString('continue_watching_mobile');
       var curr = [];
       if (raw != null && raw.isNotEmpty) {
-        curr = jsonDecode(raw) as List<dynamic>;
+        curr = jsonDecode(raw) as List;
       }
       curr.removeWhere(
           (c) => c['tmdb_id'].toString() == widget.item['tmdb_id'].toString());
@@ -297,8 +296,8 @@ class _DirectAutoStreamLauncherScreenState
     } catch (_) {}
   }
 
-  Future<void> _resolveAllAndLaunch() async {
-    final List> resolved = [];
+  Future _resolveAllAndLaunch() async {
+    var resolved = [];
     final activeProvs = await _getProviders();
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
