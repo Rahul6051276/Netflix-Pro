@@ -1,12 +1,11 @@
 name: Build and Release Netflix Pro APK
 
 on:
+  push:
+    branches:
+      - main
+      - master
   workflow_dispatch:
-    inputs:
-      version_tag:
-        description: 'Release Tag (e.g. v1.0.31)'
-        required: true
-        default: 'v1.0.31'
 
 permissions:
   contents: write
@@ -50,7 +49,7 @@ jobs:
           cp native_android/CinemaPlayerActivity.kt netflix_build_temp/android/app/src/main/kotlin/com/netflixpro/netflix_pro/CinemaPlayerActivity.kt
           cp native_android/activity_cinema_player.xml netflix_build_temp/android/app/src/main/res/layout/activity_cinema_player.xml
 
-          # Patch AndroidManifest.xml & Gradle safely using Python (no sed / or | conflicts)
+          # Patch AndroidManifest.xml & Gradle safely using Python
           python3 - << 'PYEOF'
           import pathlib, re
 
@@ -167,10 +166,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.version_tag }}
-          name: "Netflix Pro ${{ github.event.inputs.version_tag }}"
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Netflix Pro v1.0.${{ github.run_number }}"
           body: |
-            ## Netflix Pro ${{ github.event.inputs.version_tag }}
+            ## Netflix Pro v1.0.${{ github.run_number }}
             * **Netflix-Pro-Mobile.apk**: Touch UI + Kotlin Media3 HDR Player
             * **Netflix-Pro-TV.apk**: Android TV 16:9 UI + Kotlin Media3 HDR Player
           files: |
