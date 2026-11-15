@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (SYNCED WITH CINEMA HQ ENGINE)
+// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (BOLLYWOOD + SOUTH + ENGLISH LATEST)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -97,7 +97,7 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 }
 
 // ============================================================================
-// 1. HOME SCREEN (AUTO-SLIDING BANNER & CENTER NETFLIX PRO)
+// 1. HOME SCREEN (BOLLYWOOD + SOUTH + ENGLISH LATEST MIXED GENRES)
 // ============================================================================
 class MobileHomeScreen extends StatefulWidget {
   final List<dynamic> providers;
@@ -109,11 +109,15 @@ class MobileHomeScreen extends StatefulWidget {
 
 class _MobileHomeScreenState extends State<MobileHomeScreen> {
   List<dynamic> continueWatchingList = [];
+  List<dynamic> homeBannerList = [];
+  List<dynamic> homeActionList = [];
+  List<dynamic> homeThrillerSuspenseList = [];
+  List<dynamic> homeCrimeMysteryList = [];
+  List<dynamic> homeBollywoodLatestList = [];
+  List<dynamic> homeSouthLatestList = [];
+  List<dynamic> homeEnglishLatestList = [];
   List<dynamic> homeNetflixList = [];
   List<dynamic> homePrimeList = [];
-  List<dynamic> homeHotstarList = [];
-  List<dynamic> homeSouthHindiList = [];
-  List<dynamic> homeHollywoodHindiList = [];
   List<dynamic> homeHindiSeriesList = [];
 
   final PageController _bannerController = PageController();
@@ -154,8 +158,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     await _fetchHomeCatalogContent();
     if (mounted) {
       setState(() => isLoading = false);
-      if (homeNetflixList.isNotEmpty) {
-        _startAutoSlide(homeNetflixList.take(5).length);
+      if (homeBannerList.isNotEmpty) {
+        _startAutoSlide(homeBannerList.take(6).length);
       }
     }
   }
@@ -173,56 +177,72 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     } catch (_) {}
   }
 
+  Future<List<dynamic>> _fetchSingleCategory(String url, {bool isTv = false}) async {
+    try {
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        final parsed = _parseList(jsonDecode(res.body)['results'], isTv: isTv);
+        if (isTv) {
+          return parsed.where((item) => !isSoapShow(item['title'] ?? '')).toList();
+        }
+        return parsed;
+      }
+    } catch (_) {}
+    return [];
+  }
+
   Future<void> _fetchHomeCatalogContent() async {
-    try {
-      final netflixRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 6));
-      if (netflixRes.statusCode == 200) {
-        homeNetflixList = _parseList(jsonDecode(netflixRes.body)['results']);
-      }
-    } catch (_) {}
+    final now = DateTime.now();
+    final todayIso =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    try {
-      final primeRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc')).timeout(const Duration(seconds: 6));
-      if (primeRes.statusCode == 200) {
-        homePrimeList = _parseList(jsonDecode(primeRes.body)['results']);
-      }
-    } catch (_) {}
+    // Mixed Languages: Bollywood (hi) + South (te, ta, ml, kn) + English (en)
+    const mixedLangs = 'hi|en|te|ta|ml|kn';
 
-    try {
-      final hotstarRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 6));
-      if (hotstarRes.statusCode == 200) {
-        homeHotstarList = _parseList(jsonDecode(hotstarRes.body)['results']);
-      }
-    } catch (_) {}
+    final results = await Future.wait([
+      // 0: Top Mixed Latest Trending (Bollywood + South + English)
+      _fetchSingleCategory(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&sort_by=popularity.desc&vote_count.gte=25'),
+      // 1: Action & Adventure (Bollywood + South + English Latest)
+      _fetchSingleCategory(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=20'),
+      // 2: Thriller & Suspense (Bollywood + South + English Latest)
+      _fetchSingleCategory(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=15'),
+      // 3: Crime & Mystery Suspense (Bollywood + South + English Latest)
+      _fetchSingleCategory(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=9648,80&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=15'),
+      // 4: Bollywood Latest Movies
+      _fetchSingleCategory(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=8'),
+      // 5: South Latest Movies (Hindi Dubbed)
+      _fetchSingleCategory(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=10'),
+      // 6: English / Hollywood Latest Movies
+      _fetchSingleCategory(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=en&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=50'),
+      // 7: Netflix Latest Blockbusters
+      _fetchSingleCategory(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc'),
+      // 8: Amazon Prime Video Hits
+      _fetchSingleCategory(
+          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc'),
+      // 9: Trending Hindi Web Series
+      _fetchSingleCategory(
+          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=3',
+          isTv: true),
+    ]);
 
-    try {
-      final southRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&sort_by=popularity.desc')).timeout(const Duration(seconds: 6));
-      if (southRes.statusCode == 200) {
-        homeSouthHindiList = _parseList(jsonDecode(southRes.body)['results']);
-      }
-    } catch (_) {}
-
-    try {
-      final hollywoodRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}&page=1')).timeout(const Duration(seconds: 6));
-      if (hollywoodRes.statusCode == 200) {
-        homeHollywoodHindiList = _parseList(jsonDecode(hollywoodRes.body)['results']);
-      }
-    } catch (_) {}
-
-    try {
-      final hindiTvRes = await http.get(Uri.parse(
-          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=3')).timeout(const Duration(seconds: 6));
-      if (hindiTvRes.statusCode == 200) {
-        homeHindiSeriesList = _parseList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
-            .where((item) => !isSoapShow(item['title'] ?? ''))
-            .toList();
-      }
-    } catch (_) {}
+    homeBannerList = results[0];
+    homeActionList = results[1];
+    homeThrillerSuspenseList = results[2];
+    homeCrimeMysteryList = results[3];
+    homeBollywoodLatestList = results[4];
+    homeSouthLatestList = results[5];
+    homeEnglishLatestList = results[6];
+    homeNetflixList = results[7];
+    homePrimeList = results[8];
+    homeHindiSeriesList = results[9];
   }
 
   List<dynamic> _parseList(dynamic list, {bool isTv = false}) {
@@ -292,7 +312,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   Widget _buildSlidingBanner(List<dynamic> items) {
     if (items.isEmpty) return const SizedBox.shrink();
-    final bannerItems = items.take(5).toList();
+    final bannerItems = items.take(6).toList();
 
     return SizedBox(
       height: 440,
@@ -344,7 +364,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       ),
                       const SizedBox(height: 4),
                       const Text(
-                        'Trending • Top Rated • HD',
+                        'Bollywood • South • Hollywood Latest',
                         style: TextStyle(color: Colors.white70, fontSize: 11),
                       ),
                     ],
@@ -456,16 +476,17 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
                 ),
               ),
-              InkWell(
-                onTap: openSeeAll,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Text(
-                    'See All →',
-                    style: TextStyle(color: Color(0xFFE50914), fontSize: 12, fontWeight: FontWeight.bold),
+              if (baseUrl.isNotEmpty)
+                InkWell(
+                  onTap: openSeeAll,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    child: Text(
+                      'See All →',
+                      style: TextStyle(color: Color(0xFFE50914), fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -474,9 +495,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            itemCount: items.length + 1,
+            itemCount: items.length + (baseUrl.isNotEmpty ? 1 : 0),
             itemBuilder: (ctx, idx) {
-              if (idx == items.length) {
+              if (baseUrl.isNotEmpty && idx == items.length) {
                 return InkWell(
                   onTap: openSeeAll,
                   borderRadius: BorderRadius.circular(6),
@@ -550,6 +571,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final todayIso =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    const mixedLangs = 'hi|en|te|ta|ml|kn';
+
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       body: isLoading
@@ -566,28 +592,48 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildSlidingBanner(homeNetflixList),
+                        _buildSlidingBanner(homeBannerList),
                         const SizedBox(height: 6),
-                        _buildCircularPreviewsRow(homeNetflixList),
+                        _buildCircularPreviewsRow(homeBannerList),
                         const SizedBox(height: 10),
 
                         if (continueWatchingList.isNotEmpty)
                           _buildMobileRow('Continue Watching', continueWatchingList, ''),
 
                         _buildMobileRow(
+                          'Action & Adventure (Bollywood • South • English)',
+                          homeActionList,
+                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=20',
+                        ),
+                        _buildMobileRow(
+                          'Thriller & Suspense (Bollywood • South • English)',
+                          homeThrillerSuspenseList,
+                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
+                        ),
+                        _buildMobileRow(
+                          'Crime & Mystery Suspense (Latest Mix)',
+                          homeCrimeMysteryList,
+                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=9648,80&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
+                        ),
+                        _buildMobileRow(
+                          'Bollywood Latest Movies',
+                          homeBollywoodLatestList,
+                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&primary_release_date.lte=$todayIso&vote_count.gte=8',
+                        ),
+                        _buildMobileRow(
+                          'South Latest Movies (Hindi Dubbed)',
+                          homeSouthLatestList,
+                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&primary_release_date.lte=$todayIso&vote_count.gte=10',
+                        ),
+                        _buildMobileRow(
+                          'English / Hollywood Latest Movies',
+                          homeEnglishLatestList,
+                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=en&primary_release_date.lte=$todayIso&vote_count.gte=50',
+                        ),
+                        _buildMobileRow(
                           'Latest Netflix Blockbusters',
                           homeNetflixList,
                           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
-                        ),
-                        _buildMobileRow(
-                          'South Action Hits (Hindi Dubbed)',
-                          homeSouthHindiList,
-                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn',
-                        ),
-                        _buildMobileRow(
-                          'Hollywood Blockbusters (Hindi Dubbed)',
-                          homeHollywoodHindiList,
-                          '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}',
                         ),
                         _buildMobileRow(
                           'Amazon Prime Video Hits',
@@ -595,9 +641,10 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN',
                         ),
                         _buildMobileRow(
-                          'Disney+ Hotstar & Cinema Specials',
-                          homeHotstarList,
-                          '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN',
+                          'Trending Hindi Web Series',
+                          homeHindiSeriesList,
+                          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=3',
+                          isTv: true,
                         ),
                       ],
                     ),
@@ -943,15 +990,140 @@ class MobileMoreScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final todayIso =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    const mixedLangs = 'hi|en|te|ta|ml|kn';
+
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1F1F1F),
-        title: const Text('OTT Web Series Hub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text('Latest Genres & OTT Hub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          ListTile(
+            leading: const Icon(Icons.local_fire_department_rounded, color: Color(0xFFE50914)),
+            title: const Text('Action & Adventure (Bolly + South + Eng)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Action & Adventure Latest',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=20',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.psychology_rounded, color: Color(0xFFE50914)),
+            title: const Text('Thriller & Suspense (Bolly + South + Eng)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Thriller & Suspense Latest',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.search_rounded, color: Color(0xFFE50914)),
+            title: const Text('Crime & Mystery Suspense (Latest Mix)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Crime & Mystery Suspense',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=9648,80&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.movie_filter_rounded, color: Color(0xFFE50914)),
+            title: const Text('Bollywood Latest Movies', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Bollywood Latest Movies',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&primary_release_date.lte=$todayIso&vote_count.gte=8',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.local_movies_rounded, color: Color(0xFFE50914)),
+            title: const Text('South Latest Movies (Hindi Dubbed)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'South Latest Movies',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&primary_release_date.lte=$todayIso&vote_count.gte=10',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white24),
+          ListTile(
+            leading: const Icon(Icons.theaters_rounded, color: Color(0xFFE50914)),
+            title: const Text('English / Hollywood Latest Movies', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'English / Hollywood Latest',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=en&primary_release_date.lte=$todayIso&vote_count.gte=50',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(color: Colors.white24),
           ListTile(
             leading: const Icon(Icons.video_collection, color: Color(0xFFE50914)),
             title: const Text('Netflix Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -983,66 +1155,6 @@ class MobileMoreScreen extends StatelessWidget {
                   builder: (_) => MobileCategoryGridScreen(
                     title: 'Amazon Web Series',
                     baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=1024&without_genres=10766',
-                    isTv: true,
-                    providers: providers,
-                    onPlaySaved: () {},
-                  ),
-                ),
-              );
-            },
-          ),
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.live_tv, color: Color(0xFFE50914)),
-            title: const Text('Disney+ Hotstar Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCategoryGridScreen(
-                    title: 'Disney+ Hotstar Web Series',
-                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=2739&without_genres=10766',
-                    isTv: true,
-                    providers: providers,
-                    onPlaySaved: () {},
-                  ),
-                ),
-              );
-            },
-          ),
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.tv_rounded, color: Color(0xFFE50914)),
-            title: const Text('Zee5 Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCategoryGridScreen(
-                    title: 'Zee5 Web Series',
-                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=2',
-                    isTv: true,
-                    providers: providers,
-                    onPlaySaved: () {},
-                  ),
-                ),
-              );
-            },
-          ),
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.monitor_rounded, color: Color(0xFFE50914)),
-            title: const Text('SonyLIV Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCategoryGridScreen(
-                    title: 'SonyLIV Web Series',
-                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=1',
                     isTv: true,
                     providers: providers,
                     onPlaySaved: () {},
