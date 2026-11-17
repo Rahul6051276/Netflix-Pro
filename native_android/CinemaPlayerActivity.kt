@@ -303,6 +303,7 @@ class CinemaPlayerActivity : Activity() {
                     if (sUrl.isNotEmpty()) {
                         val srv = obj.optString("server", "Server")
                         val ttl = obj.optString("title", currentMovieTitle)
+                        if (isDisallowedRegionalStream("$srv $ttl")) continue
                         val hin = obj.optBoolean("isHindi", isExplicitHindi("$srv $ttl"))
                         val multi = obj.optBoolean("isMultiAudio", isIndianMultiAudioServer("$srv $ttl"))
                         streamSources.add(StreamSourceItem(srv, ttl, sUrl, hin, multi, isXtreamIptv = true))
@@ -315,7 +316,6 @@ class CinemaPlayerActivity : Activity() {
 
     private fun setConnectingState(connecting: Boolean) {
         connectingCard.visibility = if (connecting) View.VISIBLE else View.GONE
-        // On TV, NEVER show center buttons over the screen
         centerBar.visibility = if (connecting || isTvUiMode) View.GONE else View.VISIBLE
     }
 
@@ -434,6 +434,26 @@ class CinemaPlayerActivity : Activity() {
 
     private fun normalizeXtreamHost(rawHost: String): String {
         return rawHost.trim().trimEnd('/')
+    }
+
+    // Zero-RAM helper: Remembers working host variant (:80 vs clean) so subsequent clicks connect faster
+    private fun getPreferredUrlsForXtream(apiUrl: String): List<String> {
+        val altUrl = if (apiUrl.contains(":80/")) {
+            apiUrl.replace(":80/", "/")
+        } else {
+            apiUrl.replaceFirst("/player_api.php", ":80/player_api.php")
+        }
+        val hostKey = "fast_host_" + apiUrl.substringBefore("/player_api.php").hashCode()
+        val preferAlt = prefs.getBoolean(hostKey, false)
+        return if (preferAlt) listOf(altUrl, apiUrl).distinct() else listOf(apiUrl, altUrl).distinct()
+    }
+
+    private fun rememberWorkingHost(originalApiUrl: String, workingUrl: String) {
+        try {
+            val hostKey = "fast_host_" + originalApiUrl.substringBefore("/player_api.php").hashCode()
+            val usedAlt = (workingUrl != originalApiUrl)
+            prefs.edit().putBoolean(hostKey, usedAlt).apply()
+        } catch (_: Throwable) {}
     }
 
     private fun resolveStreamsInsidePlayer(
@@ -676,6 +696,8 @@ class CinemaPlayerActivity : Activity() {
                                         if (low.contains("donation") || low.contains("discord") || low.contains("telegram")) continue
 
                                         val displayTitle = titlePart.ifBlank { namePart }.ifBlank { "$movieTitle HD" }
+                                        if (isDisallowedRegionalStream("$provName $displayTitle")) continue
+
                                         val explicitHindi = isExplicitHindi("$provName $combined") || isTitleOrigHindi
                                         val multiHindi = isIndianMultiAudioServer("$provName $combined")
 
@@ -725,6 +747,8 @@ class CinemaPlayerActivity : Activity() {
                             if (sUrl.isNotEmpty()) {
                                 val sTitle = sObj.optString("title", "$movieTitle HD")
                                 val pName = sObj.optString("provider", "Cloud HD")
+                                if (isDisallowedRegionalStream("$pName $sTitle")) continue
+
                                 val explicitHindi = isExplicitHindi("$pName $sTitle") || isTitleOrigHindi
                                 val multiHindi = isIndianMultiAudioServer("$pName $sTitle")
                                 found.add(
@@ -759,7 +783,7 @@ class CinemaPlayerActivity : Activity() {
                 if (!isSafeUi()) return@post
                 if (streamSources.isEmpty()) {
                     setConnectingState(false)
-                    showError("No stream sources found for this title.")
+                    showError("No Hindi or English stream sources found for this title.")
                 }
             }
         }
@@ -801,12 +825,7 @@ class CinemaPlayerActivity : Activity() {
         isTitleOrigHindi: Boolean
     ): MutableList<XtreamCandidate> {
         val matches = mutableListOf<XtreamCandidate>()
-        val altUrl = if (apiUrl.contains(":80/")) {
-            apiUrl.replace(":80/", "/")
-        } else {
-            apiUrl.replaceFirst("/player_api.php", ":80/player_api.php")
-        }
-        val urlsToTry = listOf(apiUrl, altUrl).distinct()
+        val urlsToTry = getPreferredUrlsForXtream(apiUrl)
         val userAgents = listOf(
             "IPTVSmartersPro",
             "Dalvik/2.1.0 (Linux; U; Android 12; Build/SP1A.210812.016)",
@@ -887,9 +906,13 @@ class CinemaPlayerActivity : Activity() {
                                 )
 
                                 if (tmdbMatch || titleMatch) {
-                                    val otherLangExplicit = hasOtherExplicitLanguage("$itemName $resolvedCatName")
-                                    val detectedHindi = isExplicitHindi("$itemName $resolvedCatName") ||
-                                        (isTitleOrigHindi && !otherLangExplicit)
+                                    val combinedMeta = "$itemName $resolvedCatName"
+                                    // STRICT FILTER: Drop pure Tamil, Telugu, Malayalam, Kannada, French, Arabic etc. unless Hindi/Multi/Dual
+                                    if (isDisallowedRegionalStream(combinedMeta)) {
+                                        continue
+                                    }
+
+                                    val detectedHindi = isExplicitHindi(combinedMeta) || isTitleOrigHindi
                                     matches.add(
                                         XtreamCandidate(
                                             id = itemId,
@@ -907,6 +930,7 @@ class CinemaPlayerActivity : Activity() {
                             }
                         }
                     }
+                    rememberWorkingHost(apiUrl, targetUrl)
                     break@outer
                 } catch (_: Throwable) {
                 } finally {
@@ -917,18 +941,41 @@ class CinemaPlayerActivity : Activity() {
         return matches
     }
 
-    private fun hasOtherExplicitLanguage(text: String): Boolean {
+    // =========================================================================
+    // STRICT LANGUAGE FILTER: ONLY ALLOW HINDI, HINDI DUBBED, MULTI/DUAL & ENGLISH
+    // =========================================================================
+    private fun isDisallowedRegionalStream(text: String): Boolean {
         val low = text.lowercase(Locale.ROOT)
-        return low.contains("tamil") || low.contains("telugu") ||
-            low.contains("malayalam") || low.contains("kannada") ||
-            low.contains("english") || low.startsWith("ar ") || low.startsWith("ar-")
+        // Always keep if explicitly Hindi, Dual Audio, or Multi Audio
+        if (isExplicitHindi(low)) return false
+
+        val blockedKeywords = listOf(
+            "(tamil)", "[tamil]", " tamil", "tamil ", "- tamil", "| tamil",
+            "(telugu)", "[telugu]", " telugu", "telugu ", "- telugu", "| telugu",
+            "(malayalam)", "[malayalam]", " malayalam", "malayalam ", "- malayalam", "| malayalam",
+            "(kannada)", "[kannada]", " kannada", "kannada ", "- kannada", "| kannada",
+            "(marathi)", "[marathi]", " marathi", "marathi ",
+            "(bengali)", "[bengali]", " bengali", "bangla",
+            "(gujarati)", "[gujarati]", " gujarati",
+            "(punjabi)", "[punjabi]", " punjabi",
+            "(bhojpuri)", "[bhojpuri]", " bhojpuri",
+            "(oriya)", "(odia)", " odia",
+            "vostfr", "arabic", "turkish", "spanish", "french", "german", "italian", "russian", "portuguese"
+        )
+        if (blockedKeywords.any { low.contains(it) }) return true
+
+        // Check IPTV country/language prefixes like "AR - ", "FR - ", "ALB - ", "ES - ", "TR - ", "TAM - ", "TEL - "
+        if (Regex("^(ar|fr|alb|es|tr|de|it|ru|pt|nl|pl|ro|tam|tel|mal|kan)\\s*[-|:•]").containsMatchIn(low.trim())) {
+            return true
+        }
+        return false
     }
 
     private fun stripPrefixTagsAndClean(raw: String): String {
         var cleaned = raw.lowercase(Locale.ROOT)
         cleaned = cleaned.replace(Regex("^\\[[^\\]]+\\]\\s*"), "")
         cleaned = cleaned.replace(Regex("^\\([^\\)]+\\)\\s*"), "")
-        cleaned = cleaned.replace(Regex("^(hin|hindi|eng|english|4k|fhd|hd|uhd|ind|in|dub|dual|multi|ar|malayalam|tamil|telugu|kannada)\\s*[-|:•]\\s*"), "")
+        cleaned = cleaned.replace(Regex("^(hin|hindi|eng|english|4k|fhd|hd|uhd|ind|in|dub|dual|multi|ar|fr|alb|malayalam|tamil|telugu|kannada)\\s*[-|:•]\\s*"), "")
         cleaned = cleaned.replace(Regex("\\(\\d{4}\\)"), "")
         cleaned = cleaned.replace(Regex("\\[.*?\\]"), "")
         cleaned = cleaned.replace(Regex("[^a-z0-9]"), "")
@@ -968,28 +1015,15 @@ class CinemaPlayerActivity : Activity() {
     }
 
     private fun detectLanguageLabel(src: StreamSourceItem): String {
-        val low = src.title.lowercase(Locale.ROOT)
         return when {
             src.isMultiAudio -> "HINDI + MULTI AUDIO"
             src.isHindi -> "HINDI AUDIO / DUBBED"
-            low.contains("malayalam") -> "MALAYALAM HD"
-            low.contains("tamil") -> "TAMIL HD"
-            low.contains("telugu") -> "TELUGU HD"
-            low.contains("kannada") -> "KANNADA HD"
-            low.contains("punjabi") -> "PUNJABI HD"
-            low.contains("bengali") -> "BENGALI HD"
-            low.startsWith("ar ") || low.startsWith("ar-") || low.contains("arabic") -> "ARABIC HD"
             else -> "ENGLISH / ORIGINAL HD"
         }
     }
 
     private fun httpGetXtream(urlStr: String, timeoutMs: Int): String {
-        val altUrl = if (urlStr.contains(":80/")) {
-            urlStr.replace(":80/", "/")
-        } else {
-            urlStr.replaceFirst("/player_api.php", ":80/player_api.php")
-        }
-        val urlsToTry = listOf(urlStr, altUrl).distinct()
+        val urlsToTry = getPreferredUrlsForXtream(urlStr)
         val uas = listOf(
             "IPTVSmartersPro",
             "Dalvik/2.1.0 (Linux; U; Android 12; Build/SP1A.210812.016)",
@@ -1009,7 +1043,10 @@ class CinemaPlayerActivity : Activity() {
                     }
                     if (conn.responseCode in 200..299) {
                         val body = conn.inputStream.bufferedReader().use { it.readText() }
-                        if (body.isNotBlank()) return body
+                        if (body.isNotBlank()) {
+                            rememberWorkingHost(urlStr, targetUrl)
+                            return body
+                        }
                     }
                 } catch (_: Throwable) {
                 } finally {
@@ -1113,7 +1150,7 @@ class CinemaPlayerActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
         }
         connectingText = TextView(this).apply {
-            text = "Connecting all IPTV & Hindi servers..."
+            text = "Connecting Hindi & English IPTV streams..."
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             typeface = Typeface.DEFAULT_BOLD
@@ -1152,7 +1189,6 @@ class CinemaPlayerActivity : Activity() {
             )
         }
 
-        // TOP BAR
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1200,7 +1236,6 @@ class CinemaPlayerActivity : Activity() {
         topBar.addView(titleView)
         topBar.addView(infoBadgeView)
         if (!isTvUiMode) {
-            // On Mobile: Keep Sources button in Top Bar as before
             topBar.addView(spacer(dp(8)))
             topBar.addView(sourcesBtn)
         }
@@ -1210,7 +1245,6 @@ class CinemaPlayerActivity : Activity() {
         topBar.addView(lockBtn)
         hudContainer.addView(topBar)
 
-        // CENTER BAR (ONLY FOR MOBILE; HIDDEN ON TV SO CENTER OF SCREEN REMAINS 100% CLEAN)
         centerBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -1233,7 +1267,6 @@ class CinemaPlayerActivity : Activity() {
         }
         hudContainer.addView(centerBar)
 
-        // BOTTOM PANEL
         val bottomPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(22), dp(20), dp(14))
@@ -1361,7 +1394,6 @@ class CinemaPlayerActivity : Activity() {
         speedBtn = createHudButton("1.0x") { cyclePlaybackSpeed() }
 
         if (isTvUiMode) {
-            // On TV: Put Play/Pause AND Sources button in the Bottom Bar
             actionsRow.addView(playPauseBtn)
             actionsRow.addView(spacer(dp(10)))
             actionsRow.addView(sourcesBtn)
@@ -1488,7 +1520,7 @@ class CinemaPlayerActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
         }
         val headerSub = TextView(this).apply {
-            text = "All IPTV Hindi links listed on top in GREEN"
+            text = "Hindi & Multi-Audio on TOP (Green) • English Below"
             setTextColor(Color.parseColor("#4ADE80"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             typeface = Typeface.DEFAULT_BOLD
@@ -1597,7 +1629,7 @@ class CinemaPlayerActivity : Activity() {
 
         if (streamSources.isEmpty()) {
             val emptyTxt = TextView(this).apply {
-                text = "Searching all IPTV servers... please wait"
+                text = "Searching Hindi & English IPTV servers... please wait"
                 setTextColor(Color.parseColor("#99FFFFFF"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 setPadding(dp(8), dp(24), dp(8), dp(8))
