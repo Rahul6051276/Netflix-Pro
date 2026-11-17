@@ -57,6 +57,8 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import org.json.JSONArray
@@ -89,6 +91,7 @@ class CinemaPlayerActivity : Activity() {
     private lateinit var trackSelector: DefaultTrackSelector
     private lateinit var playerView: PlayerView
     private lateinit var currentMediaItem: MediaItem
+    private var dynamicHttpFactory: DefaultHttpDataSource.Factory? = null
 
     private lateinit var hudContainer: FrameLayout
     private lateinit var centerBar: LinearLayout
@@ -118,10 +121,20 @@ class CinemaPlayerActivity : Activity() {
     private val streamSources = mutableListOf<StreamSourceItem>()
     private var activeSourceIndex = 0
     private var currentActiveUrl = ""
-    private var currentUserAgent = "IPTVSmartersPro"
+    private var currentUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     private var currentMovieTitle = "Netflix Pro"
     private var customGistUrl = ""
     private var currentPreset = PicturePreset.JUST_PLAYER
+
+    // Multi-Agent Universal Playback Retry for stubborn IPTV panels
+    private val streamUserAgents = listOf(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "VLC/3.0.18 LibVLC/3.0.18",
+        "IPTVSmartersPro",
+        "Lavf/60.3.100"
+    )
+    private var currentUaAttemptIndex = 0
+    private var userManuallyPickedSource = false
 
     private val handler = Handler(Looper.getMainLooper())
     private var hudVisible = true
@@ -228,7 +241,6 @@ class CinemaPlayerActivity : Activity() {
 
         val rawUrl = intent.getStringExtra("url")?.trim().orEmpty()
         currentMovieTitle = intent.getStringExtra("title")?.trim().orEmpty().ifEmpty { "Netflix Pro" }
-        currentUserAgent = intent.getStringExtra("userAgent")?.trim().orEmpty().ifEmpty { "IPTVSmartersPro" }
         customGistUrl = intent.getStringExtra("gistUrl")?.trim().orEmpty()
         val tmdbId = intent.getStringExtra("tmdbId")?.trim().orEmpty()
         val isTv = intent.getBooleanExtra("isTv", false)
@@ -261,9 +273,10 @@ class CinemaPlayerActivity : Activity() {
                 sourcesBtn.text = "Sources (1)"
             }
             currentActiveUrl = directUrl
+            currentUaAttemptIndex = 0
             setConnectingState(false)
             loadingSpinner.visibility = View.VISIBLE
-            initExoPlayer(directUrl, currentMovieTitle, currentUserAgent, currentPreset)
+            initExoPlayer(directUrl, currentMovieTitle, streamUserAgents[0], currentPreset)
             scheduleHideHud()
         } else if (tmdbId.isNotEmpty()) {
             loadingSpinner.visibility = View.GONE
@@ -298,6 +311,49 @@ class CinemaPlayerActivity : Activity() {
     private fun setConnectingState(connecting: Boolean) {
         connectingCard.visibility = if (connecting) View.VISIBLE else View.GONE
         centerBar.visibility = if (connecting) View.GONE else View.VISIBLE
+    }
+
+    // =========================================================================
+    // UNIVERSAL MEDIA ITEM BUILDER (SUPPORTS ALL WORLDWIDE VIDEO/AUDIO FORMATS)
+    // =========================================================================
+    private fun buildUniversalMediaItem(rawUrl: String, title: String): MediaItem {
+        val cleanUrl = rawUrl.trim()
+        val pathOnly = cleanUrl.substringBefore('?').substringBefore('#').lowercase(Locale.ROOT)
+        val itemBuilder = MediaItem.Builder()
+            .setUri(Uri.parse(cleanUrl))
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
+
+        when {
+            pathOnly.endsWith(".m3u8") || cleanUrl.contains("m3u8", true) || cleanUrl.contains("format=m3u8", true) -> {
+                itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            }
+            pathOnly.endsWith(".mpd") || cleanUrl.contains(".mpd", true) || cleanUrl.contains("format=mpd", true) -> {
+                itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+            }
+            pathOnly.endsWith(".ism") || pathOnly.endsWith(".isml") || cleanUrl.contains("/manifest", true) -> {
+                itemBuilder.setMimeType(MimeTypes.APPLICATION_SS)
+            }
+            pathOnly.endsWith(".mkv") -> {
+                itemBuilder.setMimeType(MimeTypes.VIDEO_MATROSKA)
+            }
+            pathOnly.endsWith(".mp4") || pathOnly.endsWith(".m4v") || pathOnly.endsWith(".mov") -> {
+                itemBuilder.setMimeType(MimeTypes.VIDEO_MP4)
+            }
+            pathOnly.endsWith(".ts") || pathOnly.endsWith(".m2ts") || pathOnly.endsWith(".mts") -> {
+                itemBuilder.setMimeType(MimeTypes.VIDEO_MP2T)
+            }
+            pathOnly.endsWith(".webm") -> {
+                itemBuilder.setMimeType(MimeTypes.VIDEO_WEBM)
+            }
+            pathOnly.endsWith(".avi") -> {
+                itemBuilder.setMimeType("video/x-msvideo")
+            }
+            pathOnly.endsWith(".flv") -> {
+                itemBuilder.setMimeType(MimeTypes.VIDEO_FLV)
+            }
+            // No extension / dynamic PHP/CDN stream -> leave MimeType unset so ExtractorsFactory auto-sniffs bytes
+        }
+        return itemBuilder.build()
     }
 
     // =========================================================================
@@ -378,14 +434,10 @@ class CinemaPlayerActivity : Activity() {
     }
 
     // =========================================================================
-    // STRICT USER-GIST MULTI-IPTV STREAM RESOLVER (ALL XTREAM FORMATS + GREEN HINDI)
+    // STRICT USER-GIST MULTI-IPTV STREAM RESOLVER
     // =========================================================================
     private fun normalizeXtreamHost(rawHost: String): String {
-        var h = rawHost.trim().trimEnd('/')
-        if (h.endsWith(":80")) {
-            h = h.removeSuffix(":80")
-        }
-        return h
+        return rawHost.trim().trimEnd('/')
     }
 
     private fun resolveStreamsInsidePlayer(
@@ -437,12 +489,13 @@ class CinemaPlayerActivity : Activity() {
                     if (streamSources.isNotEmpty() && playbackStarted.compareAndSet(false, true)) {
                         activeSourceIndex = 0
                         currentActiveUrl = streamSources[0].url
+                        currentUaAttemptIndex = 0
                         setConnectingState(false)
                         loadingSpinner.visibility = View.VISIBLE
                         initExoPlayer(
                             currentActiveUrl,
                             currentMovieTitle,
-                            currentUserAgent,
+                            streamUserAgents[0],
                             currentPreset
                         )
                         playPauseBtn.requestFocus()
@@ -451,7 +504,6 @@ class CinemaPlayerActivity : Activity() {
                 }
             }
 
-            // Load Providers ONLY from User's Custom Gist URL (Strict Mode)
             val providers = mutableListOf<JSONObject>()
             try {
                 if (customGistUrl.isNotEmpty()) {
@@ -542,14 +594,20 @@ class CinemaPlayerActivity : Activity() {
                                                     val epNum = epObj.optString("episode_num", "-1").toIntOrNull() ?: -1
                                                     if (epNum == episode) {
                                                         val eid = epObj.optString("id", "")
-                                                        val ext = epObj.optString("container_extension", "mp4").ifBlank { "mp4" }
+                                                        val directSource = epObj.optString("direct_source", "").trim()
+                                                        val rawExt = epObj.optString("container_extension", "").trim().trimStart('.')
+                                                        val streamUrl = when {
+                                                            directSource.startsWith("http") -> directSource
+                                                            rawExt.isNotEmpty() -> "$host/series/$user/$pass/$eid.$rawExt"
+                                                            else -> "$host/series/$user/$pass/$eid.mp4"
+                                                        }
                                                         val epTitle = epObj.optString("title", "")
                                                         val combinedHindi = bestSeries.isHindi || isExplicitHindi(epTitle)
                                                         found.add(
                                                             StreamSourceItem(
                                                                 server = provName,
                                                                 title = if (combinedHindi) "$movieTitle (Hindi) S$season:E$episode" else "$movieTitle S$season:E$episode",
-                                                                url = "$host/series/$user/$pass/$eid.$ext",
+                                                                url = streamUrl,
                                                                 isHindi = combinedHindi,
                                                                 isMultiAudio = false,
                                                                 isXtreamIptv = true
@@ -572,11 +630,17 @@ class CinemaPlayerActivity : Activity() {
                                     )
                                     cands.sortByDescending { if (it.isHindi) 1 else 0 }
                                     for (bestMovie in cands.take(5)) {
+                                        val cleanExt = bestMovie.ext.trim().trimStart('.')
+                                        val streamUrl = when {
+                                            bestMovie.directSource.startsWith("http") -> bestMovie.directSource
+                                            cleanExt.isNotEmpty() -> "$host/movie/$user/$pass/${bestMovie.id}.$cleanExt"
+                                            else -> "$host/movie/$user/$pass/${bestMovie.id}.mp4"
+                                        }
                                         found.add(
                                             StreamSourceItem(
                                                 server = provName,
                                                 title = bestMovie.name.ifBlank { movieTitle },
-                                                url = "$host/movie/$user/$pass/${bestMovie.id}.${bestMovie.ext}",
+                                                url = streamUrl,
                                                 isHindi = bestMovie.isHindi,
                                                 isMultiAudio = false,
                                                 isXtreamIptv = true
@@ -722,7 +786,8 @@ class CinemaPlayerActivity : Activity() {
         val id: String,
         val name: String,
         val ext: String,
-        val isHindi: Boolean
+        val isHindi: Boolean,
+        val directSource: String = ""
     )
 
     private fun streamSearchXtreamList(
@@ -778,6 +843,7 @@ class CinemaPlayerActivity : Activity() {
                             var itemCatId = ""
                             var itemTmdb = ""
                             var itemExt = "mp4"
+                            var itemDirectSrc = ""
 
                             reader.beginObject()
                             while (reader.hasNext()) {
@@ -799,6 +865,7 @@ class CinemaPlayerActivity : Activity() {
                                         val v = readScalarAsString(reader)
                                         if (v.isNotBlank()) itemExt = v
                                     }
+                                    "direct_source" -> itemDirectSrc = readScalarAsString(reader)
                                     else -> reader.skipValue()
                                 }
                             }
@@ -827,7 +894,8 @@ class CinemaPlayerActivity : Activity() {
                                                 itemName
                                             },
                                             ext = itemExt,
-                                            isHindi = detectedHindi
+                                            isHindi = detectedHindi,
+                                            directSource = itemDirectSrc
                                         )
                                     )
                                 }
@@ -848,7 +916,7 @@ class CinemaPlayerActivity : Activity() {
         var cleaned = raw.lowercase(Locale.ROOT)
         cleaned = cleaned.replace(Regex("^\\[[^\\]]+\\]\\s*"), "")
         cleaned = cleaned.replace(Regex("^\\([^\\)]+\\)\\s*"), "")
-        cleaned = cleaned.replace(Regex("^(hin|hindi|eng|english|4k|fhd|hd|uhd|ind|in|dub|dual|multi)\\s*[-|:•]\\s*"), "")
+        cleaned = cleaned.replace(Regex("^(hin|hindi|eng|english|4k|fhd|hd|uhd|ind|in|dub|dual|multi|ar|malayalam|tamil|telugu|kannada)\\s*[-|:•]\\s*"), "")
         cleaned = cleaned.replace(Regex("\\(\\d{4}\\)"), "")
         cleaned = cleaned.replace(Regex("\\[.*?\\]"), "")
         cleaned = cleaned.replace(Regex("[^a-z0-9]"), "")
@@ -884,6 +952,22 @@ class CinemaPlayerActivity : Activity() {
             low.contains("1080") -> 3
             low.contains("720") -> 2
             else -> 1
+        }
+    }
+
+    private fun detectLanguageLabel(src: StreamSourceItem): String {
+        val low = src.title.lowercase(Locale.ROOT)
+        return when {
+            src.isMultiAudio -> "HINDI + MULTI AUDIO"
+            src.isHindi -> "HINDI AUDIO / DUBBED"
+            low.contains("malayalam") -> "MALAYALAM HD"
+            low.contains("tamil") -> "TAMIL HD"
+            low.contains("telugu") -> "TELUGU HD"
+            low.contains("kannada") -> "KANNADA HD"
+            low.contains("punjabi") -> "PUNJABI HD"
+            low.contains("bengali") -> "BENGALI HD"
+            low.startsWith("ar ") || low.startsWith("ar-") || low.contains("arabic") -> "ARABIC HD"
+            else -> "ENGLISH / ORIGINAL HD"
         }
     }
 
@@ -1523,12 +1607,14 @@ class CinemaPlayerActivity : Activity() {
                     bottomMargin = dp(10)
                 }
                 setOnClickListener {
+                    userManuallyPickedSource = true
                     switchToStreamSource(index)
                 }
                 setOnKeyListener { _, keyCode, event ->
                     if (event.action == KeyEvent.ACTION_DOWN &&
                         (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)
                     ) {
+                        userManuallyPickedSource = true
                         switchToStreamSource(index)
                         true
                     } else {
@@ -1586,13 +1672,7 @@ class CinemaPlayerActivity : Activity() {
             }
 
             val subTxt = TextView(this).apply {
-                text = "${src.server} • ${
-                    when {
-                        src.isMultiAudio -> "HINDI + MULTI AUDIO"
-                        src.isHindi -> "HINDI AUDIO / DUBBED"
-                        else -> "ENGLISH / ORIGINAL HD"
-                    }
-                }"
+                text = "${src.server} • ${detectLanguageLabel(src)}"
                 setTextColor(if (src.isHindi) Color.parseColor("#4ADE80") else Color.parseColor("#8E96A4"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 typeface = if (src.isHindi) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
@@ -1656,26 +1736,35 @@ class CinemaPlayerActivity : Activity() {
         activeSourceIndex = index
         val selected = streamSources[index]
         currentActiveUrl = selected.url
+        currentUaAttemptIndex = 0
+        dynamicHttpFactory?.setUserAgent(streamUserAgents[0])
 
         closeSourcesPanel()
         loadingSpinner.visibility = View.VISIBLE
         errorOverlay.visibility = View.GONE
 
-        val lower = selected.url.lowercase(Locale.ROOT)
-        val itemBuilder = MediaItem.Builder()
-            .setUri(Uri.parse(selected.url))
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(currentMovieTitle).build())
-        when {
-            lower.contains(".m3u8") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-            lower.contains(".mpd") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
-        }
-        currentMediaItem = itemBuilder.build()
+        currentMediaItem = buildUniversalMediaItem(selected.url, currentMovieTitle)
 
         exo.stop()
         exo.setMediaItem(currentMediaItem)
         exo.prepare()
         exo.playWhenReady = true
         showFeedback("Playing: ${selected.server}")
+    }
+
+    private fun retryCurrentStreamWithNextAgent(exo: ExoPlayer): Boolean {
+        if (currentUaAttemptIndex + 1 < streamUserAgents.size) {
+            currentUaAttemptIndex++
+            val nextUa = streamUserAgents[currentUaAttemptIndex]
+            dynamicHttpFactory?.setUserAgent(nextUa)
+            loadingSpinner.visibility = View.VISIBLE
+            exo.stop()
+            exo.setMediaItem(currentMediaItem)
+            exo.prepare()
+            exo.playWhenReady = true
+            return true
+        }
+        return false
     }
 
     private fun createSourcesPill(): StateListDrawable {
@@ -1726,20 +1815,39 @@ class CinemaPlayerActivity : Activity() {
                     .setPreferredAudioLanguages("hi", "hin", "en")
                     .setAllowVideoMixedMimeTypeAdaptiveness(true)
                     .setAllowAudioMixedMimeTypeAdaptiveness(true)
+                    .setExceedAudioConstraintsIfNecessary(true)
+                    .setExceedVideoConstraintsIfNecessary(true)
+                    .setExceedRendererCapabilitiesIfNecessary(true)
                     .setTunnelingEnabled(false)
             )
         }
 
         val httpFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
+            .setConnectTimeoutMs(20_000)
+            .setReadTimeoutMs(30_000)
             .setUserAgent(userAgent)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Accept" to "*/*",
+                    "Connection" to "keep-alive"
+                )
+            )
+        dynamicHttpFactory = httpFactory
 
         val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
 
+        // Universal Extractors supporting all worldwide formats (MKV, MP4, TS, M2TS, AVI, FLV, WebM, AAC, AC3, DTS)
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setConstantBitrateSeekingEnabled(true)
+            .setConstantBitrateSeekingAlwaysEnabled(true)
+            .setTsExtractorFlags(
+                DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or
+                    DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
+            )
+
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 50_000, 1_500, 3_000)
+            .setBufferDurationsMs(15_000, 60_000, 1_500, 3_000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -1749,7 +1857,7 @@ class CinemaPlayerActivity : Activity() {
 
         val exo = ExoPlayer.Builder(this, renderersFactory)
             .setTrackSelector(trackSelector)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory))
             .setLoadControl(loadControl)
             .build()
 
@@ -1766,15 +1874,7 @@ class CinemaPlayerActivity : Activity() {
             isShaderAttached = false
         }
 
-        val lower = url.lowercase(Locale.ROOT)
-        val itemBuilder = MediaItem.Builder()
-            .setUri(Uri.parse(url))
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
-        when {
-            lower.contains(".m3u8") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-            lower.contains(".mpd") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
-        }
-        currentMediaItem = itemBuilder.build()
+        currentMediaItem = buildUniversalMediaItem(url, title)
 
         exo.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -1809,11 +1909,17 @@ class CinemaPlayerActivity : Activity() {
 
             override fun onPlayerError(error: PlaybackException) {
                 if (!isSafeUi()) return
+                // 1. First retry the EXACT SAME selected source with VLC/Smarters User-Agents
+                if (retryCurrentStreamWithNextAgent(exo)) {
+                    return
+                }
                 loadingSpinner.visibility = View.GONE
-                if (activeSourceIndex + 1 < streamSources.size) {
+                // 2. Only auto-advance on initial startup; if user manually picked a source, show clear error so they know!
+                if (!userManuallyPickedSource && activeSourceIndex + 1 < streamSources.size) {
                     switchToStreamSource(activeSourceIndex + 1)
                 } else {
-                    showError("Playback Error: ${error.localizedMessage ?: error.errorCodeName}")
+                    val srvName = streamSources.getOrNull(activeSourceIndex)?.server ?: "Source"
+                    showError("$srvName Error: ${error.localizedMessage ?: error.errorCodeName}\n(Try another source from Sources button)")
                 }
             }
         })
