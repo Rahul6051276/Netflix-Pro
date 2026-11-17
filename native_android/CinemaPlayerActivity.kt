@@ -303,8 +303,7 @@ class CinemaPlayerActivity : Activity() {
                     if (sUrl.isNotEmpty()) {
                         val srv = obj.optString("server", "Server")
                         val ttl = obj.optString("title", currentMovieTitle)
-                        if (isDisallowedRegionalStream("$srv $ttl")) continue
-                        val hin = obj.optBoolean("isHindi", isExplicitHindi("$srv $ttl"))
+                        val hin = obj.optBoolean("isHindi", isExplicitHindi("$srv $ttl") || isIndianHindiCategory(ttl))
                         val multi = obj.optBoolean("isMultiAudio", isIndianMultiAudioServer("$srv $ttl"))
                         streamSources.add(StreamSourceItem(srv, ttl, sUrl, hin, multi, isXtreamIptv = true))
                     }
@@ -436,7 +435,6 @@ class CinemaPlayerActivity : Activity() {
         return rawHost.trim().trimEnd('/')
     }
 
-    // Zero-RAM helper: Remembers working host variant (:80 vs clean) so subsequent clicks connect faster
     private fun getPreferredUrlsForXtream(apiUrl: String): List<String> {
         val altUrl = if (apiUrl.contains(":80/")) {
             apiUrl.replace(":80/", "/")
@@ -468,6 +466,7 @@ class CinemaPlayerActivity : Activity() {
             val found = Collections.synchronizedList(mutableListOf<StreamSourceItem>())
             val playbackStarted = AtomicBoolean(false)
             val cleanTarget = cleanText(movieTitle)
+            val baseTarget = cleanText(movieTitle.substringBefore(':').substringBefore('-'))
             var imdbId = ""
             var detectedOrigLang = originalLanguage
 
@@ -479,8 +478,8 @@ class CinemaPlayerActivity : Activity() {
                     compareByDescending<StreamSourceItem> { sourcePriorityScore(it) }
                         .thenByDescending { qualityScore(it.title) }
                 )
-                if (snapshot.size > 100) {
-                    snapshot.subList(100, snapshot.size).clear()
+                if (snapshot.size > 120) {
+                    snapshot.subList(120, snapshot.size).clear()
                 }
 
                 handler.post {
@@ -596,12 +595,13 @@ class CinemaPlayerActivity : Activity() {
                                         apiUrl = "$host/player_api.php?username=$user&password=$pass&action=get_series",
                                         tmdbId = tmdbId,
                                         cleanTarget = cleanTarget,
+                                        baseTarget = baseTarget,
                                         idKey = "series_id",
                                         categoryMap = categoryMap,
                                         isTitleOrigHindi = isTitleOrigHindi
                                     )
                                     cands.sortByDescending { if (it.isHindi) 1 else 0 }
-                                    for (bestSeries in cands.take(5)) {
+                                    for (bestSeries in cands.take(12)) {
                                         if (!isSafeUi()) break
                                         val infoStr = httpGetXtream(
                                             "$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=${bestSeries.id}",
@@ -628,7 +628,7 @@ class CinemaPlayerActivity : Activity() {
                                                         found.add(
                                                             StreamSourceItem(
                                                                 server = provName,
-                                                                title = if (combinedHindi) "$movieTitle (Hindi) S$season:E$episode" else "$movieTitle S$season:E$episode",
+                                                                title = if (combinedHindi) "${bestSeries.name} S$season:E$episode" else "$movieTitle S$season:E$episode",
                                                                 url = streamUrl,
                                                                 isHindi = combinedHindi,
                                                                 isMultiAudio = false,
@@ -647,12 +647,13 @@ class CinemaPlayerActivity : Activity() {
                                         apiUrl = "$host/player_api.php?username=$user&password=$pass&action=get_vod_streams",
                                         tmdbId = tmdbId,
                                         cleanTarget = cleanTarget,
+                                        baseTarget = baseTarget,
                                         idKey = "stream_id",
                                         categoryMap = categoryMap,
                                         isTitleOrigHindi = isTitleOrigHindi
                                     )
                                     cands.sortByDescending { if (it.isHindi) 1 else 0 }
-                                    for (bestMovie in cands.take(5)) {
+                                    for (bestMovie in cands.take(12)) {
                                         val cleanExt = bestMovie.ext.trim().trimStart('.')
                                         val streamUrl = when {
                                             bestMovie.directSource.startsWith("http") -> bestMovie.directSource
@@ -696,8 +697,6 @@ class CinemaPlayerActivity : Activity() {
                                         if (low.contains("donation") || low.contains("discord") || low.contains("telegram")) continue
 
                                         val displayTitle = titlePart.ifBlank { namePart }.ifBlank { "$movieTitle HD" }
-                                        if (isDisallowedRegionalStream("$provName $displayTitle")) continue
-
                                         val explicitHindi = isExplicitHindi("$provName $combined") || isTitleOrigHindi
                                         val multiHindi = isIndianMultiAudioServer("$provName $combined")
 
@@ -747,8 +746,6 @@ class CinemaPlayerActivity : Activity() {
                             if (sUrl.isNotEmpty()) {
                                 val sTitle = sObj.optString("title", "$movieTitle HD")
                                 val pName = sObj.optString("provider", "Cloud HD")
-                                if (isDisallowedRegionalStream("$pName $sTitle")) continue
-
                                 val explicitHindi = isExplicitHindi("$pName $sTitle") || isTitleOrigHindi
                                 val multiHindi = isIndianMultiAudioServer("$pName $sTitle")
                                 found.add(
@@ -783,7 +780,7 @@ class CinemaPlayerActivity : Activity() {
                 if (!isSafeUi()) return@post
                 if (streamSources.isEmpty()) {
                     setConnectingState(false)
-                    showError("No Hindi or English stream sources found for this title.")
+                    showError("No stream sources found for this title.")
                 }
             }
         }
@@ -820,6 +817,7 @@ class CinemaPlayerActivity : Activity() {
         apiUrl: String,
         tmdbId: String,
         cleanTarget: String,
+        baseTarget: String,
         idKey: String,
         categoryMap: Map<String, String>,
         isTitleOrigHindi: Boolean
@@ -899,20 +897,19 @@ class CinemaPlayerActivity : Activity() {
                                 val strippedClean = stripPrefixTagsAndClean(itemName)
 
                                 val tmdbMatch = itemTmdb.isNotEmpty() && itemTmdb == tmdbId
-                                val titleMatch = cleanTarget.length >= 3 && (
+                                val titleMatch = (cleanTarget.length >= 3 && (
                                     (sClean.length >= 3 && (sClean == cleanTarget || (cleanTarget.length >= 4 && sClean.startsWith(cleanTarget)))) ||
                                     (strippedClean.length >= 3 && (strippedClean == cleanTarget || (cleanTarget.length >= 4 && strippedClean.startsWith(cleanTarget)))) ||
                                     (cleanTarget.length >= 5 && strippedClean.contains(cleanTarget))
-                                )
+                                )) || (baseTarget.length >= 4 && (
+                                    strippedClean == baseTarget || strippedClean.startsWith(baseTarget)
+                                ))
 
                                 if (tmdbMatch || titleMatch) {
                                     val combinedMeta = "$itemName $resolvedCatName"
-                                    // STRICT FILTER: Drop pure Tamil, Telugu, Malayalam, Kannada, French, Arabic etc. unless Hindi/Multi/Dual
-                                    if (isDisallowedRegionalStream(combinedMeta)) {
-                                        continue
-                                    }
+                                    val isIndianCategory = isIndianHindiCategory(resolvedCatName)
+                                    val detectedHindi = isExplicitHindi(combinedMeta) || isIndianCategory || isTitleOrigHindi
 
-                                    val detectedHindi = isExplicitHindi(combinedMeta) || isTitleOrigHindi
                                     matches.add(
                                         XtreamCandidate(
                                             id = itemId,
@@ -941,34 +938,12 @@ class CinemaPlayerActivity : Activity() {
         return matches
     }
 
-    // =========================================================================
-    // STRICT LANGUAGE FILTER: ONLY ALLOW HINDI, HINDI DUBBED, MULTI/DUAL & ENGLISH
-    // =========================================================================
-    private fun isDisallowedRegionalStream(text: String): Boolean {
-        val low = text.lowercase(Locale.ROOT)
-        // Always keep if explicitly Hindi, Dual Audio, or Multi Audio
-        if (isExplicitHindi(low)) return false
-
-        val blockedKeywords = listOf(
-            "(tamil)", "[tamil]", " tamil", "tamil ", "- tamil", "| tamil",
-            "(telugu)", "[telugu]", " telugu", "telugu ", "- telugu", "| telugu",
-            "(malayalam)", "[malayalam]", " malayalam", "malayalam ", "- malayalam", "| malayalam",
-            "(kannada)", "[kannada]", " kannada", "kannada ", "- kannada", "| kannada",
-            "(marathi)", "[marathi]", " marathi", "marathi ",
-            "(bengali)", "[bengali]", " bengali", "bangla",
-            "(gujarati)", "[gujarati]", " gujarati",
-            "(punjabi)", "[punjabi]", " punjabi",
-            "(bhojpuri)", "[bhojpuri]", " bhojpuri",
-            "(oriya)", "(odia)", " odia",
-            "vostfr", "arabic", "turkish", "spanish", "french", "german", "italian", "russian", "portuguese"
-        )
-        if (blockedKeywords.any { low.contains(it) }) return true
-
-        // Check IPTV country/language prefixes like "AR - ", "FR - ", "ALB - ", "ES - ", "TR - ", "TAM - ", "TEL - "
-        if (Regex("^(ar|fr|alb|es|tr|de|it|ru|pt|nl|pl|ro|tam|tel|mal|kan)\\s*[-|:•]").containsMatchIn(low.trim())) {
-            return true
-        }
-        return false
+    private fun isIndianHindiCategory(catName: String): Boolean {
+        val low = catName.lowercase(Locale.ROOT)
+        if (low.isBlank()) return false
+        return low.contains("indian") || low.contains("india") ||
+            low.contains("bollywood") || low.contains("hindi") ||
+            low.contains("in")
     }
 
     private fun stripPrefixTagsAndClean(raw: String): String {
@@ -1150,7 +1125,7 @@ class CinemaPlayerActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
         }
         connectingText = TextView(this).apply {
-            text = "Connecting Hindi & English IPTV streams..."
+            text = "Connecting Livebox & IPTV streams..."
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             typeface = Typeface.DEFAULT_BOLD
@@ -1520,7 +1495,7 @@ class CinemaPlayerActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
         }
         val headerSub = TextView(this).apply {
-            text = "Hindi & Multi-Audio on TOP (Green) • English Below"
+            text = "Livebox & All Live Sources on TOP (Green)"
             setTextColor(Color.parseColor("#4ADE80"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             typeface = Typeface.DEFAULT_BOLD
@@ -1629,7 +1604,7 @@ class CinemaPlayerActivity : Activity() {
 
         if (streamSources.isEmpty()) {
             val emptyTxt = TextView(this).apply {
-                text = "Searching Hindi & English IPTV servers... please wait"
+                text = "Searching Livebox & IPTV streams... please wait"
                 setTextColor(Color.parseColor("#99FFFFFF"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 setPadding(dp(8), dp(24), dp(8), dp(8))
