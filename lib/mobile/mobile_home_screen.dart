@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (BOLLYWOOD + SOUTH + ENGLISH LATEST)
+// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (WITH DYNAMIC GIST SOURCE MANAGER)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -21,6 +21,8 @@ class MobileRootScreen extends StatefulWidget {
 class _MobileRootScreenState extends State<MobileRootScreen> {
   int _currentIndex = 0;
   List<dynamic> activeProviders = [];
+  String currentGistUrl = MobileConfig.gistUrl;
+  bool isGistConnected = false;
 
   @override
   void initState() {
@@ -30,20 +32,38 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 
   Future<void> _fetchGlobalProviders() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedGist = prefs.getString('custom_gist_url');
+    if (savedGist != null && savedGist.trim().isNotEmpty) {
+      currentGistUrl = savedGist.trim();
+    } else {
+      await prefs.setString('custom_gist_url', currentGistUrl);
+    }
+
     final cached = prefs.getString('cached_active_providers');
     if (cached != null && cached.isNotEmpty && mounted) {
       try {
+        final decodedCache = jsonDecode(cached) as List<dynamic>;
         setState(() {
-          activeProviders = jsonDecode(cached) as List<dynamic>;
+          activeProviders = decodedCache;
+          isGistConnected = decodedCache.isNotEmpty;
         });
       } catch (_) {}
     }
 
+    if (currentGistUrl.isEmpty) {
+      if (mounted) {
+        setState(() {
+          activeProviders = [];
+          isGistConnected = false;
+        });
+      }
+      return;
+    }
+
     try {
-      final freshUrl =
-          '${MobileConfig.gistUrl}?t=${DateTime.now().millisecondsSinceEpoch}';
-      final res =
-          await http.get(Uri.parse(freshUrl)).timeout(const Duration(seconds: 12));
+      final sep = currentGistUrl.contains('?') ? '&' : '?';
+      final freshUrl = '$currentGistUrl${sep}t=${DateTime.now().millisecondsSinceEpoch}';
+      final res = await http.get(Uri.parse(freshUrl)).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body);
         final list = decoded is List
@@ -54,6 +74,7 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
           if (mounted) {
             setState(() {
               activeProviders = list;
+              isGistConnected = true;
             });
           }
         }
@@ -61,10 +82,34 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
     } catch (_) {}
   }
 
+  void _openGistManagerDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => _GistManagerDialog(
+        initialUrl: currentGistUrl,
+        currentProviders: activeProviders,
+        onSynced: (newUrl, newProviders) {
+          if (mounted) {
+            setState(() {
+              currentGistUrl = newUrl;
+              activeProviders = newProviders;
+              isGistConnected = newProviders.isNotEmpty;
+            });
+          }
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> pages = [
-      MobileHomeScreen(providers: activeProviders),
+      MobileHomeScreen(
+        providers: activeProviders,
+        isGistConnected: isGistConnected,
+        onOpenGistDialog: _openGistManagerDialog,
+      ),
       MobileSearchScreen(providers: activeProviders),
       MobileMyListScreen(providers: activeProviders),
       MobileMoreScreen(providers: activeProviders),
@@ -97,11 +142,346 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 }
 
 // ============================================================================
+// GITHUB GIST RAW SOURCE POPUP DIALOG (LIKE REFERENCE SCREENSHOT)
+// ============================================================================
+class _GistManagerDialog extends StatefulWidget {
+  final String initialUrl;
+  final List<dynamic> currentProviders;
+  final Function(String url, List<dynamic> providers) onSynced;
+
+  const _GistManagerDialog({
+    required this.initialUrl,
+    required this.currentProviders,
+    required this.onSynced,
+  });
+
+  @override
+  State<_GistManagerDialog> createState() => _GistManagerDialogState();
+}
+
+class _GistManagerDialogState extends State<_GistManagerDialog> {
+  late TextEditingController _urlController;
+  bool isSyncing = false;
+  String statusMessage = '';
+  bool isSuccess = false;
+  List<dynamic> loadedList = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _urlController = TextEditingController(text: widget.initialUrl);
+    loadedList = List<dynamic>.from(widget.currentProviders);
+    if (loadedList.isNotEmpty) {
+      isSuccess = true;
+      final names = loadedList.map((p) => (p['name'] ?? p['type'] ?? 'Source').toString()).join(' + ');
+      statusMessage = 'Connected: $names';
+    } else {
+      isSuccess = false;
+      statusMessage = 'Not connected. Paste Gist Raw URL & Sync.';
+    }
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _connectAndSync() async {
+    final rawUrl = _urlController.text.trim();
+    if (rawUrl.isEmpty) {
+      setState(() {
+        isSuccess = false;
+        statusMessage = 'Please enter a valid GitHub Gist Raw link.';
+      });
+      return;
+    }
+
+    setState(() {
+      isSyncing = true;
+      statusMessage = 'Connecting & verifying providers...';
+    });
+
+    try {
+      final sep = rawUrl.contains('?') ? '&' : '?';
+      final fetchUrl = '$rawUrl${sep}t=${DateTime.now().millisecondsSinceEpoch}';
+      final res = await http.get(Uri.parse(fetchUrl)).timeout(const Duration(seconds: 12));
+
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        final list = decoded is List
+            ? decoded
+            : (decoded['active_providers'] ?? decoded['providers'] ?? []);
+
+        if (list is List && list.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('custom_gist_url', rawUrl);
+          await prefs.setString('cached_active_providers', jsonEncode(list));
+
+          final names = list.map((p) => (p['name'] ?? p['type'] ?? 'Source').toString()).join(' + ');
+          widget.onSynced(rawUrl, list);
+
+          if (mounted) {
+            setState(() {
+              isSyncing = false;
+              isSuccess = true;
+              loadedList = list;
+              statusMessage = 'Connected: $names';
+            });
+          }
+          return;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          isSyncing = false;
+          isSuccess = false;
+          statusMessage = 'Failed to load providers (Invalid JSON or URL).';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          isSyncing = false;
+          isSuccess = false;
+          statusMessage = 'Connection Error: Check URL or Internet.';
+        });
+      }
+    }
+  }
+
+  Future<void> _clearGist() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('custom_gist_url', '');
+    await prefs.remove('cached_active_providers');
+    _urlController.clear();
+    widget.onSynced('', []);
+    if (mounted) {
+      setState(() {
+        isSuccess = false;
+        loadedList = [];
+        statusMessage = 'Cleared! No active Gist connected.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF141B2D),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFF2B3654), width: 1.2),
+      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header Row
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2563EB).withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.link_rounded, color: Color(0xFFFACC15), size: 22),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'GitHub Gist Raw Source',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Supports Xtream IPTV, Stremio Addons & JSON',
+                        style: TextStyle(color: Color(0xFFFACC15), fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Colors.white70, size: 22),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'GitHub Gist Raw Link (or IPTV / Stremio link)',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            // Input Box
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF334155)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: TextField(
+                controller: _urlController,
+                maxLines: 3,
+                minLines: 2,
+                style: const TextStyle(color: Colors.white, fontSize: 13.5, height: 1.35),
+                decoration: const InputDecoration(
+                  hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
+                  hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            // Status Box
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSuccess
+                    ? const Color(0xFF064E3B).withOpacity(0.65)
+                    : const Color(0xFF3F1D2E).withOpacity(0.65),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSuccess ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isSuccess ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                    color: isSuccess ? const Color(0xFF22C55E) : const Color(0xFFF87171),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      statusMessage,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Action Buttons
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: SizedBox(
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2563EB),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: isSyncing ? null : _connectAndSync,
+                      icon: isSyncing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync_rounded, size: 18),
+                      label: Text(
+                        isSyncing ? 'Syncing...' : 'Connect & Sync',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 1,
+                  child: SizedBox(
+                    height: 44,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFF87171),
+                        side: const BorderSide(color: Color(0xFF7F1D1D), width: 1.2),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: isSyncing ? null : _clearGist,
+                      child: const Text('Clear', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Footer Helpers
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      _urlController.text = MobileConfig.gistUrl;
+                    });
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      'Fill Default URL',
+                      style: TextStyle(
+                        color: Color(0xFFFACC15),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                Text(
+                  '${loadedList.length} Sources Ready',
+                  style: const TextStyle(color: Color(0xFF60A5FA), fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
 // 1. HOME SCREEN (BOLLYWOOD + SOUTH + ENGLISH LATEST MIXED GENRES)
 // ============================================================================
 class MobileHomeScreen extends StatefulWidget {
   final List<dynamic> providers;
-  const MobileHomeScreen({super.key, required this.providers});
+  final bool isGistConnected;
+  final VoidCallback onOpenGistDialog;
+
+  const MobileHomeScreen({
+    super.key,
+    required this.providers,
+    required this.isGistConnected,
+    required this.onOpenGistDialog,
+  });
 
   @override
   State<MobileHomeScreen> createState() => _MobileHomeScreenState();
@@ -196,38 +576,27 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     final todayIso =
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    // Mixed Languages: Bollywood (hi) + South (te, ta, ml, kn) + English (en)
     const mixedLangs = 'hi|en|te|ta|ml|kn';
 
     final results = await Future.wait([
-      // 0: Top Mixed Latest Trending (Bollywood + South + English)
       _fetchSingleCategory(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&sort_by=popularity.desc&vote_count.gte=25'),
-      // 1: Action & Adventure (Bollywood + South + English Latest)
       _fetchSingleCategory(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=20'),
-      // 2: Thriller & Suspense (Bollywood + South + English Latest)
       _fetchSingleCategory(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=15'),
-      // 3: Crime & Mystery Suspense (Bollywood + South + English Latest)
       _fetchSingleCategory(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=9648,80&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=15'),
-      // 4: Bollywood Latest Movies
       _fetchSingleCategory(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=8'),
-      // 5: South Latest Movies (Hindi Dubbed)
       _fetchSingleCategory(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=10'),
-      // 6: English / Hollywood Latest Movies
       _fetchSingleCategory(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=en&primary_release_date.lte=$todayIso&sort_by=primary_release_date.desc&vote_count.gte=50'),
-      // 7: Netflix Latest Blockbusters
       _fetchSingleCategory(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=popularity.desc'),
-      // 8: Amazon Prime Video Hits
       _fetchSingleCategory(
           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=popularity.desc'),
-      // 9: Trending Hindi Web Series
       _fetchSingleCategory(
           '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=3',
           isTv: true),
@@ -509,9 +878,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(color: Colors.white12),
                     ),
-                    child: Column(
+                    child: const Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
+                      children: [
                         Icon(Icons.grid_view_rounded, color: Color(0xFFE50914), size: 28),
                         SizedBox(height: 6),
                         Text('See All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
@@ -651,49 +1020,100 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   ),
                 ),
 
+                // TOP BAR WITH NETFLIX PRO LOGO + GIST ACTIVE PILL + SEARCH
                 Positioned(
                   top: 0,
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.only(top: 40, left: 16, right: 16, bottom: 12),
+                    padding: const EdgeInsets.only(top: 40, left: 14, right: 10, bottom: 12),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [Colors.black.withOpacity(0.9), Colors.transparent],
+                        colors: [Colors.black.withOpacity(0.92), Colors.transparent],
                       ),
                     ),
-                    child: Stack(
-                      alignment: Alignment.center,
+                    child: Row(
                       children: [
                         const Text(
                           'NETFLIX PRO',
                           style: TextStyle(
                             color: Color(0xFFE50914),
-                            fontSize: 22,
+                            fontSize: 20,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: 2.0,
+                            letterSpacing: 1.5,
                           ),
                         ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.search, color: Colors.white, size: 26),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => MobileSearchScreen(
-                                      providers: widget.providers,
-                                      onPlaySaved: _loadContinueWatching,
-                                    ),
-                                  ),
-                                );
-                              },
+                        const Spacer(),
+                        // Gist Active Button (Like Screenshot)
+                        InkWell(
+                          onTap: widget.onOpenGistDialog,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: widget.isGistConnected
+                                  ? const Color(0xFF064E3B).withOpacity(0.85)
+                                  : const Color(0xFF27272A).withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: widget.isGistConnected
+                                    ? const Color(0xFF22C55E)
+                                    : Colors.white38,
+                                width: 1.2,
+                              ),
                             ),
-                          ],
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.link_rounded,
+                                  size: 14,
+                                  color: widget.isGistConnected
+                                      ? const Color(0xFF4ADE80)
+                                      : Colors.white70,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  widget.isGistConnected ? 'Gist Active' : 'Add Gist',
+                                  style: TextStyle(
+                                    color: widget.isGistConnected
+                                        ? const Color(0xFF4ADE80)
+                                        : Colors.white,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: widget.isGistConnected
+                                        ? const Color(0xFF22C55E)
+                                        : const Color(0xFFEF4444),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.search, color: Colors.white, size: 24),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => MobileSearchScreen(
+                                  providers: widget.providers,
+                                  onPlaySaved: _loadContinueWatching,
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ),

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'stream_resolver_sheet.dart';
+import 'tmdb_config.dart';
 
 class MediaDetailSheet extends StatelessWidget {
   final dynamic item;
@@ -53,6 +54,15 @@ class MediaDetailSheet extends StatelessWidget {
     final title = (item['title'] ?? 'Netflix Pro').toString();
     final isTv = item['isTv'] == true;
 
+    String activeGistUrl = MobileConfig.gistUrl;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final customUrl = prefs.getString('custom_gist_url');
+      if (customUrl != null) {
+        activeGistUrl = customUrl.trim();
+      }
+    } catch (_) {}
+
     try {
       await _playerChannel.invokeMethod('playVideo', {
         'url': '',
@@ -61,8 +71,8 @@ class MediaDetailSheet extends StatelessWidget {
         'isTv': isTv,
         'season': season,
         'episode': episode,
-        'userAgent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'gistUrl': activeGistUrl,
+        'userAgent': 'IPTVSmartersPro',
       });
     } catch (_) {}
   }
@@ -196,9 +206,9 @@ class MediaDetailSheet extends StatelessWidget {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                       ),
                       onPressed: () => _onWatchPressed(context),
-                      child: Row(
+                      child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
+                        children: [
                           Icon(Icons.play_arrow, size: 20),
                           SizedBox(width: 6),
                           Text('Watch Now', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),

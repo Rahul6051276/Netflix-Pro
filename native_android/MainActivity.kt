@@ -24,6 +24,7 @@ class MainActivity : FlutterActivity() {
                     val isTv = call.argument<Boolean>("isTv") ?: false
                     val season = call.argument<Int>("season") ?: 1
                     val episode = call.argument<Int>("episode") ?: 1
+                    val gistUrl = call.argument<String>("gistUrl").orEmpty().trim()
 
                     pendingResult?.success(false)
                     pendingResult = result
@@ -38,6 +39,7 @@ class MainActivity : FlutterActivity() {
                         putExtra("isTv", isTv)
                         putExtra("season", season)
                         putExtra("episode", episode)
+                        putExtra("gistUrl", gistUrl)
                     }
                     startActivityForResult(intent, REQ_PLAYER)
                 } else {
