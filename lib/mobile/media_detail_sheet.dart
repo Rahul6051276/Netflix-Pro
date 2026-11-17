@@ -1,12 +1,11 @@
 // ============================================================================
-// NETFLIX PRO - ZERO-DELAY DIRECT NATIVE CINEMA PLAYER LAUNCHER
+// NETFLIX PRO - STRICT GIST-LOCKED NATIVE CINEMA PLAYER LAUNCHER
 // ============================================================================
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'stream_resolver_sheet.dart';
-import 'tmdb_config.dart';
 
 class MediaDetailSheet extends StatelessWidget {
   final dynamic item;
@@ -48,20 +47,29 @@ class MediaDetailSheet extends StatelessWidget {
     } catch (_) {}
   }
 
-  Future _launchPlayerDirectly({int season = 1, int episode = 1}) async {
+  Future _launchPlayerDirectly(BuildContext context, {int season = 1, int episode = 1}) async {
+    String activeGistUrl = '';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      activeGistUrl = (prefs.getString('custom_gist_url') ?? '').trim();
+    } catch (_) {}
+
+    if (activeGistUrl.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Color(0xFFE50914),
+            content: Text('No Gist link found! Please add your GitHub Gist URL first.'),
+          ),
+        );
+      }
+      return;
+    }
+
     await _saveContinueWatching();
     final tmdbId = (item['tmdb_id'] ?? '').toString();
     final title = (item['title'] ?? 'Netflix Pro').toString();
     final isTv = item['isTv'] == true;
-
-    String activeGistUrl = MobileConfig.gistUrl;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final customUrl = prefs.getString('custom_gist_url');
-      if (customUrl != null) {
-        activeGistUrl = customUrl.trim();
-      }
-    } catch (_) {}
 
     try {
       await _playerChannel.invokeMethod('playVideo', {
@@ -91,12 +99,12 @@ class MediaDetailSheet extends StatelessWidget {
           item: item,
           providers: providers,
           onSelected: (season, ep) {
-            _launchPlayerDirectly(season: season, episode: ep);
+            _launchPlayerDirectly(navigator.context, season: season, episode: ep);
           },
         ),
       );
     } else {
-      _launchPlayerDirectly();
+      _launchPlayerDirectly(navigator.context);
     }
   }
 
