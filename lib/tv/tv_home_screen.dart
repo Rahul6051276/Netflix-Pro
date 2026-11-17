@@ -30,6 +30,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   dynamic activeShowcaseItem;
 
   // Home Fast Lists
+  List homeBollywoodLatestList = [];
+  List homeSouthLatestList = [];
   List homeNetflixList = [];
   List homePrimeList = [];
   List homeHotstarList = [];
