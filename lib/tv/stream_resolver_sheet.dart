@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'tmdb_config.dart';
 
 // ============================================================================
-// DIRECT NATIVE PLAYER LAUNCHER FOR TV
+// DIRECT NATIVE PLAYER LAUNCHER FOR TV (WITH GIST URL + TV UI + ORIG LANGUAGE)
 // ============================================================================
 Future launchTvDirectNativePlayer({
   required dynamic item,
@@ -18,9 +18,12 @@ Future launchTvDirectNativePlayer({
   const MethodChannel playerChannel =
       MethodChannel('com.netflixpro.netflix_pro/player');
 
+  String activeGistUrl = '';
   try {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
+    activeGistUrl = (prefs.getString('tv_custom_gist_url') ?? '').trim();
+
     final raw = prefs.getString('continue_watching_tv');
     var curr = [];
     if (raw != null && raw.isNotEmpty) {
@@ -35,6 +38,7 @@ Future launchTvDirectNativePlayer({
       'year': item['year'] ?? '',
       'rating': item['rating'] ?? '8.0',
       'overview': item['overview'] ?? '',
+      'original_language': item['original_language'] ?? '',
       'isTv': item['isTv'] ?? false,
     });
     if (curr.length > 15) {
@@ -47,6 +51,7 @@ Future launchTvDirectNativePlayer({
   final tmdbId = (item['tmdb_id'] ?? '').toString();
   final title = (item['title'] ?? 'Netflix Pro TV').toString();
   final isTv = item['isTv'] == true;
+  final origLang = (item['original_language'] ?? '').toString();
 
   try {
     await playerChannel.invokeMethod('playVideo', {
@@ -56,7 +61,10 @@ Future launchTvDirectNativePlayer({
       'isTv': isTv,
       'season': season,
       'episode': episode,
-      'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) CinemaTV/1.0',
+      'gistUrl': activeGistUrl,
+      'isTvDevice': true,
+      'originalLanguage': origLang,
+      'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0',
     });
   } catch (_) {}
 }
@@ -216,7 +224,6 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Full-bleed Backdrop
           if (backdrop.isNotEmpty)
             Image.network(
               backdrop,
@@ -224,7 +231,6 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
               errorBuilder: (_, __, ___) =>
                   Container(color: const Color(0xFF141414)),
             ),
-          // Cinematic Gradient Overlay
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -253,15 +259,12 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
               ),
             ),
           ),
-
-          // Main Content
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(36, 22, 36, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Top Back Button
                   Focus(
                     focusNode: _backFocus,
                     onKey: (node, event) {
@@ -310,15 +313,11 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
                       );
                     }),
                   ),
-
                   const SizedBox(height: 18),
-
-                  // Poster + Title + Storyline + Watch Now Button
                   Expanded(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Left Poster Card
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10),
                           child: Container(
@@ -339,10 +338,7 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
                                 : Container(color: const Color(0xFF222222)),
                           ),
                         ),
-
                         const SizedBox(width: 28),
-
-                        // Right Details Column
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,9 +387,7 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
                                   ],
                                 ],
                               ),
-
                               const SizedBox(height: 10),
-
                               Text(
                                 title,
                                 maxLines: 2,
@@ -405,7 +399,6 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
                                   height: 1.15,
                                 ),
                               ),
-
                               if (_genres.isNotEmpty) ...[
                                 const SizedBox(height: 6),
                                 Text(
@@ -417,10 +410,7 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
                                   ),
                                 ),
                               ],
-
                               const SizedBox(height: 12),
-
-                              // Storyline
                               const Text(
                                 'STORYLINE',
                                 style: TextStyle(
@@ -443,10 +433,7 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
                                   height: 1.4,
                                 ),
                               ),
-
                               const SizedBox(height: 16),
-
-                              // Watch Now & Episodes Buttons
                               Row(
                                 children: [
                                   Focus(
@@ -559,10 +546,7 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
                                   ],
                                 ],
                               ),
-
                               const SizedBox(height: 18),
-
-                              // Star Cast Section
                               if (_castList.isNotEmpty) ...[
                                 const Text(
                                   'STAR CAST',

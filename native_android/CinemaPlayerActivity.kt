@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
@@ -121,12 +122,12 @@ class CinemaPlayerActivity : Activity() {
     private val streamSources = mutableListOf<StreamSourceItem>()
     private var activeSourceIndex = 0
     private var currentActiveUrl = ""
-    private var currentUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     private var currentMovieTitle = "Netflix Pro"
     private var customGistUrl = ""
+    private var originalLanguage = ""
+    private var isTvUiMode = false
     private var currentPreset = PicturePreset.JUST_PLAYER
 
-    // Multi-Agent Universal Playback Retry for stubborn IPTV panels
     private val streamUserAgents = listOf(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "VLC/3.0.18 LibVLC/3.0.18",
@@ -146,7 +147,6 @@ class CinemaPlayerActivity : Activity() {
     @Volatile private var isActivityDestroyed = false
     @Volatile private var isResolvingAllSources = false
 
-    // 200% Audio Boost Steps
     private val boostLevels = intArrayOf(100, 135, 170, 200)
     private var boostIndex = 0
     private var currentBoostPercent = 100
@@ -202,6 +202,10 @@ class CinemaPlayerActivity : Activity() {
             window.colorMode = ActivityInfo.COLOR_MODE_HDR
         }
 
+        val hasTvFlag = intent.getBooleanExtra("isTvDevice", false)
+        val isLeanback = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+        isTvUiMode = hasTvFlag || isLeanback
+
         seekStepSec = intent.getIntExtra("seekSeconds", 15).coerceIn(5, 60)
         seekStepMs = seekStepSec * 1000L
 
@@ -242,6 +246,7 @@ class CinemaPlayerActivity : Activity() {
         val rawUrl = intent.getStringExtra("url")?.trim().orEmpty()
         currentMovieTitle = intent.getStringExtra("title")?.trim().orEmpty().ifEmpty { "Netflix Pro" }
         customGistUrl = intent.getStringExtra("gistUrl")?.trim().orEmpty()
+        originalLanguage = intent.getStringExtra("originalLanguage")?.trim().orEmpty().lowercase(Locale.ROOT)
         val tmdbId = intent.getStringExtra("tmdbId")?.trim().orEmpty()
         val isTv = intent.getBooleanExtra("isTv", false)
         val season = intent.getIntExtra("season", 1)
@@ -266,7 +271,7 @@ class CinemaPlayerActivity : Activity() {
                         server = "Live Broadcast",
                         title = currentMovieTitle,
                         url = directUrl,
-                        isHindi = isExplicitHindi(currentMovieTitle),
+                        isHindi = isExplicitHindi(currentMovieTitle) || originalLanguage == "hi",
                         isXtreamIptv = true
                     )
                 )
@@ -310,12 +315,10 @@ class CinemaPlayerActivity : Activity() {
 
     private fun setConnectingState(connecting: Boolean) {
         connectingCard.visibility = if (connecting) View.VISIBLE else View.GONE
-        centerBar.visibility = if (connecting) View.GONE else View.VISIBLE
+        // On TV, NEVER show center buttons over the screen
+        centerBar.visibility = if (connecting || isTvUiMode) View.GONE else View.VISIBLE
     }
 
-    // =========================================================================
-    // UNIVERSAL MEDIA ITEM BUILDER (SUPPORTS ALL WORLDWIDE VIDEO/AUDIO FORMATS)
-    // =========================================================================
     private fun buildUniversalMediaItem(rawUrl: String, title: String): MediaItem {
         val cleanUrl = rawUrl.trim()
         val pathOnly = cleanUrl.substringBefore('?').substringBefore('#').lowercase(Locale.ROOT)
@@ -351,14 +354,10 @@ class CinemaPlayerActivity : Activity() {
             pathOnly.endsWith(".flv") -> {
                 itemBuilder.setMimeType(MimeTypes.VIDEO_FLV)
             }
-            // No extension / dynamic PHP/CDN stream -> leave MimeType unset so ExtractorsFactory auto-sniffs bytes
         }
         return itemBuilder.build()
     }
 
-    // =========================================================================
-    // 200% AUDIO BOOST ENGINE (LOUDNESS ENHANCER)
-    // =========================================================================
     private fun attachLoudnessEnhancer(audioSessionId: Int) {
         if (audioSessionId <= 0 || audioSessionId == C.AUDIO_SESSION_ID_UNSET) return
         releaseLoudnessEnhancer()
@@ -433,9 +432,6 @@ class CinemaPlayerActivity : Activity() {
         )
     }
 
-    // =========================================================================
-    // STRICT USER-GIST MULTI-IPTV STREAM RESOLVER
-    // =========================================================================
     private fun normalizeXtreamHost(rawHost: String): String {
         return rawHost.trim().trimEnd('/')
     }
@@ -453,6 +449,7 @@ class CinemaPlayerActivity : Activity() {
             val playbackStarted = AtomicBoolean(false)
             val cleanTarget = cleanText(movieTitle)
             var imdbId = ""
+            var detectedOrigLang = originalLanguage
 
             fun syncSourcesToUi(isFinal: Boolean = false) {
                 val snapshot = synchronized(found) {
@@ -539,18 +536,22 @@ class CinemaPlayerActivity : Activity() {
 
             try {
                 val extType = if (isTv) "tv" else "movie"
-                val extStr = httpGet(
-                    "https://api.themoviedb.org/3/$extType/$tmdbId/external_ids?api_key=b7cd3340a794e5a2f35e3abb820b497f",
+                val detailStr = httpGet(
+                    "https://api.themoviedb.org/3/$extType/$tmdbId?api_key=b7cd3340a794e5a2f35e3abb820b497f&append_to_response=external_ids",
                     6000
                 )
-                if (extStr.isNotEmpty()) {
-                    imdbId = JSONObject(extStr).optString("imdb_id", "")
+                if (detailStr.isNotEmpty()) {
+                    val dObj = JSONObject(detailStr)
+                    if (detectedOrigLang.isEmpty()) {
+                        detectedOrigLang = dObj.optString("original_language", "").lowercase(Locale.ROOT)
+                    }
+                    imdbId = dObj.optJSONObject("external_ids")?.optString("imdb_id", "").orEmpty()
                 }
             } catch (_: Throwable) {}
 
+            val isTitleOrigHindi = (detectedOrigLang == "hi")
             val latch = CountDownLatch(providers.size + 1)
 
-            // 1. ALL Gist Providers (1, 2, 3+ Xtream IPTVs + Stremio) in Parallel
             for ((provIndex, prov) in providers.withIndex()) {
                 thread(start = true) {
                     try {
@@ -576,7 +577,8 @@ class CinemaPlayerActivity : Activity() {
                                         tmdbId = tmdbId,
                                         cleanTarget = cleanTarget,
                                         idKey = "series_id",
-                                        categoryMap = categoryMap
+                                        categoryMap = categoryMap,
+                                        isTitleOrigHindi = isTitleOrigHindi
                                     )
                                     cands.sortByDescending { if (it.isHindi) 1 else 0 }
                                     for (bestSeries in cands.take(5)) {
@@ -626,7 +628,8 @@ class CinemaPlayerActivity : Activity() {
                                         tmdbId = tmdbId,
                                         cleanTarget = cleanTarget,
                                         idKey = "stream_id",
-                                        categoryMap = categoryMap
+                                        categoryMap = categoryMap,
+                                        isTitleOrigHindi = isTitleOrigHindi
                                     )
                                     cands.sortByDescending { if (it.isHindi) 1 else 0 }
                                     for (bestMovie in cands.take(5)) {
@@ -673,7 +676,7 @@ class CinemaPlayerActivity : Activity() {
                                         if (low.contains("donation") || low.contains("discord") || low.contains("telegram")) continue
 
                                         val displayTitle = titlePart.ifBlank { namePart }.ifBlank { "$movieTitle HD" }
-                                        val explicitHindi = isExplicitHindi("$provName $combined")
+                                        val explicitHindi = isExplicitHindi("$provName $combined") || isTitleOrigHindi
                                         val multiHindi = isIndianMultiAudioServer("$provName $combined")
 
                                         found.add(
@@ -699,7 +702,6 @@ class CinemaPlayerActivity : Activity() {
                 }
             }
 
-            // 2. Render Cloud Streams in parallel
             thread(start = true) {
                 try {
                     val embedType = if (isTv) "series" else "movie"
@@ -723,7 +725,7 @@ class CinemaPlayerActivity : Activity() {
                             if (sUrl.isNotEmpty()) {
                                 val sTitle = sObj.optString("title", "$movieTitle HD")
                                 val pName = sObj.optString("provider", "Cloud HD")
-                                val explicitHindi = isExplicitHindi("$pName $sTitle")
+                                val explicitHindi = isExplicitHindi("$pName $sTitle") || isTitleOrigHindi
                                 val multiHindi = isIndianMultiAudioServer("$pName $sTitle")
                                 found.add(
                                     StreamSourceItem(
@@ -795,7 +797,8 @@ class CinemaPlayerActivity : Activity() {
         tmdbId: String,
         cleanTarget: String,
         idKey: String,
-        categoryMap: Map<String, String>
+        categoryMap: Map<String, String>,
+        isTitleOrigHindi: Boolean
     ): MutableList<XtreamCandidate> {
         val matches = mutableListOf<XtreamCandidate>()
         val altUrl = if (apiUrl.contains(":80/")) {
@@ -884,7 +887,9 @@ class CinemaPlayerActivity : Activity() {
                                 )
 
                                 if (tmdbMatch || titleMatch) {
-                                    val detectedHindi = isExplicitHindi("$itemName $resolvedCatName")
+                                    val otherLangExplicit = hasOtherExplicitLanguage("$itemName $resolvedCatName")
+                                    val detectedHindi = isExplicitHindi("$itemName $resolvedCatName") ||
+                                        (isTitleOrigHindi && !otherLangExplicit)
                                     matches.add(
                                         XtreamCandidate(
                                             id = itemId,
@@ -910,6 +915,13 @@ class CinemaPlayerActivity : Activity() {
             }
         }
         return matches
+    }
+
+    private fun hasOtherExplicitLanguage(text: String): Boolean {
+        val low = text.lowercase(Locale.ROOT)
+        return low.contains("tamil") || low.contains("telugu") ||
+            low.contains("malayalam") || low.contains("kannada") ||
+            low.contains("english") || low.startsWith("ar ") || low.startsWith("ar-")
     }
 
     private fun stripPrefixTagsAndClean(raw: String): String {
@@ -1140,6 +1152,7 @@ class CinemaPlayerActivity : Activity() {
             )
         }
 
+        // TOP BAR
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1186,17 +1199,22 @@ class CinemaPlayerActivity : Activity() {
         topBar.addView(backBtn)
         topBar.addView(titleView)
         topBar.addView(infoBadgeView)
-        topBar.addView(spacer(dp(8)))
-        topBar.addView(sourcesBtn)
+        if (!isTvUiMode) {
+            // On Mobile: Keep Sources button in Top Bar as before
+            topBar.addView(spacer(dp(8)))
+            topBar.addView(sourcesBtn)
+        }
         topBar.addView(spacer(dp(8)))
         topBar.addView(pictureBtn)
         topBar.addView(spacer(dp(8)))
         topBar.addView(lockBtn)
         hudContainer.addView(topBar)
 
+        // CENTER BAR (ONLY FOR MOBILE; HIDDEN ON TV SO CENTER OF SCREEN REMAINS 100% CLEAN)
         centerBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
+            visibility = if (isTvUiMode) View.GONE else View.VISIBLE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -1204,15 +1222,18 @@ class CinemaPlayerActivity : Activity() {
             )
         }
         val rwBtn = createHudButton("↺ ${seekStepSec}s", big = true) { seekBy(-seekStepMs) }
-        playPauseBtn = createHudButton("❚❚", big = true) { togglePlayPause() }
+        playPauseBtn = createHudButton("❚❚", big = !isTvUiMode) { togglePlayPause() }
         val fwBtn = createHudButton("${seekStepSec}s ↻", big = true) { seekBy(seekStepMs) }
-        centerBar.addView(rwBtn)
-        centerBar.addView(spacer(dp(20)))
-        centerBar.addView(playPauseBtn)
-        centerBar.addView(spacer(dp(20)))
-        centerBar.addView(fwBtn)
+        if (!isTvUiMode) {
+            centerBar.addView(rwBtn)
+            centerBar.addView(spacer(dp(20)))
+            centerBar.addView(playPauseBtn)
+            centerBar.addView(spacer(dp(20)))
+            centerBar.addView(fwBtn)
+        }
         hudContainer.addView(centerBar)
 
+        // BOTTOM PANEL
         val bottomPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(22), dp(20), dp(14))
@@ -1339,6 +1360,13 @@ class CinemaPlayerActivity : Activity() {
         aspectBtn = createHudButton("Fit") { cycleAspectRatio() }
         speedBtn = createHudButton("1.0x") { cyclePlaybackSpeed() }
 
+        if (isTvUiMode) {
+            // On TV: Put Play/Pause AND Sources button in the Bottom Bar
+            actionsRow.addView(playPauseBtn)
+            actionsRow.addView(spacer(dp(10)))
+            actionsRow.addView(sourcesBtn)
+            actionsRow.addView(spacer(dp(10)))
+        }
         actionsRow.addView(boostBtn)
         actionsRow.addView(spacer(dp(8)))
         actionsRow.addView(audioBtn)
@@ -1837,7 +1865,6 @@ class CinemaPlayerActivity : Activity() {
 
         val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
 
-        // Universal Extractors supporting all worldwide formats (MKV, MP4, TS, M2TS, AVI, FLV, WebM, AAC, AC3, DTS)
         val extractorsFactory = DefaultExtractorsFactory()
             .setConstantBitrateSeekingEnabled(true)
             .setConstantBitrateSeekingAlwaysEnabled(true)
@@ -1909,12 +1936,10 @@ class CinemaPlayerActivity : Activity() {
 
             override fun onPlayerError(error: PlaybackException) {
                 if (!isSafeUi()) return
-                // 1. First retry the EXACT SAME selected source with VLC/Smarters User-Agents
                 if (retryCurrentStreamWithNextAgent(exo)) {
                     return
                 }
                 loadingSpinner.visibility = View.GONE
-                // 2. Only auto-advance on initial startup; if user manually picked a source, show clear error so they know!
                 if (!userManuallyPickedSource && activeSourceIndex + 1 < streamSources.size) {
                     switchToStreamSource(activeSourceIndex + 1)
                 } else {
