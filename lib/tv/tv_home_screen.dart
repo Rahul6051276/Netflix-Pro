@@ -18,11 +18,14 @@ class TvHomeScreen extends StatefulWidget {
 
 class _TvHomeScreenState extends State<TvHomeScreen> {
   int _selectedNavIndex = 2; // Default Home
-  final List _sidebarFocusNodes = List.generate(6, (_) => FocusNode());
+  final List<FocusNode> _sidebarFocusNodes = List.generate(7, (_) => FocusNode());
   final FocusNode _firstContentCardFocus = FocusNode();
   final FocusNode _watchNowFocusNode = FocusNode();
 
   List activeProviders = [];
+  String currentGistUrl = '';
+  bool isGistConnected = false;
+
   List continueWatchingList = [];
   dynamic activeShowcaseItem;
 
@@ -97,14 +100,78 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   Future _fetchProviders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedGist = (prefs.getString('tv_custom_gist_url') ?? '').trim();
+
+    if (savedGist.isEmpty) {
+      await prefs.remove('tv_cached_active_providers');
+      if (mounted) {
+        setState(() {
+          currentGistUrl = '';
+          activeProviders = [];
+          isGistConnected = false;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && currentGistUrl.isEmpty) {
+            _openTvGistDialog();
+          }
+        });
+      }
+      return;
+    }
+
+    currentGistUrl = savedGist;
+    final cached = prefs.getString('tv_cached_active_providers');
+    if (cached != null && cached.isNotEmpty && mounted) {
+      try {
+        final list = jsonDecode(cached) as List;
+        setState(() {
+          activeProviders = list;
+          isGistConnected = list.isNotEmpty;
+        });
+      } catch (_) {}
+    }
+
     try {
-      final sep = TvConfig.gistUrl.contains('?') ? '&' : '?';
-      final url = '${TvConfig.gistUrl}${sep}t=${DateTime.now().millisecondsSinceEpoch}';
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
+      final sep = currentGistUrl.contains('?') ? '&' : '?';
+      final url = '$currentGistUrl${sep}t=${DateTime.now().millisecondsSinceEpoch}';
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) {
-        activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
+        final decoded = jsonDecode(res.body);
+        final list = decoded is List
+            ? decoded
+            : (decoded['active_providers'] ?? decoded['providers'] ?? []);
+        if (list is List && list.isNotEmpty) {
+          await prefs.setString('tv_cached_active_providers', jsonEncode(list));
+          if (mounted) {
+            setState(() {
+              activeProviders = list;
+              isGistConnected = true;
+            });
+          }
+        }
       }
     } catch (_) {}
+  }
+
+  void _openTvGistDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => _TvGistManagerDialog(
+        initialUrl: currentGistUrl,
+        currentProviders: activeProviders,
+        onSynced: (newUrl, newProviders) {
+          if (mounted) {
+            setState(() {
+              currentGistUrl = newUrl;
+              activeProviders = newProviders;
+              isGistConnected = newUrl.isNotEmpty && newProviders.isNotEmpty;
+            });
+          }
+        },
+      ),
+    );
   }
 
   // Fast Parallel Instant Render for Home Screen
@@ -309,6 +376,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             ? '${TvConfig.imgBase}${m['poster_path']}'
             : '${TvConfig.backdropBase}${m['backdrop_path']}',
         'overview': m['overview'] ?? '',
+        'original_language': m['original_language'] ?? '',
         'isTv': isTv,
       });
     }
@@ -316,6 +384,18 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   void _onTvItemSelect(dynamic item) {
+    if (!isGistConnected || activeProviders.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFFE50914),
+          content: Text('Please add your GitHub Gist link in the Left Sidebar first!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      _openTvGistDialog();
+      return;
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => TvMediaDetailScreen(
@@ -327,22 +407,23 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   // ============================================================================
-  // NETFLIX RED MINIMAL SLIM SIDEBAR
+  // NETFLIX RED MINIMAL SLIM SIDEBAR (WITH GIST LINK MANAGER)
   // ============================================================================
   Widget _buildNetflixNavRail() {
     final icons = [
-      Icons.person_outline_rounded,
-      Icons.search_rounded,
-      Icons.home_filled,
-      Icons.movie_creation_outlined, // 3: Movies Tab
-      Icons.tv_rounded,              // 4: Web Series Tab
-      Icons.grid_view_rounded,
+      Icons.person_outline_rounded, // 0
+      Icons.search_rounded,         // 1: Search
+      Icons.home_filled,            // 2: Home
+      Icons.movie_creation_outlined,// 3: Movies
+      Icons.tv_rounded,             // 4: Web Series
+      Icons.grid_view_rounded,      // 5: Explore
+      Icons.link_rounded,           // 6: Gist Link Manager
     ];
 
     return Container(
-      width: 58,
+      width: 60,
       color: Colors.transparent,
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.symmetric(vertical: 20),
       child: Column(
         children: [
           Container(
@@ -353,20 +434,28 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(height: 36),
+          const SizedBox(height: 26),
           Expanded(
             child: ListView.separated(
               itemCount: icons.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 18),
+              separatorBuilder: (_, __) => const SizedBox(height: 14),
               itemBuilder: (ctx, i) {
+                final bool isGistItem = (i == 6);
                 return NetflixSidebarIcon(
                   focusNode: _sidebarFocusNodes[i],
                   icon: icons[i],
                   isSelected: _selectedNavIndex == i,
+                  customColor: isGistItem
+                      ? (isGistConnected ? const Color(0xFF22C55E) : const Color(0xFFEF4444))
+                      : null,
                   onRightArrow: _jumpFocusToContent,
                   onTap: () {
-                    setState(() => _selectedNavIndex = i);
-                    _jumpFocusToContent();
+                    if (isGistItem) {
+                      _openTvGistDialog();
+                    } else {
+                      setState(() => _selectedNavIndex = i);
+                      _jumpFocusToContent();
+                    }
                   },
                 );
               },
@@ -440,6 +529,28 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     Text(
                       item['isTv'] == true ? 'S E R I E S' : 'M O V I E',
                       style: const TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: _openTvGistDialog,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isGistConnected ? const Color(0xFF064E3B) : const Color(0xFF7F1D1D),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isGistConnected ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
+                          ),
+                        ),
+                        child: Text(
+                          isGistConnected ? '● Gist Active' : '● Add Gist in Sidebar',
+                          style: TextStyle(
+                            color: isGistConnected ? const Color(0xFF4ADE80) : Colors.white,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -516,14 +627,25 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       }),
                     ),
                     const SizedBox(width: 10),
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white12,
-                        borderRadius: BorderRadius.circular(4),
+                    InkWell(
+                      onTap: _openTvGistDialog,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        height: 40,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white12,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: Row(
+                          children: const [
+                            Icon(Icons.link_rounded, color: Colors.white, size: 18),
+                            SizedBox(width: 6),
+                            Text('Gist URL', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
                       ),
-                      child: const Icon(Icons.add, color: Colors.white70, size: 20),
                     ),
                   ],
                 ),
@@ -889,12 +1011,246 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 }
 
 // ============================================================================
+// TV GITHUB GIST URL MANAGER DIALOG
+// ============================================================================
+class _TvGistManagerDialog extends StatefulWidget {
+  final String initialUrl;
+  final List currentProviders;
+  final Function(String newUrl, List newProviders) onSynced;
+
+  const _TvGistManagerDialog({
+    required this.initialUrl,
+    required this.currentProviders,
+    required this.onSynced,
+  });
+
+  @override
+  State<_TvGistManagerDialog> createState() => _TvGistManagerDialogState();
+}
+
+class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
+  late TextEditingController _urlController;
+  bool _isSyncing = false;
+  String? _statusMessage;
+  bool _isError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _urlController = TextEditingController(text: widget.initialUrl);
+    if (widget.initialUrl.isNotEmpty && widget.currentProviders.isNotEmpty) {
+      _statusMessage = 'Connected (${widget.currentProviders.length} active sources)';
+    }
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveAndSyncGist() async {
+    final rawUrl = _urlController.text.trim();
+    if (rawUrl.isEmpty) {
+      setState(() {
+        _statusMessage = 'Please paste a valid GitHub Gist Raw URL';
+        _isError = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSyncing = true;
+      _statusMessage = null;
+      _isError = false;
+    });
+
+    try {
+      final sep = rawUrl.contains('?') ? '&' : '?';
+      final testUrl = '$rawUrl${sep}t=${DateTime.now().millisecondsSinceEpoch}';
+      final res = await http.get(Uri.parse(testUrl)).timeout(const Duration(seconds: 10));
+
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        final list = decoded is List
+            ? decoded
+            : (decoded['active_providers'] ?? decoded['providers'] ?? []);
+
+        if (list is List && list.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('tv_custom_gist_url', rawUrl);
+          await prefs.setString('tv_cached_active_providers', jsonEncode(list));
+
+          widget.onSynced(rawUrl, list);
+          if (mounted) {
+            Navigator.of(context).pop();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: const Color(0xFF16A34A),
+                content: Text('Gist Connected! ${list.length} providers synced.'),
+              ),
+            );
+          }
+        } else {
+          setState(() {
+            _statusMessage = 'No active providers found in this Gist JSON.';
+            _isError = true;
+          });
+        }
+      } else {
+        setState(() {
+          _statusMessage = 'Failed to load URL (HTTP ${res.statusCode})';
+          _isError = true;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Connection error: Invalid URL or no internet.';
+        _isError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
+  }
+
+  Future<void> _clearGist() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('tv_custom_gist_url');
+    await prefs.remove('tv_cached_active_providers');
+    _urlController.clear();
+    widget.onSynced('', []);
+    if (mounted) {
+      setState(() {
+        _statusMessage = 'Gist URL cleared.';
+        _isError = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF181818),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: Colors.white24),
+      ),
+      child: Container(
+        width: 540,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: const [
+                    Icon(Icons.link_rounded, color: Color(0xFFE50914), size: 24),
+                    SizedBox(width: 10),
+                    Text(
+                      'GitHub Gist Source Manager',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Paste your GitHub Gist Raw JSON link below to unlock streaming providers:',
+              style: TextStyle(color: Colors.white70, fontSize: 12.5),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _urlController,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
+                hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                filled: true,
+                fillColor: const Color(0xFF262626),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Colors.white24),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFE50914), width: 1.8),
+                ),
+              ),
+            ),
+            if (_statusMessage != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _statusMessage!,
+                style: TextStyle(
+                  color: _isError ? const Color(0xFFEF4444) : const Color(0xFF4ADE80),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (widget.initialUrl.isNotEmpty)
+                  TextButton(
+                    onPressed: _isSyncing ? null : _clearGist,
+                    child: const Text(
+                      'Remove Link',
+                      style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                const SizedBox(width: 10),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE50914),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                  onPressed: _isSyncing ? null : _saveAndSyncGist,
+                  icon: _isSyncing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.sync_rounded, size: 18),
+                  label: Text(
+                    _isSyncing ? 'Syncing...' : 'Save & Sync Gist',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
 // NETFLIX MINIMAL SIDEBAR ICON
 // ============================================================================
 class NetflixSidebarIcon extends StatefulWidget {
   final FocusNode focusNode;
   final IconData icon;
   final bool isSelected;
+  final Color? customColor;
   final VoidCallback onRightArrow;
   final VoidCallback onTap;
 
@@ -903,6 +1259,7 @@ class NetflixSidebarIcon extends StatefulWidget {
     required this.focusNode,
     required this.icon,
     required this.isSelected,
+    this.customColor,
     required this.onRightArrow,
     required this.onTap,
   });
@@ -916,6 +1273,9 @@ class _NetflixSidebarIconState extends State<NetflixSidebarIcon> {
 
   @override
   Widget build(BuildContext context) {
+    final activeIconColor = widget.customColor ??
+        (widget.isSelected ? const Color(0xFFE50914) : Colors.white38);
+
     return Focus(
       focusNode: widget.focusNode,
       onFocusChange: (f) => setState(() => _isFocused = f),
@@ -949,11 +1309,7 @@ class _NetflixSidebarIconState extends State<NetflixSidebarIcon> {
           ),
           child: Icon(
             widget.icon,
-            color: _isFocused
-                ? Colors.white
-                : widget.isSelected
-                    ? const Color(0xFFE50914)
-                    : Colors.white38,
+            color: _isFocused ? Colors.white : activeIconColor,
             size: 20,
           ),
         ),
