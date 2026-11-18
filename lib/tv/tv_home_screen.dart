@@ -627,25 +627,49 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       }),
                     ),
                     const SizedBox(width: 10),
-                    InkWell(
-                      onTap: _openTvGistDialog,
-                      borderRadius: BorderRadius.circular(4),
-                      child: Container(
-                        height: 40,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white12,
+                    Focus(
+                      onKey: (node, event) {
+                        if (event is RawKeyDownEvent &&
+                            (event.logicalKey == LogicalKeyboardKey.select ||
+                                event.logicalKey == LogicalKeyboardKey.enter)) {
+                          _openTvGistDialog();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      child: Builder(builder: (c) {
+                        final focused = Focus.of(c).hasFocus;
+                        return InkWell(
+                          onTap: _openTvGistDialog,
                           borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                        child: Row(
-                          children: const [
-                            Icon(Icons.link_rounded, color: Colors.white, size: 18),
-                            SizedBox(width: 6),
-                            Text('Gist URL', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                      ),
+                          child: Container(
+                            height: 40,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: focused ? Colors.white : Colors.white12,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: focused ? const Color(0xFFE50914) : Colors.white24,
+                                width: focused ? 2 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.link_rounded, color: focused ? Colors.black : Colors.white, size: 18),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Gist URL',
+                                  style: TextStyle(
+                                    color: focused ? Colors.black : Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
                     ),
                   ],
                 ),
@@ -1011,7 +1035,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 }
 
 // ============================================================================
-// TV GITHUB GIST URL MANAGER DIALOG
+// TV GITHUB GIST URL MANAGER DIALOG (FULL ANDROID TV D-PAD REMOTE SUPPORT)
 // ============================================================================
 class _TvGistManagerDialog extends StatefulWidget {
   final String initialUrl;
@@ -1030,6 +1054,12 @@ class _TvGistManagerDialog extends StatefulWidget {
 
 class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
   late TextEditingController _urlController;
+  final FocusNode _inputFocusNode = FocusNode();
+  final FocusNode _pasteFocusNode = FocusNode();
+  final FocusNode _saveFocusNode = FocusNode();
+  final FocusNode _clearFocusNode = FocusNode();
+  final FocusNode _closeFocusNode = FocusNode();
+
   bool _isSyncing = false;
   String? _statusMessage;
   bool _isError = false;
@@ -1041,12 +1071,44 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
     if (widget.initialUrl.isNotEmpty && widget.currentProviders.isNotEmpty) {
       _statusMessage = 'Connected (${widget.currentProviders.length} active sources)';
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        if (widget.initialUrl.isEmpty) {
+          _inputFocusNode.requestFocus();
+        } else {
+          _saveFocusNode.requestFocus();
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
     _urlController.dispose();
+    _inputFocusNode.dispose();
+    _pasteFocusNode.dispose();
+    _saveFocusNode.dispose();
+    _clearFocusNode.dispose();
+    _closeFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = (data?.text ?? '').trim();
+    if (text.isNotEmpty) {
+      setState(() {
+        _urlController.text = text;
+        _statusMessage = 'URL pasted! Now press Save & Sync Gist.';
+        _isError = false;
+      });
+      _saveFocusNode.requestFocus();
+    } else {
+      setState(() {
+        _statusMessage = 'Clipboard is empty.';
+        _isError = true;
+      });
+    }
   }
 
   Future<void> _saveAndSyncGist() async {
@@ -1056,6 +1118,7 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
         _statusMessage = 'Please paste a valid GitHub Gist Raw URL';
         _isError = true;
       });
+      _inputFocusNode.requestFocus();
       return;
     }
 
@@ -1124,7 +1187,100 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
         _statusMessage = 'Gist URL cleared.';
         _isError = false;
       });
+      _inputFocusNode.requestFocus();
     }
+  }
+
+  Widget _buildTvDialogButton({
+    required FocusNode focusNode,
+    required VoidCallback? onPressed,
+    required IconData icon,
+    required String label,
+    required Color bgColor,
+    Color textColor = Colors.white,
+    FocusNode? upFocus,
+    FocusNode? downFocus,
+    FocusNode? leftFocus,
+    FocusNode? rightFocus,
+  }) {
+    return Focus(
+      focusNode: focusNode,
+      onKey: (node, event) {
+        if (event is RawKeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.select ||
+              event.logicalKey == LogicalKeyboardKey.enter ||
+              event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+            if (onPressed != null) onPressed();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp && upFocus != null) {
+            upFocus.requestFocus();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowDown && downFocus != null) {
+            downFocus.requestFocus();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowLeft && leftFocus != null) {
+            leftFocus.requestFocus();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowRight && rightFocus != null) {
+            rightFocus.requestFocus();
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Builder(
+        builder: (ctx) {
+          final isFocused = Focus.of(ctx).hasFocus;
+          return GestureDetector(
+            onTap: onPressed,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              decoration: BoxDecoration(
+                color: isFocused ? Colors.white : bgColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isFocused ? const Color(0xFFE50914) : Colors.white24,
+                  width: isFocused ? 2.5 : 1.0,
+                ),
+                boxShadow: isFocused
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFFE50914).withOpacity(0.6),
+                          blurRadius: 12,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : [],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icon,
+                    size: 18,
+                    color: isFocused ? Colors.black : textColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: isFocused ? Colors.black : textColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -1136,7 +1292,7 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
         side: const BorderSide(color: Colors.white24),
       ),
       child: Container(
-        width: 540,
+        width: 560,
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1159,34 +1315,56 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
                     ),
                   ],
                 ),
-                IconButton(
+                _buildTvDialogButton(
+                  focusNode: _closeFocusNode,
                   onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                  icon: Icons.close_rounded,
+                  label: 'Close',
+                  bgColor: const Color(0xFF262626),
+                  downFocus: _inputFocusNode,
                 ),
               ],
             ),
             const SizedBox(height: 8),
             const Text(
-              'Paste your GitHub Gist Raw JSON link below to unlock streaming providers:',
+              'Paste your GitHub Gist Raw JSON link below (use Down arrow on remote to Save & Sync):',
               style: TextStyle(color: Colors.white70, fontSize: 12.5),
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: _urlController,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
-                hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
-                filled: true,
-                fillColor: const Color(0xFF262626),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.white24),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFE50914), width: 1.8),
+            Focus(
+              onKey: (node, event) {
+                if (event is RawKeyDownEvent) {
+                  if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                    _saveFocusNode.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                  if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                    _closeFocusNode.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                }
+                return KeyEventResult.ignored;
+              },
+              child: TextField(
+                controller: _urlController,
+                focusNode: _inputFocusNode,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _saveAndSyncGist(),
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
+                  hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                  filled: true,
+                  fillColor: const Color(0xFF262626),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Colors.white24),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFFE50914), width: 2.2),
+                  ),
                 ),
               ),
             ),
@@ -1205,34 +1383,37 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                if (widget.initialUrl.isNotEmpty)
-                  TextButton(
+                _buildTvDialogButton(
+                  focusNode: _pasteFocusNode,
+                  onPressed: _isSyncing ? null : _pasteFromClipboard,
+                  icon: Icons.content_paste_rounded,
+                  label: 'Paste URL',
+                  bgColor: const Color(0xFF2A2A2A),
+                  upFocus: _inputFocusNode,
+                  rightFocus: widget.initialUrl.isNotEmpty ? _clearFocusNode : _saveFocusNode,
+                ),
+                if (widget.initialUrl.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  _buildTvDialogButton(
+                    focusNode: _clearFocusNode,
                     onPressed: _isSyncing ? null : _clearGist,
-                    child: const Text(
-                      'Remove Link',
-                      style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
-                    ),
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Remove',
+                    bgColor: const Color(0xFF7F1D1D),
+                    upFocus: _inputFocusNode,
+                    leftFocus: _pasteFocusNode,
+                    rightFocus: _saveFocusNode,
                   ),
+                ],
                 const SizedBox(width: 10),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE50914),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                  ),
+                _buildTvDialogButton(
+                  focusNode: _saveFocusNode,
                   onPressed: _isSyncing ? null : _saveAndSyncGist,
-                  icon: _isSyncing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.sync_rounded, size: 18),
-                  label: Text(
-                    _isSyncing ? 'Syncing...' : 'Save & Sync Gist',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
+                  icon: Icons.sync_rounded,
+                  label: _isSyncing ? 'Syncing...' : 'Save & Sync Gist',
+                  bgColor: const Color(0xFFE50914),
+                  upFocus: _inputFocusNode,
+                  leftFocus: widget.initialUrl.isNotEmpty ? _clearFocusNode : _pasteFocusNode,
                 ),
               ],
             ),
