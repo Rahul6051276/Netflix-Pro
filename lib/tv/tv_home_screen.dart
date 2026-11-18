@@ -1035,7 +1035,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 }
 
 // ============================================================================
-// TV GITHUB GIST URL MANAGER DIALOG (FULL ANDROID TV D-PAD REMOTE SUPPORT)
+// TV GITHUB GIST URL MANAGER DIALOG (ANDROID TV REMOTE & KEYBOARD SAFE)
 // ============================================================================
 class _TvGistManagerDialog extends StatefulWidget {
   final String initialUrl;
@@ -1073,10 +1073,10 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        if (widget.initialUrl.isEmpty) {
-          _inputFocusNode.requestFocus();
-        } else {
+        if (widget.initialUrl.isNotEmpty) {
           _saveFocusNode.requestFocus();
+        } else {
+          _pasteFocusNode.requestFocus();
         }
       }
     });
@@ -1093,32 +1093,41 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
     super.dispose();
   }
 
+  bool _isConfirmKey(LogicalKeyboardKey key) {
+    return key == LogicalKeyboardKey.select ||
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter ||
+        key == LogicalKeyboardKey.gameButtonA;
+  }
+
   Future<void> _pasteFromClipboard() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = (data?.text ?? '').trim();
     if (text.isNotEmpty) {
       setState(() {
         _urlController.text = text;
-        _statusMessage = 'URL pasted! Now press Save & Sync Gist.';
+        _statusMessage = 'URL pasted! Press OK on Save & Sync Gist.';
         _isError = false;
       });
       _saveFocusNode.requestFocus();
     } else {
       setState(() {
-        _statusMessage = 'Clipboard is empty.';
+        _statusMessage = 'Clipboard is empty. Copy Gist link first or press Up to type.';
         _isError = true;
       });
     }
   }
 
   Future<void> _saveAndSyncGist() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final rawUrl = _urlController.text.trim();
     if (rawUrl.isEmpty) {
       setState(() {
-        _statusMessage = 'Please paste a valid GitHub Gist Raw URL';
+        _statusMessage = 'Please paste or enter a valid GitHub Gist Raw URL';
         _isError = true;
       });
-      _inputFocusNode.requestFocus();
+      _pasteFocusNode.requestFocus();
       return;
     }
 
@@ -1187,17 +1196,16 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
         _statusMessage = 'Gist URL cleared.';
         _isError = false;
       });
-      _inputFocusNode.requestFocus();
+      _pasteFocusNode.requestFocus();
     }
   }
 
-  Widget _buildTvDialogButton({
+  Widget _buildTvActionPill({
     required FocusNode focusNode,
     required VoidCallback? onPressed,
     required IconData icon,
     required String label,
     required Color bgColor,
-    Color textColor = Colors.white,
     FocusNode? upFocus,
     FocusNode? downFocus,
     FocusNode? leftFocus,
@@ -1205,11 +1213,9 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
   }) {
     return Focus(
       focusNode: focusNode,
-      onKey: (node, event) {
-        if (event is RawKeyDownEvent) {
-          if (event.logicalKey == LogicalKeyboardKey.select ||
-              event.logicalKey == LogicalKeyboardKey.enter ||
-              event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent) {
+          if (_isConfirmKey(event.logicalKey)) {
             if (onPressed != null) onPressed();
             return KeyEventResult.handled;
           }
@@ -1235,46 +1241,50 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
       child: Builder(
         builder: (ctx) {
           final isFocused = Focus.of(ctx).hasFocus;
-          return GestureDetector(
-            onTap: onPressed,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-              decoration: BoxDecoration(
-                color: isFocused ? Colors.white : bgColor,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: isFocused ? const Color(0xFFE50914) : Colors.white24,
-                  width: isFocused ? 2.5 : 1.0,
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(8),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isFocused ? Colors.white : bgColor,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isFocused ? const Color(0xFFE50914) : Colors.white24,
+                    width: isFocused ? 3.0 : 1.0,
+                  ),
+                  boxShadow: isFocused
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFFE50914).withOpacity(0.75),
+                            blurRadius: 14,
+                            spreadRadius: 2,
+                          ),
+                        ]
+                      : [],
                 ),
-                boxShadow: isFocused
-                    ? [
-                        BoxShadow(
-                          color: const Color(0xFFE50914).withOpacity(0.6),
-                          blurRadius: 12,
-                          spreadRadius: 1,
-                        ),
-                      ]
-                    : [],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    icon,
-                    size: 18,
-                    color: isFocused ? Colors.black : textColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: isFocused ? Colors.black : textColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 18,
+                      color: isFocused ? Colors.black : Colors.white,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: isFocused ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -1286,14 +1296,16 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      alignment: Alignment.topCenter,
+      insetPadding: const EdgeInsets.only(top: 32, left: 40, right: 40),
       backgroundColor: const Color(0xFF181818),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: const BorderSide(color: Colors.white24),
       ),
       child: Container(
-        width: 560,
-        padding: const EdgeInsets.all(24),
+        width: 580,
+        padding: const EdgeInsets.all(22),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1315,30 +1327,33 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
                     ),
                   ],
                 ),
-                _buildTvDialogButton(
+                _buildTvActionPill(
                   focusNode: _closeFocusNode,
                   onPressed: () => Navigator.of(context).pop(),
                   icon: Icons.close_rounded,
                   label: 'Close',
                   bgColor: const Color(0xFF262626),
-                  downFocus: _inputFocusNode,
+                  downFocus: _saveFocusNode,
+                  leftFocus: _saveFocusNode,
                 ),
               ],
             ),
             const SizedBox(height: 8),
             const Text(
-              'Paste your GitHub Gist Raw JSON link below (use Down arrow on remote to Save & Sync):',
-              style: TextStyle(color: Colors.white70, fontSize: 12.5),
+              'Use Left/Right on remote to select Paste URL or Save & Sync Gist (press Up to type):',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Focus(
-              onKey: (node, event) {
-                if (event is RawKeyDownEvent) {
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent) {
                   if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                    FocusManager.instance.primaryFocus?.unfocus();
                     _saveFocusNode.requestFocus();
                     return KeyEventResult.handled;
                   }
                   if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                    FocusManager.instance.primaryFocus?.unfocus();
                     _closeFocusNode.requestFocus();
                     return KeyEventResult.handled;
                   }
@@ -1349,14 +1364,18 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
                 controller: _urlController,
                 focusNode: _inputFocusNode,
                 textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _saveAndSyncGist(),
+                onSubmitted: (_) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  _saveFocusNode.requestFocus();
+                  _saveAndSyncGist();
+                },
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
                   hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
                   filled: true,
                   fillColor: const Color(0xFF262626),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: const BorderSide(color: Colors.white24),
@@ -1379,11 +1398,11 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
                 ),
               ),
             ],
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                _buildTvDialogButton(
+                _buildTvActionPill(
                   focusNode: _pasteFocusNode,
                   onPressed: _isSyncing ? null : _pasteFromClipboard,
                   icon: Icons.content_paste_rounded,
@@ -1394,7 +1413,7 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
                 ),
                 if (widget.initialUrl.isNotEmpty) ...[
                   const SizedBox(width: 10),
-                  _buildTvDialogButton(
+                  _buildTvActionPill(
                     focusNode: _clearFocusNode,
                     onPressed: _isSyncing ? null : _clearGist,
                     icon: Icons.delete_outline_rounded,
@@ -1406,7 +1425,7 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
                   ),
                 ],
                 const SizedBox(width: 10),
-                _buildTvDialogButton(
+                _buildTvActionPill(
                   focusNode: _saveFocusNode,
                   onPressed: _isSyncing ? null : _saveAndSyncGist,
                   icon: Icons.sync_rounded,
@@ -1414,6 +1433,7 @@ class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
                   bgColor: const Color(0xFFE50914),
                   upFocus: _inputFocusNode,
                   leftFocus: widget.initialUrl.isNotEmpty ? _clearFocusNode : _pasteFocusNode,
+                  rightFocus: _closeFocusNode,
                 ),
               ],
             ),
