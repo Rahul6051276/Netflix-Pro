@@ -18,20 +18,16 @@ class TvHomeScreen extends StatefulWidget {
 
 class _TvHomeScreenState extends State<TvHomeScreen> {
   int _selectedNavIndex = 2; // Default Home
-  final List<FocusNode> _sidebarFocusNodes = List.generate(7, (_) => FocusNode());
+  final List _sidebarFocusNodes = List.generate(6, (_) => FocusNode());
   final FocusNode _firstContentCardFocus = FocusNode();
   final FocusNode _watchNowFocusNode = FocusNode();
 
   List activeProviders = [];
-  String currentGistUrl = '';
-  bool isGistConnected = false;
-
   List continueWatchingList = [];
   dynamic activeShowcaseItem;
 
   // Home Fast Lists
   List homeBollywoodLatestList = [];
-  List homeSouthLatestList = [];
   List homeNetflixList = [];
   List homePrimeList = [];
   List homeHotstarList = [];
@@ -101,92 +97,48 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   Future _fetchProviders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedGist = (prefs.getString('tv_custom_gist_url') ?? '').trim();
-
-    if (savedGist.isEmpty) {
-      await prefs.remove('tv_cached_active_providers');
-      if (mounted) {
-        setState(() {
-          currentGistUrl = '';
-          activeProviders = [];
-          isGistConnected = false;
-        });
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && currentGistUrl.isEmpty) {
-            _openTvGistDialog();
-          }
-        });
-      }
-      return;
-    }
-
-    currentGistUrl = savedGist;
-    final cached = prefs.getString('tv_cached_active_providers');
-    if (cached != null && cached.isNotEmpty && mounted) {
-      try {
-        final list = jsonDecode(cached) as List;
-        setState(() {
-          activeProviders = list;
-          isGistConnected = list.isNotEmpty;
-        });
-      } catch (_) {}
-    }
-
     try {
-      final sep = currentGistUrl.contains('?') ? '&' : '?';
-      final url = '$currentGistUrl${sep}t=${DateTime.now().millisecondsSinceEpoch}';
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      final sep = TvConfig.gistUrl.contains('?') ? '&' : '?';
+      final url = '${TvConfig.gistUrl}${sep}t=${DateTime.now().millisecondsSinceEpoch}';
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
-        final decoded = jsonDecode(res.body);
-        final list = decoded is List
-            ? decoded
-            : (decoded['active_providers'] ?? decoded['providers'] ?? []);
-        if (list is List && list.isNotEmpty) {
-          await prefs.setString('tv_cached_active_providers', jsonEncode(list));
-          if (mounted) {
-            setState(() {
-              activeProviders = list;
-              isGistConnected = true;
-            });
-          }
-        }
+        activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
       }
     } catch (_) {}
   }
 
-  void _openTvGistDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => _TvGistManagerDialog(
-        initialUrl: currentGistUrl,
-        currentProviders: activeProviders,
-        onSynced: (newUrl, newProviders) {
-          if (mounted) {
-            setState(() {
-              currentGistUrl = newUrl;
-              activeProviders = newProviders;
-              isGistConnected = newUrl.isNotEmpty && newProviders.isNotEmpty;
-            });
-          }
-        },
-      ),
-    );
-  }
-
+  // Fast Parallel Instant Render for Home Screen
   Future _fetchHomeCatalogContent() async {
     await Future.wait([
+      // 0. Latest Bollywood Movies
+      () async {
+        try {
+          final bollyRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&region=IN&sort_by=primary_release_date.desc&vote_count.gte=2')).timeout(const Duration(seconds: 6));
+          if (bollyRes.statusCode == 200) {
+            homeBollywoodLatestList = _parseTvList(jsonDecode(bollyRes.body)['results']);
+            if (homeBollywoodLatestList.isNotEmpty) {
+              activeShowcaseItem = homeBollywoodLatestList.first;
+            }
+          }
+        } catch (_) {}
+      }(),
+
+      // 1. Netflix Latest
       () async {
         try {
           final netflixRes = await http.get(Uri.parse(
               '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 6));
           if (netflixRes.statusCode == 200) {
             homeNetflixList = _parseTvList(jsonDecode(netflixRes.body)['results']);
-            if (homeNetflixList.isNotEmpty) activeShowcaseItem = homeNetflixList.first;
+            if (activeShowcaseItem == null && homeNetflixList.isNotEmpty) {
+              activeShowcaseItem = homeNetflixList.first;
+            }
           }
         } catch (_) {}
       }(),
+
+      // 2. Prime Video Latest
       () async {
         try {
           final primeRes = await http.get(Uri.parse(
@@ -199,6 +151,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           }
         } catch (_) {}
       }(),
+
+      // 3. Hotstar & Disney Specials
       () async {
         try {
           final hotstarRes = await http.get(Uri.parse(
@@ -208,6 +162,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           }
         } catch (_) {}
       }(),
+
+      // 4. Hindi Web Series
       () async {
         try {
           final hindiTvRes = await http.get(Uri.parse(
@@ -219,6 +175,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           }
         } catch (_) {}
       }(),
+
+      // 5. Global Web Series
       () async {
         try {
           final engTvRes = await http.get(Uri.parse(
@@ -231,6 +189,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     ]);
   }
 
+  // Deep Fetch 200+ Titles via Parallel Multi-page Pagination
   Future _fetchDeepCatalogs() async {
     final sortQuery = _catalogSortType == 'latest'
         ? 'primary_release_date.desc'
@@ -350,7 +309,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             ? '${TvConfig.imgBase}${m['poster_path']}'
             : '${TvConfig.backdropBase}${m['backdrop_path']}',
         'overview': m['overview'] ?? '',
-        'original_language': m['original_language'] ?? '',
         'isTv': isTv,
       });
     }
@@ -358,18 +316,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   void _onTvItemSelect(dynamic item) {
-    if (!isGistConnected || activeProviders.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Color(0xFFE50914),
-          content: Text('Please add your GitHub Gist link in the Left Sidebar first!'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      _openTvGistDialog();
-      return;
-    }
-
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => TvMediaDetailScreen(
@@ -380,21 +326,23 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
+  // ============================================================================
+  // NETFLIX RED MINIMAL SLIM SIDEBAR
+  // ============================================================================
   Widget _buildNetflixNavRail() {
     final icons = [
-      Icons.person_outline_rounded, // 0
-      Icons.search_rounded,         // 1: Search
-      Icons.home_filled,            // 2: Home
-      Icons.movie_creation_outlined,// 3: Movies
-      Icons.tv_rounded,             // 4: Web Series
-      Icons.grid_view_rounded,      // 5: Explore
-      Icons.link_rounded,           // 6: Gist Link Manager
+      Icons.person_outline_rounded,
+      Icons.search_rounded,
+      Icons.home_filled,
+      Icons.movie_creation_outlined, // 3: Movies Tab
+      Icons.tv_rounded,              // 4: Web Series Tab
+      Icons.grid_view_rounded,
     ];
 
     return Container(
-      width: 60,
+      width: 58,
       color: Colors.transparent,
-      padding: const EdgeInsets.symmetric(vertical: 20),
+      padding: const EdgeInsets.symmetric(vertical: 24),
       child: Column(
         children: [
           Container(
@@ -405,28 +353,20 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(height: 26),
+          const SizedBox(height: 36),
           Expanded(
             child: ListView.separated(
               itemCount: icons.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 14),
+              separatorBuilder: (_, __) => const SizedBox(height: 18),
               itemBuilder: (ctx, i) {
-                final bool isGistItem = (i == 6);
                 return NetflixSidebarIcon(
                   focusNode: _sidebarFocusNodes[i],
                   icon: icons[i],
                   isSelected: _selectedNavIndex == i,
-                  customColor: isGistItem
-                      ? (isGistConnected ? const Color(0xFF22C55E) : const Color(0xFFEF4444))
-                      : null,
                   onRightArrow: _jumpFocusToContent,
                   onTap: () {
-                    if (isGistItem) {
-                      _openTvGistDialog();
-                    } else {
-                      setState(() => _selectedNavIndex = i);
-                      _jumpFocusToContent();
-                    }
+                    setState(() => _selectedNavIndex = i);
+                    _jumpFocusToContent();
                   },
                 );
               },
@@ -437,6 +377,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
+  // ============================================================================
+  // NETFLIX BILLBOARD SHOWCASE
+  // ============================================================================
   Widget _buildNetflixBillboard(dynamic item) {
     return SizedBox(
       height: 340,
@@ -497,25 +440,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     Text(
                       item['isTv'] == true ? 'S E R I E S' : 'M O V I E',
                       style: const TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: isGistConnected ? const Color(0xFF064E3B) : const Color(0xFF7F1D1D),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isGistConnected ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
-                        ),
-                      ),
-                      child: Text(
-                        isGistConnected ? '● Gist Active' : '● Add Gist in Sidebar',
-                        style: TextStyle(
-                          color: isGistConnected ? const Color(0xFF4ADE80) : Colors.white,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -611,6 +535,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
+  // ============================================================================
+  // NETFLIX LANDSCAPE ROW WITH DIRECT SEE-ALL INTEGRATION
+  // ============================================================================
   Widget _buildNetflixRow(
     String title,
     List items,
@@ -621,10 +548,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     if (items.isEmpty) return const SizedBox.shrink();
 
     void openSeeAll() {
-      if (!isGistConnected || activeProviders.isEmpty) {
-        _openTvGistDialog();
-        return;
-      }
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => TVCategoryGridScreen(
@@ -696,9 +619,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                   ? [BoxShadow(color: const Color(0xFFE50914).withOpacity(0.55), blurRadius: 10, spreadRadius: 2)]
                                   : [],
                             ),
-                            child: const Column(
+                            child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
+                              children: const [
                                 Icon(Icons.grid_view_rounded, color: Color(0xFFE50914), size: 32),
                                 SizedBox(height: 6),
                                 Text('See All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
@@ -812,6 +735,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // TAB 2: MAIN HOME (LATEST MIX)
                             if (_selectedNavIndex == 2 || _selectedNavIndex == 0) ...[
                               if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
                               if (continueWatchingList.isNotEmpty)
@@ -821,12 +745,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                   '',
                                   isFirstRow: true,
                                 ),
+                              if (homeBollywoodLatestList.isNotEmpty)
+                                _buildNetflixRow(
+                                  'Latest Bollywood Movies',
+                                  homeBollywoodLatestList,
+                                  '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
+                                  isFirstRow: continueWatchingList.isEmpty,
+                                ),
                               if (homeNetflixList.isNotEmpty)
                                 _buildNetflixRow(
                                   'Latest Netflix Blockbusters (Hindi + Global)',
                                   homeNetflixList,
                                   '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
-                                  isFirstRow: continueWatchingList.isEmpty,
+                                  isFirstRow: continueWatchingList.isEmpty && homeBollywoodLatestList.isEmpty,
                                 ),
                               if (homePrimeList.isNotEmpty)
                                 _buildNetflixRow(
@@ -855,12 +786,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                   isTv: true,
                                 ),
                             ],
+
+                            // TAB 3: DEDICATED MOVIES SECTION (200+ CATALOG)
                             if (_selectedNavIndex == 3) ...[
                               _buildCategoryHeader('All Movies (200+ Titles Per Hub)'),
                               if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
                               _buildNetflixRow(
                                 'Bollywood Hit Movies',
-                                allBollywoodMovies.isNotEmpty ? allBollywoodMovies : homeNetflixList,
+                                allBollywoodMovies.isNotEmpty ? allBollywoodMovies : homeBollywoodLatestList,
                                 '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
                                 isFirstRow: true,
                               ),
@@ -875,6 +808,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                 '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}',
                               ),
                             ],
+
+                            // TAB 4: DEDICATED WEB SERIES SECTION (200+ CATALOG)
                             if (_selectedNavIndex == 4) ...[
                               _buildCategoryHeader('All Web Series (Hindi, Netflix, Amazon & South)'),
                               if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
@@ -904,11 +839,13 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                 isTv: true,
                               ),
                             ],
+
+                            // TAB 5: EXPLORE ALL
                             if (_selectedNavIndex == 5) ...[
                               _buildCategoryHeader('Explore All Collections'),
                               _buildNetflixRow(
                                 'Bollywood Top Rated',
-                                homeNetflixList,
+                                homeBollywoodLatestList.isNotEmpty ? homeBollywoodLatestList : homeNetflixList,
                                 '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
                                 isFirstRow: true,
                               ),
@@ -952,465 +889,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 }
 
 // ============================================================================
-// TV GIST MANAGER DIALOG (100% TV REMOTE & MOBILE REMOTE KEYBOARD FRIENDLY)
-// ============================================================================
-class _TvGistManagerDialog extends StatefulWidget {
-  final String initialUrl;
-  final List currentProviders;
-  final Function(String url, List providers) onSynced;
-
-  const _TvGistManagerDialog({
-    required this.initialUrl,
-    required this.currentProviders,
-    required this.onSynced,
-  });
-
-  @override
-  State<_TvGistManagerDialog> createState() => _TvGistManagerDialogState();
-}
-
-class _TvGistManagerDialogState extends State<_TvGistManagerDialog> {
-  late TextEditingController _urlController;
-  final FocusNode _inputFocusNode = FocusNode();
-  final FocusNode _connectBtnFocusNode = FocusNode();
-  final FocusNode _clearBtnFocusNode = FocusNode();
-  final FocusNode _closeBtnFocusNode = FocusNode();
-
-  bool isSyncing = false;
-  String statusMessage = '';
-  bool isSuccess = false;
-  List loadedList = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _urlController = TextEditingController(text: widget.initialUrl);
-    loadedList = List.from(widget.currentProviders);
-
-    _inputFocusNode.addListener(() {
-      if (mounted) setState(() {});
-    });
-    _connectBtnFocusNode.addListener(() {
-      if (mounted) setState(() {});
-    });
-    _clearBtnFocusNode.addListener(() {
-      if (mounted) setState(() {});
-    });
-    _closeBtnFocusNode.addListener(() {
-      if (mounted) setState(() {});
-    });
-
-    if (widget.initialUrl.isNotEmpty && loadedList.isNotEmpty) {
-      isSuccess = true;
-      final names = loadedList.map((p) => (p['name'] ?? p['type'] ?? 'Source').toString()).join(' + ');
-      statusMessage = 'Connected: $names';
-    } else {
-      isSuccess = false;
-      statusMessage = 'Gist Link Required! Paste your GitHub Gist Raw link below to activate playback.';
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        if (widget.initialUrl.isNotEmpty) {
-          _connectBtnFocusNode.requestFocus();
-        } else {
-          _inputFocusNode.requestFocus();
-        }
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _urlController.dispose();
-    _inputFocusNode.dispose();
-    _connectBtnFocusNode.dispose();
-    _clearBtnFocusNode.dispose();
-    _closeBtnFocusNode.dispose();
-    super.dispose();
-  }
-
-  Future<String> _checkSingleProviderStatus(dynamic prov) async {
-    final name = (prov['name'] ?? 'Source').toString();
-    final type = (prov['type'] ?? '').toString().toLowerCase();
-    if (type != 'xtream') return name;
-
-    final rawHost = (prov['xc_host'] ?? prov['host'] ?? '').toString().trim().replaceAll(RegExp(r'/+$'), '');
-    final user = (prov['xc_username'] ?? prov['username'] ?? '').toString().trim();
-    final pass = (prov['xc_password'] ?? prov['password'] ?? '').toString().trim();
-    if (rawHost.isEmpty || user.isEmpty || pass.isEmpty) return '$name (Invalid)';
-
-    final cleanHost = rawHost.endsWith(':80') ? rawHost.substring(0, rawHost.length - 3) : rawHost;
-    for (final h in {rawHost, cleanHost}) {
-      try {
-        final authUrl = '$h/player_api.php?username=$user&password=$pass';
-        final res = await http.get(
-          Uri.parse(authUrl),
-          headers: {'User-Agent': 'IPTVSmartersPro', 'Accept': '*/*'},
-        ).timeout(const Duration(seconds: 7));
-
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
-          final userInfo = data['user_info'];
-          if (userInfo != null) {
-            final status = (userInfo['status'] ?? '').toString();
-            return status.toLowerCase() == 'active' ? '$name (Active ✓)' : '$name ($status)';
-          }
-        }
-      } catch (_) {}
-    }
-    return '$name (Offline/Blocked)';
-  }
-
-  Future<void> _connectAndSync() async {
-    FocusScope.of(context).unfocus();
-    final rawUrl = _urlController.text.trim();
-    if (rawUrl.isEmpty) {
-      setState(() {
-        isSuccess = false;
-        statusMessage = 'Please paste a valid GitHub Gist Raw link first.';
-      });
-      _inputFocusNode.requestFocus();
-      return;
-    }
-
-    setState(() {
-      isSyncing = true;
-      statusMessage = 'Connecting & testing all IPTV / Stremio servers...';
-    });
-
-    try {
-      final sep = rawUrl.contains('?') ? '&' : '?';
-      final fetchUrl = '$rawUrl${sep}t=${DateTime.now().millisecondsSinceEpoch}';
-      final res = await http.get(Uri.parse(fetchUrl)).timeout(const Duration(seconds: 12));
-
-      if (res.statusCode == 200) {
-        final decoded = jsonDecode(res.body);
-        final list = decoded is List
-            ? decoded
-            : (decoded['active_providers'] ?? decoded['providers'] ?? []);
-
-        if (list is List && list.isNotEmpty) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('tv_custom_gist_url', rawUrl);
-          await prefs.setString('tv_cached_active_providers', jsonEncode(list));
-
-          final statuses = await Future.wait(list.map((p) => _checkSingleProviderStatus(p)));
-          widget.onSynced(rawUrl, list);
-
-          if (mounted) {
-            setState(() {
-              isSyncing = false;
-              isSuccess = true;
-              loadedList = list;
-              statusMessage = 'Connected: ${statuses.join(' + ')}';
-            });
-            _closeBtnFocusNode.requestFocus();
-          }
-          return;
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          isSyncing = false;
-          isSuccess = false;
-          statusMessage = 'Failed to load providers (Invalid JSON or URL).';
-        });
-        _connectBtnFocusNode.requestFocus();
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          isSyncing = false;
-          isSuccess = false;
-          statusMessage = 'Connection Error: Check URL or Internet.';
-        });
-        _connectBtnFocusNode.requestFocus();
-      }
-    }
-  }
-
-  Future<void> _clearGist() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('tv_custom_gist_url', '');
-    await prefs.remove('tv_cached_active_providers');
-    _urlController.clear();
-    widget.onSynced('', []);
-    if (mounted) {
-      setState(() {
-        isSuccess = false;
-        loadedList = [];
-        statusMessage = 'Cleared! TV playback disabled until you add a Gist link.';
-      });
-      _inputFocusNode.requestFocus();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: const Color(0xFF141B2D),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: Color(0xFF2B3654), width: 1.5),
-      ),
-      child: Container(
-        width: 560,
-        padding: const EdgeInsets.all(24),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.link_rounded, color: Color(0xFFFACC15), size: 26),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'TV GitHub Gist Raw Source',
-                          style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          'Paste URL & press Done/Enter or Down arrow to Sync',
-                          style: TextStyle(color: Color(0xFFFACC15), fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Focus(
-                    focusNode: _closeBtnFocusNode,
-                    onKeyEvent: (node, event) {
-                      if (event is KeyDownEvent) {
-                        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                          _inputFocusNode.requestFocus();
-                          return KeyEventResult.handled;
-                        }
-                        if (event.logicalKey == LogicalKeyboardKey.select ||
-                            event.logicalKey == LogicalKeyboardKey.enter) {
-                          Navigator.pop(context);
-                          return KeyEventResult.handled;
-                        }
-                      }
-                      return KeyEventResult.ignored;
-                    },
-                    child: InkWell(
-                      onTap: () => Navigator.pop(context),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _closeBtnFocusNode.hasFocus ? const Color(0xFFE50914) : Colors.white12,
-                          border: Border.all(
-                            color: _closeBtnFocusNode.hasFocus ? Colors.white : Colors.transparent,
-                            width: 2,
-                          ),
-                        ),
-                        child: const Icon(Icons.close, color: Colors.white, size: 20),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Focus(
-                onKeyEvent: (node, event) {
-                  if (event is KeyDownEvent) {
-                    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                      SystemChannels.textInput.invokeMethod('TextInput.hide');
-                      _connectBtnFocusNode.requestFocus();
-                      return KeyEventResult.handled;
-                    }
-                    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                      SystemChannels.textInput.invokeMethod('TextInput.hide');
-                      _closeBtnFocusNode.requestFocus();
-                      return KeyEventResult.handled;
-                    }
-                  }
-                  return KeyEventResult.ignored;
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: _inputFocusNode.hasFocus ? Colors.white : const Color(0xFF334155),
-                      width: _inputFocusNode.hasFocus ? 2.2 : 1.2,
-                    ),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  child: TextField(
-                    controller: _urlController,
-                    focusNode: _inputFocusNode,
-                    maxLines: 1,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _connectAndSync(),
-                    style: const TextStyle(color: Colors.white, fontSize: 13.5),
-                    decoration: const InputDecoration(
-                      hintText: 'Paste https://gist.githubusercontent.com/.../raw/providers.json',
-                      hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
-                      border: InputBorder.none,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isSuccess
-                      ? const Color(0xFF064E3B).withOpacity(0.65)
-                      : const Color(0xFF3F1D2E).withOpacity(0.65),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isSuccess ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                  ),
-                ),
-                child: Text(
-                  statusMessage,
-                  style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: Focus(
-                      focusNode: _connectBtnFocusNode,
-                      onKeyEvent: (node, event) {
-                        if (event is KeyDownEvent) {
-                          if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                            _inputFocusNode.requestFocus();
-                            return KeyEventResult.handled;
-                          }
-                          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                            _clearBtnFocusNode.requestFocus();
-                            return KeyEventResult.handled;
-                          }
-                          if (event.logicalKey == LogicalKeyboardKey.select ||
-                              event.logicalKey == LogicalKeyboardKey.enter) {
-                            if (!isSyncing) _connectAndSync();
-                            return KeyEventResult.handled;
-                          }
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      child: InkWell(
-                        onTap: isSyncing ? null : _connectAndSync,
-                        borderRadius: BorderRadius.circular(10),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 140),
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          decoration: BoxDecoration(
-                            color: _connectBtnFocusNode.hasFocus
-                                ? const Color(0xFF3B82F6)
-                                : const Color(0xFF2563EB),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: _connectBtnFocusNode.hasFocus ? Colors.white : Colors.transparent,
-                              width: 2.5,
-                            ),
-                            boxShadow: _connectBtnFocusNode.hasFocus
-                                ? [BoxShadow(color: const Color(0xFF3B82F6).withOpacity(0.6), blurRadius: 12)]
-                                : [],
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.sync_rounded, color: Colors.white, size: 19),
-                              const SizedBox(width: 8),
-                              Text(
-                                isSyncing ? 'Checking...' : 'Connect & Sync',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 1,
-                    child: Focus(
-                      focusNode: _clearBtnFocusNode,
-                      onKeyEvent: (node, event) {
-                        if (event is KeyDownEvent) {
-                          if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                            _inputFocusNode.requestFocus();
-                            return KeyEventResult.handled;
-                          }
-                          if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                            _connectBtnFocusNode.requestFocus();
-                            return KeyEventResult.handled;
-                          }
-                          if (event.logicalKey == LogicalKeyboardKey.select ||
-                              event.logicalKey == LogicalKeyboardKey.enter) {
-                            if (!isSyncing) _clearGist();
-                            return KeyEventResult.handled;
-                          }
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      child: InkWell(
-                        onTap: isSyncing ? null : _clearGist,
-                        borderRadius: BorderRadius.circular(10),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 140),
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          decoration: BoxDecoration(
-                            color: _clearBtnFocusNode.hasFocus
-                                ? const Color(0xFF991B1B)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: _clearBtnFocusNode.hasFocus ? Colors.white : const Color(0xFF7F1D1D),
-                              width: _clearBtnFocusNode.hasFocus ? 2.5 : 1.5,
-                            ),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'Clear',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================================
 // NETFLIX MINIMAL SIDEBAR ICON
 // ============================================================================
 class NetflixSidebarIcon extends StatefulWidget {
   final FocusNode focusNode;
   final IconData icon;
   final bool isSelected;
-  final Color? customColor;
   final VoidCallback onRightArrow;
   final VoidCallback onTap;
 
@@ -1419,7 +903,6 @@ class NetflixSidebarIcon extends StatefulWidget {
     required this.focusNode,
     required this.icon,
     required this.isSelected,
-    this.customColor,
     required this.onRightArrow,
     required this.onTap,
   });
@@ -1460,16 +943,17 @@ class _NetflixSidebarIconState extends State<NetflixSidebarIcon> {
             shape: BoxShape.circle,
             color: _isFocused ? Colors.white24 : Colors.transparent,
             border: Border.all(
-              color: _isFocused ? Colors.white : (widget.customColor ?? Colors.transparent),
-              width: 1.4,
+              color: _isFocused ? Colors.white : Colors.transparent,
+              width: 1.2,
             ),
           ),
           child: Icon(
             widget.icon,
             color: _isFocused
                 ? Colors.white
-                : widget.customColor ??
-                    (widget.isSelected ? const Color(0xFFE50914) : Colors.white38),
+                : widget.isSelected
+                    ? const Color(0xFFE50914)
+                    : Colors.white38,
             size: 20,
           ),
         ),
@@ -1479,7 +963,7 @@ class _NetflixSidebarIconState extends State<NetflixSidebarIcon> {
 }
 
 // ============================================================================
-// NETFLIX POSTER CARD
+// NETFLIX POSTER CARD (NETFLIX RED/WHITE BORDER & HOVER SCALE)
 // ============================================================================
 class NetflixCard extends StatefulWidget {
   final FocusNode? focusNode;
