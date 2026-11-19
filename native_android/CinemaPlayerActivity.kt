@@ -3,7 +3,6 @@ package com.netflixpro.netflix_pro
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
-import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
@@ -183,15 +182,12 @@ class CinemaPlayerActivity : Activity() {
 
         window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            window.colorMode = ActivityInfo.COLOR_MODE_HDR
-        }
 
         seekStepSec = intent.getIntExtra("seekSeconds", 15).coerceIn(5, 60)
         seekStepMs = seekStepSec * 1000L
 
-        // Default: 100% Pure Hardware Original (No artificial shader)
-        val savedName = prefs.getString("picture_preset_hw_v1", PicturePreset.JUST_PLAYER.name)
+        // Default: Pure Hardware Surface (No artificial OpenGL color distortion)
+        val savedName = prefs.getString("picture_preset_pure_hw", PicturePreset.JUST_PLAYER.name)
         currentPreset = PicturePreset.values().firstOrNull { it.name == savedName }
             ?: PicturePreset.JUST_PLAYER
         CinemaPictureEngineState.currentPreset = currentPreset
@@ -487,7 +483,6 @@ class CinemaPlayerActivity : Activity() {
 
             val latch = CountDownLatch(providers.size + 1)
 
-            // 1. All Gist Providers (Xtream + Stremio) in parallel
             for (prov in providers) {
                 thread(start = true) {
                     try {
@@ -611,7 +606,6 @@ class CinemaPlayerActivity : Activity() {
                 }
             }
 
-            // 2. Render Cloud Streams in parallel
             thread(start = true) {
                 try {
                     val embedType = if (isTv) "series" else "movie"
@@ -1645,9 +1639,9 @@ class CinemaPlayerActivity : Activity() {
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        // Pure Hardware Decoder Priority (Natural Mobile & TV Hardware Colors)
+        // Pure Android Hardware Decoder (Matches native Media3 player quality & natural colors)
         val renderersFactory = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             .setEnableDecoderFallback(true)
 
         val exo = ExoPlayer.Builder(this, renderersFactory)
@@ -1738,7 +1732,7 @@ class CinemaPlayerActivity : Activity() {
     private fun applyPicturePreset(preset: PicturePreset) {
         if (!isSafeUi()) return
         CinemaPictureEngineState.currentPreset = preset
-        prefs.edit().putString("picture_preset_hw_v1", preset.name).apply()
+        prefs.edit().putString("picture_preset_pure_hw", preset.name).apply()
         pictureBtn.text = if (preset == PicturePreset.JUST_PLAYER) "HW Original" else preset.displayName
 
         val exo = player ?: return
