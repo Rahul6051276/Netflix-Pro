@@ -1,4 +1,4 @@
-Name: Build and Release Netflix Pro APK
+name: Build and Release Netflix Pro APK
 
 on:
   push:
