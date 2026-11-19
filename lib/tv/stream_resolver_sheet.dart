@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'tmdb_config.dart';
 
 // ============================================================================
-// DIRECT NATIVE PLAYER LAUNCHER FOR TV (WITH GIST URL + TV UI + ORIG LANGUAGE)
+// DIRECT NATIVE PLAYER LAUNCHER FOR TV & MOBILE
 // ============================================================================
 Future launchTvDirectNativePlayer({
   required dynamic item,
@@ -18,11 +18,11 @@ Future launchTvDirectNativePlayer({
   const MethodChannel playerChannel =
       MethodChannel('com.netflixpro.netflix_pro/player');
 
-  String activeGistUrl = '';
+  String savedGistUrl = '';
   try {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-    activeGistUrl = (prefs.getString('tv_custom_gist_url') ?? '').trim();
+    savedGistUrl = await TvConfig.getGistUrl();
 
     final raw = prefs.getString('continue_watching_tv');
     var curr = [];
@@ -38,7 +38,6 @@ Future launchTvDirectNativePlayer({
       'year': item['year'] ?? '',
       'rating': item['rating'] ?? '8.0',
       'overview': item['overview'] ?? '',
-      'original_language': item['original_language'] ?? '',
       'isTv': item['isTv'] ?? false,
     });
     if (curr.length > 15) {
@@ -51,20 +50,18 @@ Future launchTvDirectNativePlayer({
   final tmdbId = (item['tmdb_id'] ?? '').toString();
   final title = (item['title'] ?? 'Netflix Pro TV').toString();
   final isTv = item['isTv'] == true;
-  final origLang = (item['original_language'] ?? '').toString();
 
   try {
     await playerChannel.invokeMethod('playVideo', {
       'url': '',
       'title': title,
       'tmdbId': tmdbId,
+      'tmdbKey': TvConfig.tmdbKey,
+      'gistUrl': savedGistUrl,
       'isTv': isTv,
       'season': season,
       'episode': episode,
-      'gistUrl': activeGistUrl,
-      'isTvDevice': true,
-      'originalLanguage': origLang,
-      'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0',
+      'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) CinemaTV/1.0',
     });
   } catch (_) {}
 }
@@ -119,7 +116,7 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
   Future _fetchFullDetailsAndCast() async {
     final tmdbId = (widget.item['tmdb_id'] ?? '').toString();
     final isTv = widget.item['isTv'] == true;
-    if (tmdbId.isEmpty) {
+    if (tmdbId.isEmpty || TvConfig.tmdbKey.isEmpty) {
       if (mounted) setState(() => _loadingDetails = false);
       return;
     }
@@ -142,7 +139,7 @@ class _TvMediaDetailScreenState extends State<TvMediaDetailScreen> {
         String durationText = '';
         if (!isTv && data['runtime'] != null && (data['runtime'] as int) > 0) {
           final mins = data['runtime'] as int;
-          durationText = '${mins ~/ 60}h ${mins % 60}m';
+          durationText = '${mins ~/ 60}h${mins % 60}m';
         } else if (isTv && data['number_of_seasons'] != null) {
           durationText = '${data['number_of_seasons']} Seasons';
         }
@@ -688,6 +685,7 @@ class _TvEpisodeDialogState extends State<TvEpisodeDialog> {
   }
 
   Future _fetchDetails() async {
+    if (TvConfig.tmdbKey.isEmpty) return;
     try {
       final res = await http
           .get(Uri.parse(

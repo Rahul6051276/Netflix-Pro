@@ -21,12 +21,11 @@ class MainActivity : FlutterActivity() {
                     val sourcesJson = call.argument<String>("sourcesJson").orEmpty()
                     val initialIndex = call.argument<Int>("initialIndex") ?: 0
                     val tmdbId = call.argument<String>("tmdbId").orEmpty()
+                    val tmdbKey = call.argument<String>("tmdbKey").orEmpty()
+                    val gistUrl = call.argument<String>("gistUrl").orEmpty()
                     val isTv = call.argument<Boolean>("isTv") ?: false
                     val season = call.argument<Int>("season") ?: 1
                     val episode = call.argument<Int>("episode") ?: 1
-                    val gistUrl = call.argument<String>("gistUrl").orEmpty().trim()
-                    val isTvDevice = call.argument<Boolean>("isTvDevice") ?: false
-                    val originalLanguage = call.argument<String>("originalLanguage").orEmpty().trim()
 
                     pendingResult?.success(false)
                     pendingResult = result
@@ -38,12 +37,11 @@ class MainActivity : FlutterActivity() {
                         putExtra("sourcesJson", sourcesJson)
                         putExtra("initialIndex", initialIndex)
                         putExtra("tmdbId", tmdbId)
+                        putExtra("tmdbKey", tmdbKey)
+                        putExtra("gistUrl", gistUrl)
                         putExtra("isTv", isTv)
                         putExtra("season", season)
                         putExtra("episode", episode)
-                        putExtra("gistUrl", gistUrl)
-                        putExtra("isTvDevice", isTvDevice)
-                        putExtra("originalLanguage", originalLanguage)
                     }
                     startActivityForResult(intent, REQ_PLAYER)
                 } else {

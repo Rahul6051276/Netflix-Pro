@@ -1,21 +1,37 @@
 import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Android TV SSL Certificate bypass
 class TVHttpOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
     return super.createHttpClient(context)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
   }
 }
 
 class TvConfig {
-  static const String gistUrl =
-      'https://gist.githubusercontent.com/Rahul6051276/239654d65b2124bffd0ea21b5251dc02/raw/providers.json';
-  static const String tmdbKey = 'b7cd3340a794e5a2f35e3abb820b497f';
+  static const String _gistPrefKey = 'custom_gist_raw_url';
+
+  // GitHub Actions Secrets se aayegi (koi hardcoded key nahi)
+  static const String tmdbKey =
+      String.fromEnvironment('TMDB_KEY', defaultValue: '');
+
   static const String tmdbBase = 'https://api.themoviedb.org/3';
   static const String imgBase = 'https://image.tmdb.org/t/p/w500';
   static const String backdropBase = 'https://image.tmdb.org/t/p/w1280';
+
+  static Future<String> getGistUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    return (prefs.getString(_gistPrefKey) ?? '').trim();
+  }
+
+  static Future<void> saveGistUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_gistPrefKey, url.trim());
+  }
 }
 
 // Strict Daily Soap & TV Serial Filter
