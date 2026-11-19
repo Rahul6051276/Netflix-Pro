@@ -11,7 +11,7 @@ import 'internal_player.dart';
 import 'tmdb_config.dart';
 import 'category_grid_screen.dart';
 
-// Helper: Ensure providers are always loaded (even if clicked immediately)
+// Helper: Ensure providers are always loaded from saved Gist URL
 Future<List<dynamic>> _ensureProvidersLoaded(List<dynamic>? passed) async {
   if (passed != null && passed.isNotEmpty) return passed;
 
@@ -25,8 +25,10 @@ Future<List<dynamic>> _ensureProvidersLoaded(List<dynamic>? passed) async {
   }
 
   try {
-    final freshUrl =
-        '${MobileConfig.gistUrl}?t=${DateTime.now().millisecondsSinceEpoch}';
+    final rawGist = await MobileConfig.getGistUrl();
+    if (rawGist.isEmpty) return [];
+    final sep = rawGist.contains('?') ? '&' : '?';
+    final freshUrl = '$rawGist${sep}t=${DateTime.now().millisecondsSinceEpoch}';
     final res =
         await http.get(Uri.parse(freshUrl)).timeout(const Duration(seconds: 10));
     if (res.statusCode == 200) {
@@ -178,7 +180,6 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final cleanTarget = _clean((widget.item['title'] ?? '').toString());
 
-    // 1. Pehle Cinema HQ ki tarah Xtream se real seasons/episodes check karo
     for (var prov in activeProvs) {
       if (prov['type'] == 'xtream') {
         final host = (prov['xc_host'] ?? prov['host'] ?? '')
@@ -192,8 +193,8 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
             final searchApi =
                 '$host/player_api.php?username=$user&password=$pass&action=get_series';
             final xtreamRes = await http
-                .get(Uri.parse(searchApi))
-                .timeout(const Duration(seconds: 6));
+                .get(Uri.parse(searchApi), headers: {'User-Agent': 'IPTVSmartersPro'})
+                .timeout(const Duration(seconds: 12));
             if (xtreamRes.statusCode == 200) {
               final seriesList = jsonDecode(xtreamRes.body);
               if (seriesList is List) {
@@ -206,8 +207,8 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
                     final infoApi =
                         '$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=$sid';
                     final infoRes = await http
-                        .get(Uri.parse(infoApi))
-                        .timeout(const Duration(seconds: 6));
+                        .get(Uri.parse(infoApi), headers: {'User-Agent': 'IPTVSmartersPro'})
+                        .timeout(const Duration(seconds: 10));
                     if (infoRes.statusCode == 200) {
                       final episodesMap =
                           jsonDecode(infoRes.body)['episodes'] ?? {};
@@ -241,26 +242,27 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
       return;
     }
 
-    // 2. Fallback: TMDB seasons (for Stremio / Cloud API)
-    try {
-      final res = await http
-          .get(Uri.parse(
-              '${MobileConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${MobileConfig.tmdbKey}'))
-          .timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final raw = (data['seasons'] as List<dynamic>? ?? [])
-            .where((s) => (s['season_number'] ?? 0) > 0)
-            .map((s) => s['season_number'] as int)
-            .toList();
-        if (raw.isNotEmpty && mounted) {
-          setState(() {
-            seasons = raw;
-            selectedSeason = raw.first;
-          });
+    if (MobileConfig.tmdbKey.isNotEmpty) {
+      try {
+        final res = await http
+            .get(Uri.parse(
+                '${MobileConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${MobileConfig.tmdbKey}'))
+            .timeout(const Duration(seconds: 8));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          final raw = (data['seasons'] as List<dynamic>? ?? [])
+              .where((s) => (s['season_number'] ?? 0) > 0)
+              .map((s) => s['season_number'] as int)
+              .toList();
+          if (raw.isNotEmpty && mounted) {
+            setState(() {
+              seasons = raw;
+              selectedSeason = raw.first;
+            });
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     if (mounted) setState(() => loading = false);
   }
@@ -408,7 +410,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     final targetEpisode = widget.episode ?? 1;
 
     String? imdbId;
-    if (targetTmdbId.isNotEmpty) {
+    if (targetTmdbId.isNotEmpty && MobileConfig.tmdbKey.isNotEmpty) {
       try {
         final extType = isTv ? 'tv' : 'movie';
         final extRes = await http.get(Uri.parse(
@@ -421,9 +423,6 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 
     final cleanTarget = _clean(movieTitle);
 
-    // ==========================================
-    // 1. RENDER CLOUD API (Castle, Vidlink, Showbox etc.)
-    // ==========================================
     if (targetTmdbId.isNotEmpty) {
       try {
         final embedType = isTv ? 'series' : 'movie';
@@ -457,13 +456,9 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
       } catch (_) {}
     }
 
-    // ==========================================
-    // 2. GIST ACTIVE PROVIDERS (XTREAM + STREMIO)
-    // ==========================================
     for (var prov in activeProvs) {
       final type = prov['type'];
 
-      // A. XTREAM IPTV (Livebox Pro, Abbastream IPTV etc.)
       if (type == 'xtream') {
         final host = (prov['xc_host'] ?? prov['host'] ?? '').toString().replaceAll(RegExp(r'/+$'), '');
         final user = prov['xc_username'] ?? prov['username'] ?? '';
@@ -473,7 +468,9 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
           try {
             if (isTv) {
               final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_series';
-              final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
+              final xtreamRes = await http
+                  .get(Uri.parse(searchApi), headers: {'User-Agent': 'IPTVSmartersPro'})
+                  .timeout(const Duration(seconds: 15));
               if (xtreamRes.statusCode == 200) {
                 final seriesList = jsonDecode(xtreamRes.body);
                 if (seriesList is List) {
@@ -499,7 +496,9 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
                   for (var bestSeries in candidates.take(2)) {
                     final sid = bestSeries['series_id'];
                     final infoApi = '$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=$sid';
-                    final infoRes = await http.get(Uri.parse(infoApi)).timeout(const Duration(seconds: 8));
+                    final infoRes = await http
+                        .get(Uri.parse(infoApi), headers: {'User-Agent': 'IPTVSmartersPro'})
+                        .timeout(const Duration(seconds: 10));
                     if (infoRes.statusCode == 200) {
                       final epMap = jsonDecode(infoRes.body)['episodes'] ?? {};
                       final epList = (epMap is Map) ? (epMap['$targetSeason'] ?? []) : [];
@@ -528,7 +527,9 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
               }
             } else {
               final searchApi = '$host/player_api.php?username=$user&password=$pass&action=get_vod_streams';
-              final xtreamRes = await http.get(Uri.parse(searchApi)).timeout(const Duration(seconds: 8));
+              final xtreamRes = await http
+                  .get(Uri.parse(searchApi), headers: {'User-Agent': 'IPTVSmartersPro'})
+                  .timeout(const Duration(seconds: 15));
               if (xtreamRes.statusCode == 200) {
                 final streamList = jsonDecode(xtreamRes.body);
                 if (streamList is List) {
@@ -570,7 +571,6 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
         }
       }
 
-      // B. STREMIO ADDON (PenguPlay, HdHub etc.)
       if (type == 'stremio' && imdbId != null && imdbId.isNotEmpty) {
         final base = (prov['url'] ?? '').toString().replaceAll('/manifest.json', '');
         final streamPath = isTv
@@ -612,12 +612,12 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
       final bHindi = b['isHindi'] == true ? 1 : 0;
       if (aHindi != bHindi) return bHindi.compareTo(aHindi);
 
-      final aIsXtream = (a['server'] ?? '').toString().toLowerCase().contains('iptv') ||
-              (a['server'] ?? '').toString().toLowerCase().contains('livebox')
+      final aIsXtream = (a['url'] ?? '').toString().contains('/movie/') ||
+              (a['url'] ?? '').toString().contains('/series/')
           ? 1
           : 0;
-      final bIsXtream = (b['server'] ?? '').toString().toLowerCase().contains('iptv') ||
-              (b['server'] ?? '').toString().toLowerCase().contains('livebox')
+      final bIsXtream = (b['url'] ?? '').toString().contains('/movie/') ||
+              (b['url'] ?? '').toString().contains('/series/')
           ? 1
           : 0;
       return bIsXtream.compareTo(aIsXtream);
@@ -763,7 +763,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 }
 
 // ============================================================================
-// 4. MORE SCREEN (ONLY REQUESTED OTT WEB SERIES HUB WITH FILTERS)
+// 5. MORE SCREEN (ONLY REQUESTED OTT WEB SERIES HUB WITH FILTERS)
 // ============================================================================
 class MobileMoreScreen extends StatelessWidget {
   final List<dynamic> providers;
@@ -780,7 +780,6 @@ class MobileMoreScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // 1. Netflix Web Series
           ListTile(
             leading: const Icon(Icons.video_collection, color: Color(0xFFE50914)),
             title: const Text('Netflix Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -801,8 +800,6 @@ class MobileMoreScreen extends StatelessWidget {
             },
           ),
           const Divider(color: Colors.white24),
-
-          // 2. Amazon Web Series
           ListTile(
             leading: const Icon(Icons.video_library, color: Color(0xFFE50914)),
             title: const Text('Amazon Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -823,8 +820,6 @@ class MobileMoreScreen extends StatelessWidget {
             },
           ),
           const Divider(color: Colors.white24),
-
-          // 3. Disney+ Hotstar Web Series
           ListTile(
             leading: const Icon(Icons.live_tv, color: Color(0xFFE50914)),
             title: const Text('Disney+ Hotstar Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -845,8 +840,6 @@ class MobileMoreScreen extends StatelessWidget {
             },
           ),
           const Divider(color: Colors.white24),
-
-          // 4. Zee5 Web Series
           ListTile(
             leading: const Icon(Icons.tv_rounded, color: Color(0xFFE50914)),
             title: const Text('Zee5 Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -867,8 +860,6 @@ class MobileMoreScreen extends StatelessWidget {
             },
           ),
           const Divider(color: Colors.white24),
-
-          // 5. SonyLIV Web Series
           ListTile(
             leading: const Icon(Icons.monitor_rounded, color: Color(0xFFE50914)),
             title: const Text('SonyLIV Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),

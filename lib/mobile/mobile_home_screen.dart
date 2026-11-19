@@ -1,5 +1,5 @@
 // ============================================================================
-// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (STRICT USER GIST SOURCE MANAGER)
+// NETFLIX PRO MOBILE HOME & NAVIGATION SUITE (BOLLYWOOD + SOUTH + ENGLISH LATEST)
 // ============================================================================
 import 'dart:async';
 import 'dart:convert';
@@ -21,8 +21,6 @@ class MobileRootScreen extends StatefulWidget {
 class _MobileRootScreenState extends State<MobileRootScreen> {
   int _currentIndex = 0;
   List<dynamic> activeProviders = [];
-  String currentGistUrl = '';
-  bool isGistConnected = false;
 
   @override
   void initState() {
@@ -30,44 +28,101 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
     _fetchGlobalProviders();
   }
 
+  void _showGistConfigDialog() {
+    final controller = TextEditingController();
+    MobileConfig.getGistUrl().then((existing) {
+      controller.text = existing;
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: existing.isNotEmpty,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: const Text(
+            'Gist Raw URL Settings',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'अपना GitHub Gist Raw लिंक (providers.json) यहाँ पेस्ट करें:',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
+                  hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                  filled: true,
+                  fillColor: Colors.black45,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            if (existing.isNotEmpty)
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+              ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)),
+              onPressed: () async {
+                final val = controller.text.trim();
+                if (val.isNotEmpty) {
+                  await MobileConfig.saveGistUrl(val);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  await _fetchGlobalProviders();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Gist URL Saved & Connected!'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text('Save & Connect', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
   Future<void> _fetchGlobalProviders() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedGist = (prefs.getString('custom_gist_url') ?? '').trim();
+    final rawGist = await MobileConfig.getGistUrl();
 
-    if (savedGist.isEmpty) {
-      await prefs.remove('cached_active_providers');
-      if (mounted) {
-        setState(() {
-          currentGistUrl = '';
-          activeProviders = [];
-          isGistConnected = false;
-        });
-        // Open Gist prompt automatically if no Gist link is set yet
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && currentGistUrl.isEmpty) {
-            _openGistManagerDialog();
-          }
-        });
-      }
+    if (rawGist.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showGistConfigDialog();
+      });
       return;
     }
 
-    currentGistUrl = savedGist;
     final cached = prefs.getString('cached_active_providers');
     if (cached != null && cached.isNotEmpty && mounted) {
       try {
-        final decodedCache = jsonDecode(cached) as List<dynamic>;
         setState(() {
-          activeProviders = decodedCache;
-          isGistConnected = decodedCache.isNotEmpty;
+          activeProviders = jsonDecode(cached) as List<dynamic>;
         });
       } catch (_) {}
     }
 
     try {
-      final sep = currentGistUrl.contains('?') ? '&' : '?';
-      final freshUrl = '$currentGistUrl${sep}t=${DateTime.now().millisecondsSinceEpoch}';
-      final res = await http.get(Uri.parse(freshUrl)).timeout(const Duration(seconds: 12));
+      final sep = rawGist.contains('?') ? '&' : '?';
+      final freshUrl = '$rawGist${sep}t=${DateTime.now().millisecondsSinceEpoch}';
+      final res =
+          await http.get(Uri.parse(freshUrl)).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body);
         final list = decoded is List
@@ -78,7 +133,6 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
           if (mounted) {
             setState(() {
               activeProviders = list;
-              isGistConnected = true;
             });
           }
         }
@@ -86,49 +140,16 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
     } catch (_) {}
   }
 
-  void _openGistManagerDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => _GistManagerDialog(
-        initialUrl: currentGistUrl,
-        currentProviders: activeProviders,
-        onSynced: (newUrl, newProviders) {
-          if (mounted) {
-            setState(() {
-              currentGistUrl = newUrl;
-              activeProviders = newProviders;
-              isGistConnected = newUrl.isNotEmpty && newProviders.isNotEmpty;
-            });
-          }
-        },
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final List<Widget> pages = [
       MobileHomeScreen(
         providers: activeProviders,
-        isGistConnected: isGistConnected,
-        onOpenGistDialog: _openGistManagerDialog,
+        onOpenGistSettings: _showGistConfigDialog,
       ),
-      MobileSearchScreen(
-        providers: activeProviders,
-        isGistConnected: isGistConnected,
-        onOpenGistDialog: _openGistManagerDialog,
-      ),
-      MobileMyListScreen(
-        providers: activeProviders,
-        isGistConnected: isGistConnected,
-        onOpenGistDialog: _openGistManagerDialog,
-      ),
-      MobileMoreScreen(
-        providers: activeProviders,
-        isGistConnected: isGistConnected,
-        onOpenGistDialog: _openGistManagerDialog,
-      ),
+      MobileSearchScreen(providers: activeProviders),
+      MobileMyListScreen(providers: activeProviders),
+      MobileMoreScreen(providers: activeProviders),
     ];
 
     return Scaffold(
@@ -158,358 +179,16 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 }
 
 // ============================================================================
-// GITHUB GIST RAW SOURCE POPUP DIALOG (EMPTY BY DEFAULT + LIVE IPTV TEST)
-// ============================================================================
-class _GistManagerDialog extends StatefulWidget {
-  final String initialUrl;
-  final List<dynamic> currentProviders;
-  final Function(String url, List<dynamic> providers) onSynced;
-
-  const _GistManagerDialog({
-    required this.initialUrl,
-    required this.currentProviders,
-    required this.onSynced,
-  });
-
-  @override
-  State<_GistManagerDialog> createState() => _GistManagerDialogState();
-}
-
-class _GistManagerDialogState extends State<_GistManagerDialog> {
-  late TextEditingController _urlController;
-  bool isSyncing = false;
-  String statusMessage = '';
-  bool isSuccess = false;
-  List<dynamic> loadedList = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _urlController = TextEditingController(text: widget.initialUrl);
-    loadedList = List<dynamic>.from(widget.currentProviders);
-    if (widget.initialUrl.isNotEmpty && loadedList.isNotEmpty) {
-      isSuccess = true;
-      final names = loadedList.map((p) => (p['name'] ?? p['type'] ?? 'Source').toString()).join(' + ');
-      statusMessage = 'Connected: $names';
-    } else {
-      isSuccess = false;
-      statusMessage = 'Gist Link Required! Paste your GitHub Gist Raw link below to activate playback.';
-    }
-  }
-
-  @override
-  void dispose() {
-    _urlController.dispose();
-    super.dispose();
-  }
-
-  Future<String> _checkSingleProviderStatus(dynamic prov) async {
-    final name = (prov['name'] ?? 'Source').toString();
-    final type = (prov['type'] ?? '').toString().toLowerCase();
-    if (type != 'xtream') return name;
-
-    final rawHost = (prov['xc_host'] ?? prov['host'] ?? '').toString().trim().replaceAll(RegExp(r'/+$'), '');
-    final user = (prov['xc_username'] ?? prov['username'] ?? '').toString().trim();
-    final pass = (prov['xc_password'] ?? prov['password'] ?? '').toString().trim();
-    if (rawHost.isEmpty || user.isEmpty || pass.isEmpty) return '$name (Invalid)';
-
-    final cleanHost = rawHost.endsWith(':80') ? rawHost.substring(0, rawHost.length - 3) : rawHost;
-    final hostsToTry = {rawHost, cleanHost}.toList();
-
-    for (final h in hostsToTry) {
-      try {
-        final authUrl = '$h/player_api.php?username=$user&password=$pass';
-        final res = await http.get(
-          Uri.parse(authUrl),
-          headers: {'User-Agent': 'IPTVSmartersPro', 'Accept': '*/*'},
-        ).timeout(const Duration(seconds: 7));
-
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
-          final userInfo = data['user_info'];
-          if (userInfo != null) {
-            final status = (userInfo['status'] ?? '').toString();
-            if (status.toLowerCase() == 'active') {
-              return '$name (Active ✓)';
-            } else {
-              return '$name ($status)';
-            }
-          }
-        }
-      } catch (_) {}
-    }
-    return '$name (Offline/Blocked)';
-  }
-
-  Future<void> _connectAndSync() async {
-    final rawUrl = _urlController.text.trim();
-    if (rawUrl.isEmpty) {
-      setState(() {
-        isSuccess = false;
-        statusMessage = 'Please paste a valid GitHub Gist Raw link first.';
-      });
-      return;
-    }
-
-    setState(() {
-      isSyncing = true;
-      statusMessage = 'Connecting & testing all IPTV / Stremio servers...';
-    });
-
-    try {
-      final sep = rawUrl.contains('?') ? '&' : '?';
-      final fetchUrl = '$rawUrl${sep}t=${DateTime.now().millisecondsSinceEpoch}';
-      final res = await http.get(Uri.parse(fetchUrl)).timeout(const Duration(seconds: 12));
-
-      if (res.statusCode == 200) {
-        final decoded = jsonDecode(res.body);
-        final list = decoded is List
-            ? decoded
-            : (decoded['active_providers'] ?? decoded['providers'] ?? []);
-
-        if (list is List && list.isNotEmpty) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('custom_gist_url', rawUrl);
-          await prefs.setString('cached_active_providers', jsonEncode(list));
-
-          final statuses = await Future.wait(list.map((p) => _checkSingleProviderStatus(p)));
-          widget.onSynced(rawUrl, list);
-
-          if (mounted) {
-            setState(() {
-              isSyncing = false;
-              isSuccess = true;
-              loadedList = list;
-              statusMessage = 'Connected: ${statuses.join(' + ')}';
-            });
-          }
-          return;
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          isSyncing = false;
-          isSuccess = false;
-          statusMessage = 'Failed to load providers (Invalid JSON or URL).';
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          isSyncing = false;
-          isSuccess = false;
-          statusMessage = 'Connection Error: Check URL or Internet.';
-        });
-      }
-    }
-  }
-
-  Future<void> _clearGist() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('custom_gist_url', '');
-    await prefs.remove('cached_active_providers');
-    _urlController.clear();
-    widget.onSynced('', []);
-    if (mounted) {
-      setState(() {
-        isSuccess = false;
-        loadedList = [];
-        statusMessage = 'Cleared! App playback disabled until you add a Gist link.';
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: const Color(0xFF141B2D),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: Color(0xFF2B3654), width: 1.2),
-      ),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2563EB).withOpacity(0.18),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.link_rounded, color: Color(0xFFFACC15), size: 22),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'GitHub Gist Raw Source',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Paste your Gist Raw URL to activate all IPTV & Stremio sources',
-                        style: TextStyle(color: Color(0xFFFACC15), fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close, color: Colors.white70, size: 22),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'GitHub Gist Raw Link (Required)',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF334155)),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: TextField(
-                controller: _urlController,
-                maxLines: 3,
-                minLines: 2,
-                style: const TextStyle(color: Colors.white, fontSize: 13.5, height: 1.35),
-                decoration: const InputDecoration(
-                  hintText: 'Paste https://gist.githubusercontent.com/.../raw/providers.json here',
-                  hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
-                  border: InputBorder.none,
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isSuccess
-                    ? const Color(0xFF064E3B).withOpacity(0.65)
-                    : const Color(0xFF3F1D2E).withOpacity(0.65),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSuccess ? const Color(0xFF10B981) : const Color(0xFFEF4444),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isSuccess ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
-                    color: isSuccess ? const Color(0xFF22C55E) : const Color(0xFFF87171),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      statusMessage,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: SizedBox(
-                    height: 44,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2563EB),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: isSyncing ? null : _connectAndSync,
-                      icon: isSyncing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : const Icon(Icons.sync_rounded, size: 18),
-                      label: Text(
-                        isSyncing ? 'Checking...' : 'Connect & Sync',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 1,
-                  child: SizedBox(
-                    height: 44,
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFF87171),
-                        side: const BorderSide(color: Color(0xFF7F1D1D), width: 1.2),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: isSyncing ? null : _clearGist,
-                      child: const Text('Clear', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                '${loadedList.length} Sources Ready',
-                style: const TextStyle(color: Color(0xFF60A5FA), fontSize: 12, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// 1. HOME SCREEN
+// 1. HOME SCREEN (BOLLYWOOD + SOUTH + ENGLISH LATEST MIXED GENRES)
 // ============================================================================
 class MobileHomeScreen extends StatefulWidget {
   final List<dynamic> providers;
-  final bool isGistConnected;
-  final VoidCallback onOpenGistDialog;
+  final VoidCallback onOpenGistSettings;
 
   const MobileHomeScreen({
     super.key,
     required this.providers,
-    required this.isGistConnected,
-    required this.onOpenGistDialog,
+    required this.onOpenGistSettings,
   });
 
   @override
@@ -587,6 +266,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   Future<List<dynamic>> _fetchSingleCategory(String url, {bool isTv = false}) async {
+    if (MobileConfig.tmdbKey.isEmpty) return [];
     try {
       final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
@@ -601,6 +281,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   Future<void> _fetchHomeCatalogContent() async {
+    if (MobileConfig.tmdbKey.isEmpty) return;
     final now = DateTime.now();
     final todayIso =
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
@@ -670,18 +351,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
   }
 
   void _onItemSelect(dynamic item) {
-    if (!widget.isGistConnected || widget.providers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Color(0xFFE50914),
-          content: Text('Please add your GitHub Gist link first to play content!'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      widget.onOpenGistDialog();
-      return;
-    }
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -857,10 +526,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     if (items.isEmpty) return const SizedBox.shrink();
 
     void openSeeAll() {
-      if (!widget.isGistConnected || widget.providers.isEmpty) {
-        widget.onOpenGistDialog();
-        return;
-      }
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => MobileCategoryGridScreen(
@@ -1065,105 +730,54 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   ),
                 ),
 
-                // TOP BAR WITH NETFLIX PRO LOGO + GIST BUTTON + SEARCH
                 Positioned(
                   top: 0,
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.only(top: 40, left: 14, right: 10, bottom: 12),
+                    padding: const EdgeInsets.only(top: 40, left: 16, right: 16, bottom: 12),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [Colors.black.withOpacity(0.92), Colors.transparent],
+                        colors: [Colors.black.withOpacity(0.9), Colors.transparent],
                       ),
                     ),
-                    child: Row(
+                    child: Stack(
+                      alignment: Alignment.center,
                       children: [
                         const Text(
                           'NETFLIX PRO',
                           style: TextStyle(
                             color: Color(0xFFE50914),
-                            fontSize: 20,
+                            fontSize: 22,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: 1.5,
+                            letterSpacing: 2.0,
                           ),
                         ),
-                        const Spacer(),
-                        InkWell(
-                          onTap: widget.onOpenGistDialog,
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: widget.isGistConnected
-                                  ? const Color(0xFF064E3B).withOpacity(0.85)
-                                  : const Color(0xFF7F1D1D).withOpacity(0.85),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: widget.isGistConnected
-                                    ? const Color(0xFF22C55E)
-                                    : const Color(0xFFEF4444),
-                                width: 1.2,
-                              ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.link_rounded, color: Colors.white, size: 25),
+                              tooltip: 'Set Gist URL',
+                              onPressed: widget.onOpenGistSettings,
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.link_rounded,
-                                  size: 14,
-                                  color: widget.isGistConnected
-                                      ? const Color(0xFF4ADE80)
-                                      : const Color(0xFFFCA5A5),
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  widget.isGistConnected ? 'Gist Active' : 'Add Gist',
-                                  style: TextStyle(
-                                    color: widget.isGistConnected
-                                        ? const Color(0xFF4ADE80)
-                                        : Colors.white,
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.bold,
+                            IconButton(
+                              icon: const Icon(Icons.search, color: Colors.white, size: 26),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => MobileSearchScreen(
+                                      providers: widget.providers,
+                                      onPlaySaved: _loadContinueWatching,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 5),
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: widget.isGistConnected
-                                        ? const Color(0xFF22C55E)
-                                        : const Color(0xFFEF4444),
-                                  ),
-                                ),
-                              ],
+                                );
+                              },
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: const Icon(Icons.search, color: Colors.white, size: 24),
-                          onPressed: () {
-                            if (!widget.isGistConnected || widget.providers.isEmpty) {
-                              widget.onOpenGistDialog();
-                              return;
-                            }
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => MobileSearchScreen(
-                                  providers: widget.providers,
-                                  isGistConnected: widget.isGistConnected,
-                                  onOpenGistDialog: widget.onOpenGistDialog,
-                                  onPlaySaved: _loadContinueWatching,
-                                ),
-                              ),
-                            );
-                          },
+                          ],
                         ),
                       ],
                     ),
@@ -1180,17 +794,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 // ============================================================================
 class MobileSearchScreen extends StatefulWidget {
   final List<dynamic> providers;
-  final bool isGistConnected;
-  final VoidCallback onOpenGistDialog;
   final VoidCallback? onPlaySaved;
 
-  const MobileSearchScreen({
-    super.key,
-    required this.providers,
-    required this.isGistConnected,
-    required this.onOpenGistDialog,
-    this.onPlaySaved,
-  });
+  const MobileSearchScreen({super.key, required this.providers, this.onPlaySaved});
 
   @override
   State<MobileSearchScreen> createState() => _MobileSearchScreenState();
@@ -1217,6 +823,7 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
   }
 
   Future<void> _executeSearch(String q) async {
+    if (MobileConfig.tmdbKey.isEmpty) return;
     setState(() => isSearching = true);
     final encoded = Uri.encodeComponent(q);
     final url = '${MobileConfig.tmdbBase}/search/multi?api_key=${MobileConfig.tmdbKey}&query=$encoded&language=en-US';
@@ -1315,10 +922,6 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
                     final item = searchResults[idx];
                     return InkWell(
                       onTap: () {
-                        if (!widget.isGistConnected || widget.providers.isEmpty) {
-                          widget.onOpenGistDialog();
-                          return;
-                        }
                         showModalBottomSheet(
                           context: context,
                           isScrollControlled: true,
@@ -1350,15 +953,7 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
 // ============================================================================
 class MobileMyListScreen extends StatefulWidget {
   final List<dynamic> providers;
-  final bool isGistConnected;
-  final VoidCallback onOpenGistDialog;
-
-  const MobileMyListScreen({
-    super.key,
-    required this.providers,
-    required this.isGistConnected,
-    required this.onOpenGistDialog,
-  });
+  const MobileMyListScreen({super.key, required this.providers});
 
   @override
   State<MobileMyListScreen> createState() => _MobileMyListScreenState();
@@ -1391,10 +986,6 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
   }
 
   void _onItemSelect(dynamic item) {
-    if (!widget.isGistConnected || widget.providers.isEmpty) {
-      widget.onOpenGistDialog();
-      return;
-    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1480,34 +1071,7 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
 // ============================================================================
 class MobileMoreScreen extends StatelessWidget {
   final List<dynamic> providers;
-  final bool isGistConnected;
-  final VoidCallback onOpenGistDialog;
-
-  const MobileMoreScreen({
-    super.key,
-    required this.providers,
-    required this.isGistConnected,
-    required this.onOpenGistDialog,
-  });
-
-  void _openCategory(BuildContext context, String title, String url, bool isTv) {
-    if (!isGistConnected || providers.isEmpty) {
-      onOpenGistDialog();
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MobileCategoryGridScreen(
-          title: title,
-          baseUrl: url,
-          isTv: isTv,
-          providers: providers,
-          onPlaySaved: () {},
-        ),
-      ),
-    );
-  }
+  const MobileMoreScreen({super.key, required this.providers});
 
   @override
   Widget build(BuildContext context) {
@@ -1529,96 +1093,160 @@ class MobileMoreScreen extends StatelessWidget {
             leading: const Icon(Icons.local_fire_department_rounded, color: Color(0xFFE50914)),
             title: const Text('Action & Adventure (Bolly + South + Eng)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () => _openCategory(
-              context,
-              'Action & Adventure Latest',
-              '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=20',
-              false,
-            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Action & Adventure Latest',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=20',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
           ),
           const Divider(color: Colors.white24),
           ListTile(
             leading: const Icon(Icons.psychology_rounded, color: Color(0xFFE50914)),
             title: const Text('Thriller & Suspense (Bolly + South + Eng)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () => _openCategory(
-              context,
-              'Thriller & Suspense Latest',
-              '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
-              false,
-            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Thriller & Suspense Latest',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
           ),
           const Divider(color: Colors.white24),
           ListTile(
             leading: const Icon(Icons.search_rounded, color: Color(0xFFE50914)),
             title: const Text('Crime & Mystery Suspense (Latest Mix)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () => _openCategory(
-              context,
-              'Crime & Mystery Suspense',
-              '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=9648,80&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
-              false,
-            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Crime & Mystery Suspense',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=9648,80&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
           ),
           const Divider(color: Colors.white24),
           ListTile(
             leading: const Icon(Icons.movie_filter_rounded, color: Color(0xFFE50914)),
             title: const Text('Bollywood Latest Movies', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () => _openCategory(
-              context,
-              'Bollywood Latest Movies',
-              '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&primary_release_date.lte=$todayIso&vote_count.gte=8',
-              false,
-            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Bollywood Latest Movies',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&primary_release_date.lte=$todayIso&vote_count.gte=8',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
           ),
           const Divider(color: Colors.white24),
           ListTile(
             leading: const Icon(Icons.local_movies_rounded, color: Color(0xFFE50914)),
             title: const Text('South Latest Movies (Hindi Dubbed)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () => _openCategory(
-              context,
-              'South Latest Movies',
-              '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&primary_release_date.lte=$todayIso&vote_count.gte=10',
-              false,
-            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'South Latest Movies',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn&primary_release_date.lte=$todayIso&vote_count.gte=10',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
           ),
           const Divider(color: Colors.white24),
           ListTile(
             leading: const Icon(Icons.theaters_rounded, color: Color(0xFFE50914)),
             title: const Text('English / Hollywood Latest Movies', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () => _openCategory(
-              context,
-              'English / Hollywood Latest',
-              '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=en&primary_release_date.lte=$todayIso&vote_count.gte=50',
-              false,
-            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'English / Hollywood Latest',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=en&primary_release_date.lte=$todayIso&vote_count.gte=50',
+                    isTv: false,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
           ),
           const Divider(color: Colors.white24),
           ListTile(
             leading: const Icon(Icons.video_collection, color: Color(0xFFE50914)),
             title: const Text('Netflix Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () => _openCategory(
-              context,
-              'Netflix Web Series',
-              '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=213&without_genres=10766',
-              true,
-            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Netflix Web Series',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=213&without_genres=10766',
+                    isTv: true,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
           ),
           const Divider(color: Colors.white24),
           ListTile(
             leading: const Icon(Icons.video_library, color: Color(0xFFE50914)),
             title: const Text('Amazon Web Series', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-            onTap: () => _openCategory(
-              context,
-              'Amazon Web Series',
-              '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=1024&without_genres=10766',
-              true,
-            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MobileCategoryGridScreen(
+                    title: 'Amazon Web Series',
+                    baseUrl: '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=1024&without_genres=10766',
+                    isTv: true,
+                    providers: providers,
+                    onPlaySaved: () {},
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
