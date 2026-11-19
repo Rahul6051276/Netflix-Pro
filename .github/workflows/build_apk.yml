@@ -1,4 +1,4 @@
-name: Build and Release Netflix Pro APK
+Name: Build and Release Netflix Pro APK
 
 on:
   push:
@@ -124,7 +124,7 @@ jobs:
           dart run flutter_launcher_icons
 
           # 1. BUILD MOBILE APK
-          flutter build apk --release -t lib/mobile/main.dart
+          flutter build apk --release --dart-define=TMDB_KEY=${{ secrets.TMDB_KEY }} -t lib/mobile/main.dart
           cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-Mobile.apk
 
           # 2. CONFIGURE & BUILD ANDROID TV APK
@@ -160,7 +160,7 @@ jobs:
           mp.write_text(m)
           PYEOF
 
-          flutter build apk --release -t lib/tv/main.dart
+          flutter build apk --release --dart-define=TMDB_KEY=${{ secrets.TMDB_KEY }} -t lib/tv/main.dart
           cp build/app/outputs/flutter-apk/app-release.apk ../Netflix-Pro-TV.apk
 
       - name: Create GitHub Release
