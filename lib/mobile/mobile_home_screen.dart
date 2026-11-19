@@ -120,7 +120,8 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 
     try {
       final sep = rawGist.contains('?') ? '&' : '?';
-      final freshUrl = '$rawGist${sep}t=${DateTime.now().millisecondsSinceEpoch}';
+      final freshUrl =
+          '$rawGist${sep}t=${DateTime.now().millisecondsSinceEpoch}';
       final res =
           await http.get(Uri.parse(freshUrl)).timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
@@ -143,13 +144,13 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> pages = [
-      MobileHomeScreen(
+      MobileHomeScreen(providers: activeProviders),
+      MobileSearchScreen(providers: activeProviders),
+      MobileMyListScreen(providers: activeProviders),
+      MobileMoreScreen(
         providers: activeProviders,
         onOpenGistSettings: _showGistConfigDialog,
       ),
-      MobileSearchScreen(providers: activeProviders),
-      MobileMyListScreen(providers: activeProviders),
-      MobileMoreScreen(providers: activeProviders),
     ];
 
     return Scaffold(
@@ -179,17 +180,11 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 }
 
 // ============================================================================
-// 1. HOME SCREEN (BOLLYWOOD + SOUTH + ENGLISH LATEST MIXED GENRES)
+// 1. HOME SCREEN (BOLLYWOOD + SOUTH + ENGLISH LATEST MIXED GENRES - UNCHANGED)
 // ============================================================================
 class MobileHomeScreen extends StatefulWidget {
   final List<dynamic> providers;
-  final VoidCallback onOpenGistSettings;
-
-  const MobileHomeScreen({
-    super.key,
-    required this.providers,
-    required this.onOpenGistSettings,
-  });
+  const MobileHomeScreen({super.key, required this.providers});
 
   @override
   State<MobileHomeScreen> createState() => _MobileHomeScreenState();
@@ -286,6 +281,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     final todayIso =
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
+    // Mixed Languages: Bollywood (hi) + South (te, ta, ml, kn) + English (en)
     const mixedLangs = 'hi|en|te|ta|ml|kn';
 
     final results = await Future.wait([
@@ -756,13 +752,8 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           ),
                         ),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.link_rounded, color: Colors.white, size: 25),
-                              tooltip: 'Set Gist URL',
-                              onPressed: widget.onOpenGistSettings,
-                            ),
                             IconButton(
                               icon: const Icon(Icons.search, color: Colors.white, size: 26),
                               onPressed: () {
@@ -790,7 +781,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
 }
 
 // ============================================================================
-// 2. SEARCH SCREEN
+// 2. SEARCH SCREEN (UNCHANGED)
 // ============================================================================
 class MobileSearchScreen extends StatefulWidget {
   final List<dynamic> providers;
@@ -949,7 +940,7 @@ class _MobileSearchScreenState extends State<MobileSearchScreen> {
 }
 
 // ============================================================================
-// 3. MY LIST SCREEN
+// 3. MY LIST SCREEN (UNCHANGED)
 // ============================================================================
 class MobileMyListScreen extends StatefulWidget {
   final List<dynamic> providers;
@@ -1067,11 +1058,17 @@ class _MobileMyListScreenState extends State<MobileMyListScreen> {
 }
 
 // ============================================================================
-// 4. MORE SCREEN
+// 4. MORE SCREEN (WITH GIST URL SETTING OPTION)
 // ============================================================================
 class MobileMoreScreen extends StatelessWidget {
   final List<dynamic> providers;
-  const MobileMoreScreen({super.key, required this.providers});
+  final VoidCallback onOpenGistSettings;
+
+  const MobileMoreScreen({
+    super.key,
+    required this.providers,
+    required this.onOpenGistSettings,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1089,6 +1086,13 @@ class MobileMoreScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          ListTile(
+            leading: const Icon(Icons.link_rounded, color: Color(0xFFE50914)),
+            title: const Text('Gist Raw URL Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
+            onTap: onOpenGistSettings,
+          ),
+          const Divider(color: Colors.white24),
           ListTile(
             leading: const Icon(Icons.local_fire_department_rounded, color: Color(0xFFE50914)),
             title: const Text('Action & Adventure (Bolly + South + Eng)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
