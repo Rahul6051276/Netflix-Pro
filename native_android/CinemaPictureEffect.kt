@@ -25,22 +25,9 @@ enum class PicturePreset(
     val sharpness: Float,
     val gamma: Float
 ) {
-    FHD_UPSCALER(
-        displayName = "FHD 1080p Upscale",
-        tagline = "720p → 1080p Crisp Detail • HW Rich Colors • Deep Blacks",
-        useShader = true,
-        brightness = 0.005f,
-        contrast = 1.10f,
-        saturation = 1.08f,
-        vibrance = 0.22f,
-        shadowLift = 0.012f,
-        warmth = -0.01f,
-        sharpness = 0.48f,
-        gamma = 0.96f
-    ),
     JUST_PLAYER(
-        displayName = "Hardware Pure (Raw)",
-        tagline = "Direct Hardware Surface • Unprocessed Native Colors",
+        displayName = "Hardware Original (Default)",
+        tagline = "100% Direct Hardware Decoder • True Natural Colors • Zero Filter",
         useShader = false,
         brightness = 0f,
         contrast = 1f,
@@ -52,49 +39,36 @@ enum class PicturePreset(
         gamma = 1f
     ),
     CINEMA_NATURAL(
-        displayName = "Cinema Natural",
-        tagline = "Balanced Theater Tone • Natural Skin • Soft Clarity",
+        displayName = "Light Clarity",
+        tagline = "Gentle Detail • Natural Skin • No Black Crush",
         useShader = true,
         brightness = 0.01f,
-        contrast = 1.06f,
-        saturation = 1.05f,
-        vibrance = 0.14f,
-        shadowLift = 0.018f,
+        contrast = 1.02f,
+        saturation = 1.03f,
+        vibrance = 0.08f,
+        shadowLift = 0.02f,
         warmth = 0.00f,
-        sharpness = 0.30f,
-        gamma = 0.97f
+        sharpness = 0.25f,
+        gamma = 0.98f
     ),
     BRIGHT_SHADOW(
-        displayName = "Dark Print Booster",
-        tagline = "Lifts Dark Scenes Cleanly • Crisp Edges",
+        displayName = "Bright Shadow Lift",
+        tagline = "Lifts Dark Scenes Cleanly",
         useShader = true,
-        brightness = 0.025f,
-        contrast = 1.07f,
-        saturation = 1.08f,
-        vibrance = 0.20f,
-        shadowLift = 0.040f,
+        brightness = 0.03f,
+        contrast = 1.01f,
+        saturation = 1.04f,
+        vibrance = 0.10f,
+        shadowLift = 0.045f,
         warmth = 0.00f,
-        sharpness = 0.42f,
-        gamma = 0.91f
-    ),
-    NIGHT_SOFT(
-        displayName = "Night Eye-Comfort",
-        tagline = "Gentle Brightness • Smooth Contrast",
-        useShader = true,
-        brightness = 0.00f,
-        contrast = 1.03f,
-        saturation = 1.02f,
-        vibrance = 0.08f,
-        shadowLift = 0.020f,
-        warmth = 0.02f,
-        sharpness = 0.22f,
-        gamma = 0.96f
+        sharpness = 0.25f,
+        gamma = 0.92f
     )
 }
 
 object CinemaPictureEngineState {
     @Volatile
-    var currentPreset: PicturePreset = PicturePreset.FHD_UPSCALER
+    var currentPreset: PicturePreset = PicturePreset.JUST_PLAYER
 }
 
 @OptIn(UnstableApi::class)
@@ -195,7 +169,6 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
                 vec4 center = texture2D(uTexSampler, vTexSamplingCoord);
                 vec3 color = center.rgb;
 
-                // 1. Luma-Only 720p->1080p Smart Edge Sharpening (Zero Color Noise)
                 if (uSharpness > 0.01) {
                     float lC = getLuma(color);
                     float lN = getLuma(texture2D(uTexSampler, vTexSamplingCoord + vec2(0.0, uTexelSize.y)).rgb);
@@ -205,29 +178,24 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
 
                     float blurLuma = (lN + lS + lE + lW) * 0.25;
                     float edgeDetail = lC - blurLuma;
-                    float sharpDelta = clamp(edgeDetail * (uSharpness * 1.35), -0.14, 0.14);
+                    float sharpDelta = clamp(edgeDetail * (uSharpness * 1.1), -0.10, 0.10);
                     color = clamp(color + vec3(sharpDelta), 0.0, 1.0);
                 }
 
-                // 2. Shadow detail recovery without washing out blacks
                 float lumaIn = getLuma(color);
-                float shadowWeight = (1.0 - lumaIn) * (1.0 - lumaIn) * smoothstep(0.02, 0.35, lumaIn);
+                float shadowWeight = (1.0 - lumaIn) * (1.0 - lumaIn);
                 color = clamp(color + vec3(uBrightness + uShadowLift * shadowWeight), 0.0, 1.0);
 
-                // 3. Hardware-like S-Curve Contrast & Gamma punch
                 color = clamp((color - 0.5) * uContrast + 0.5, 0.0, 1.0);
                 color = pow(max(color, vec3(0.0001)), vec3(uGamma));
 
-                // 4. Skin-Safe Hardware Color Vibrance
                 float luma = getLuma(color);
                 float maxC = max(color.r, max(color.g, color.b));
                 float minC = min(color.r, min(color.g, color.b));
                 float currentSat = maxC - minC;
-                float skinProtect = smoothstep(0.0, 0.25, max(0.0, color.r - color.g));
-                float vibBoost = 1.0 + (uVibrance * (1.0 - skinProtect * 0.45)) * (1.0 - clamp(currentSat, 0.0, 1.0));
+                float vibBoost = 1.0 + uVibrance * (1.0 - clamp(currentSat, 0.0, 1.0));
                 color = mix(vec3(luma), color, uSaturation * vibBoost);
 
-                // 5. Clean white balance
                 color.r += uWarmth * 0.05;
                 color.b -= uWarmth * 0.05;
 

@@ -119,7 +119,7 @@ class CinemaPlayerActivity : Activity() {
     private var currentActiveUrl = ""
     private var currentUserAgent = "NetflixPro/1.0"
     private var currentMovieTitle = "Netflix Pro"
-    private var currentPreset = PicturePreset.FHD_UPSCALER
+    private var currentPreset = PicturePreset.JUST_PLAYER
 
     private val handler = Handler(Looper.getMainLooper())
     private var hudVisible = true
@@ -141,7 +141,7 @@ class CinemaPlayerActivity : Activity() {
         AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
         AspectRatioFrameLayout.RESIZE_MODE_FILL
     )
-    private val resizeLabels = arrayOf("Fit", "Zoom", "Fill")
+    private val resizeLabels = arrayOf("Fit", "Crop / Zoom", "Fill")
     private var resizeIndex = 0
 
     private val speeds = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
@@ -190,9 +190,10 @@ class CinemaPlayerActivity : Activity() {
         seekStepSec = intent.getIntExtra("seekSeconds", 15).coerceIn(5, 60)
         seekStepMs = seekStepSec * 1000L
 
-        val savedName = prefs.getString("picture_preset_v3", PicturePreset.FHD_UPSCALER.name)
+        // Default: 100% Pure Hardware Original (No artificial shader)
+        val savedName = prefs.getString("picture_preset_hw_v1", PicturePreset.JUST_PLAYER.name)
         currentPreset = PicturePreset.values().firstOrNull { it.name == savedName }
-            ?: PicturePreset.FHD_UPSCALER
+            ?: PicturePreset.JUST_PLAYER
         CinemaPictureEngineState.currentPreset = currentPreset
 
         val savedBoost = prefs.getInt("audio_boost_percent", 100).coerceIn(100, 200)
@@ -217,6 +218,11 @@ class CinemaPlayerActivity : Activity() {
             }
         playerView = foundPlayerView
         playerView.useController = false
+        playerView.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
+        applyResizeModeToPlayer(resizeModes[resizeIndex])
 
         parseIncomingSources()
         buildGestureAndHudLayers(root)
@@ -235,7 +241,7 @@ class CinemaPlayerActivity : Activity() {
         val episode = intent.getIntExtra("episode", 1)
 
         titleView.text = currentMovieTitle
-        pictureBtn.text = if (currentPreset == PicturePreset.JUST_PLAYER) "HW Pure" else currentPreset.displayName
+        pictureBtn.text = if (currentPreset == PicturePreset.JUST_PLAYER) "HW Original" else currentPreset.displayName
         sourcesBtn.text = "Sources (${streamSources.size})"
         updateBoostButtonUi()
 
@@ -850,6 +856,29 @@ class CinemaPlayerActivity : Activity() {
         return null
     }
 
+    private fun findAspectFrameLayout(view: View): AspectRatioFrameLayout? {
+        if (view is AspectRatioFrameLayout) return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                val found = findAspectFrameLayout(view.getChildAt(i))
+                if (found != null) return found
+            }
+        }
+        return null
+    }
+
+    private fun applyResizeModeToPlayer(mode: Int) {
+        if (!::playerView.isInitialized) return
+        playerView.resizeMode = mode
+        findAspectFrameLayout(playerView)?.let { aspectFrame ->
+            aspectFrame.resizeMode = mode
+            aspectFrame.requestLayout()
+            aspectFrame.invalidate()
+        }
+        playerView.requestLayout()
+        playerView.invalidate()
+    }
+
     private fun buildGestureAndHudLayers(root: FrameLayout) {
         val gestureLayer = View(this).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -952,7 +981,7 @@ class CinemaPlayerActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         infoBadgeView = TextView(this).apply {
-            text = "1080p"
+            text = "HW"
             setTextColor(Color.parseColor("#38BDF8"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             typeface = Typeface.DEFAULT_BOLD
@@ -966,7 +995,7 @@ class CinemaPlayerActivity : Activity() {
         sourcesBtn = createHudButton("Sources (0)") { openSourcesPanel() }.apply {
             background = createSourcesPill()
         }
-        pictureBtn = createHudButton("FHD 1080p Upscale") { showPicturePresetDialog() }
+        pictureBtn = createHudButton("HW Original") { showPicturePresetDialog() }
         val lockBtn = createHudButton("🔒 Lock") { lockScreen() }
 
         topBar.addView(backBtn)
@@ -1616,8 +1645,9 @@ class CinemaPlayerActivity : Activity() {
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
+        // Pure Hardware Decoder Priority (Natural Mobile & TV Hardware Colors)
         val renderersFactory = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
 
         val exo = ExoPlayer.Builder(this, renderersFactory)
@@ -1658,8 +1688,11 @@ class CinemaPlayerActivity : Activity() {
             override fun onPlaybackStateChanged(state: Int) {
                 if (!isSafeUi()) return
                 loadingSpinner.visibility = if (state == Player.STATE_BUFFERING) View.VISIBLE else View.GONE
-                if (state == Player.STATE_READY && loudnessEnhancer == null) {
-                    attachLoudnessEnhancer(exo.audioSessionId)
+                if (state == Player.STATE_READY) {
+                    applyResizeModeToPlayer(resizeModes[resizeIndex])
+                    if (loudnessEnhancer == null) {
+                        attachLoudnessEnhancer(exo.audioSessionId)
+                    }
                 }
                 updatePlayPauseLabel()
                 updateProgressUi()
@@ -1672,6 +1705,7 @@ class CinemaPlayerActivity : Activity() {
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (!isSafeUi()) return
+                applyResizeModeToPlayer(resizeModes[resizeIndex])
                 updateInfoBadge()
             }
 
@@ -1692,6 +1726,7 @@ class CinemaPlayerActivity : Activity() {
         })
 
         playerView.player = exo
+        applyResizeModeToPlayer(resizeModes[resizeIndex])
         exo.setMediaItem(currentMediaItem)
         exo.prepare()
         exo.playWhenReady = true
@@ -1703,8 +1738,8 @@ class CinemaPlayerActivity : Activity() {
     private fun applyPicturePreset(preset: PicturePreset) {
         if (!isSafeUi()) return
         CinemaPictureEngineState.currentPreset = preset
-        prefs.edit().putString("picture_preset_v3", preset.name).apply()
-        pictureBtn.text = if (preset == PicturePreset.JUST_PLAYER) "HW Pure" else preset.displayName
+        prefs.edit().putString("picture_preset_hw_v1", preset.name).apply()
+        pictureBtn.text = if (preset == PicturePreset.JUST_PLAYER) "HW Original" else preset.displayName
 
         val exo = player ?: return
         val needsShader = preset.useShader
@@ -1730,7 +1765,7 @@ class CinemaPlayerActivity : Activity() {
 
         try {
             AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Picture Quality Mode")
+                .setTitle("Picture Mode")
                 .setSingleChoiceItems(labels, checked) { dialog, which ->
                     applyPicturePreset(presets[which])
                     dialog.dismiss()
@@ -2085,9 +2120,10 @@ class CinemaPlayerActivity : Activity() {
 
     private fun cycleAspectRatio() {
         resizeIndex = (resizeIndex + 1) % resizeModes.size
-        playerView.resizeMode = resizeModes[resizeIndex]
+        val mode = resizeModes[resizeIndex]
+        applyResizeModeToPlayer(mode)
         aspectBtn.text = resizeLabels[resizeIndex]
-        showFeedback("Aspect: ${resizeLabels[resizeIndex]}")
+        showFeedback("Screen Size: ${resizeLabels[resizeIndex]}")
         scheduleHideHud()
     }
 
