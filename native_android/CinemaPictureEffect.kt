@@ -27,7 +27,7 @@ enum class PicturePreset(
 ) {
     JUST_PLAYER(
         displayName = "Hardware Original (Default)",
-        tagline = "100% Direct Hardware Decoder • True Natural Colors • Zero Filter",
+        tagline = "100% Direct Hardware Decoder • True Natural Colors • Smooth Frame Pacing",
         useShader = false,
         brightness = 0f,
         contrast = 1f,
@@ -39,30 +39,30 @@ enum class PicturePreset(
         gamma = 1f
     ),
     CINEMA_NATURAL(
-        displayName = "Light Clarity",
-        tagline = "Gentle Detail • Natural Skin • No Black Crush",
+        displayName = "Clean Clarity",
+        tagline = "Subtle Detail • Natural Colors • Zero Color Crush",
         useShader = true,
-        brightness = 0.01f,
-        contrast = 1.02f,
-        saturation = 1.03f,
-        vibrance = 0.08f,
-        shadowLift = 0.02f,
+        brightness = 0.005f,
+        contrast = 1.03f,
+        saturation = 1.02f,
+        vibrance = 0.05f,
+        shadowLift = 0.01f,
         warmth = 0.00f,
-        sharpness = 0.25f,
-        gamma = 0.98f
+        sharpness = 0.18f,
+        gamma = 0.99f
     ),
     BRIGHT_SHADOW(
-        displayName = "Bright Shadow Lift",
-        tagline = "Lifts Dark Scenes Cleanly",
+        displayName = "Shadow Lift",
+        tagline = "Clean Dark Scene Visibility • Preserves Highlights",
         useShader = true,
-        brightness = 0.03f,
+        brightness = 0.015f,
         contrast = 1.01f,
-        saturation = 1.04f,
-        vibrance = 0.10f,
-        shadowLift = 0.045f,
+        saturation = 1.02f,
+        vibrance = 0.06f,
+        shadowLift = 0.03f,
         warmth = 0.00f,
-        sharpness = 0.25f,
-        gamma = 0.92f
+        sharpness = 0.15f,
+        gamma = 0.95f
     )
 }
 
@@ -77,7 +77,9 @@ class CinemaPictureEffect : GlEffect {
         return CinemaPictureShaderProgram(useHdr)
     }
 
-    override fun isNoOp(inputWidth: Int, inputHeight: Int): Boolean = false
+    override fun isNoOp(inputWidth: Int, inputHeight: Int): Boolean {
+        return !CinemaPictureEngineState.currentPreset.useShader
+    }
 }
 
 @OptIn(UnstableApi::class)
@@ -115,7 +117,7 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
             glProgram.setFloatUniform("uShadowLift", s.shadowLift)
             glProgram.setFloatUniform("uWarmth", s.warmth)
             glProgram.setFloatUniform("uSharpness", s.sharpness)
-            glProgram.setFloatUniform("uGamma", s.gamma.coerceIn(0.75f, 1.25f))
+            glProgram.setFloatUniform("uGamma", s.gamma.coerceIn(0.80f, 1.20f))
             glProgram.bindAttributesAndUniforms()
 
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
@@ -148,7 +150,7 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
         """
 
         private const val FRAGMENT_SHADER = """
-            precision mediump float;
+            precision highp float;
             uniform sampler2D uTexSampler;
             uniform vec2 uTexelSize;
             uniform float uBrightness;
@@ -178,7 +180,7 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
 
                     float blurLuma = (lN + lS + lE + lW) * 0.25;
                     float edgeDetail = lC - blurLuma;
-                    float sharpDelta = clamp(edgeDetail * (uSharpness * 1.1), -0.10, 0.10);
+                    float sharpDelta = clamp(edgeDetail * uSharpness, -0.06, 0.06);
                     color = clamp(color + vec3(sharpDelta), 0.0, 1.0);
                 }
 
@@ -196,8 +198,8 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
                 float vibBoost = 1.0 + uVibrance * (1.0 - clamp(currentSat, 0.0, 1.0));
                 color = mix(vec3(luma), color, uSaturation * vibBoost);
 
-                color.r += uWarmth * 0.05;
-                color.b -= uWarmth * 0.05;
+                color.r += uWarmth * 0.03;
+                color.b -= uWarmth * 0.03;
 
                 gl_FragColor = vec4(clamp(color, 0.0, 1.0), center.a);
             }

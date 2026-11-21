@@ -156,8 +156,10 @@ class CinemaPlayerActivity : Activity() {
     private val progressRunnable = object : Runnable {
         override fun run() {
             if (!isSafeUi()) return
-            updateProgressUi()
-            handler.postDelayed(this, 500)
+            if (hudVisible) {
+                updateProgressUi()
+            }
+            handler.postDelayed(this, 1000)
         }
     }
 
@@ -863,14 +865,15 @@ class CinemaPlayerActivity : Activity() {
 
     private fun applyResizeModeToPlayer(mode: Int) {
         if (!::playerView.isInitialized) return
-        playerView.resizeMode = mode
-        findAspectFrameLayout(playerView)?.let { aspectFrame ->
-            aspectFrame.resizeMode = mode
-            aspectFrame.requestLayout()
-            aspectFrame.invalidate()
+        if (playerView.resizeMode != mode) {
+            playerView.resizeMode = mode
         }
-        playerView.requestLayout()
-        playerView.invalidate()
+        findAspectFrameLayout(playerView)?.let { aspectFrame ->
+            if (aspectFrame.resizeMode != mode) {
+                aspectFrame.resizeMode = mode
+                aspectFrame.requestLayout()
+            }
+        }
     }
 
     private fun buildGestureAndHudLayers(root: FrameLayout) {
@@ -955,7 +958,7 @@ class CinemaPlayerActivity : Activity() {
             setPadding(dp(18), dp(16), dp(18), dp(22))
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.parseColor("#DD000000"), Color.TRANSPARENT)
+                intArrayOf(Color.parseColor("#88000000"), Color.TRANSPARENT)
             )
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -1027,7 +1030,7 @@ class CinemaPlayerActivity : Activity() {
             setPadding(dp(20), dp(22), dp(20), dp(14))
             background = GradientDrawable(
                 GradientDrawable.Orientation.BOTTOM_TOP,
-                intArrayOf(Color.parseColor("#E6000000"), Color.TRANSPARENT)
+                intArrayOf(Color.parseColor("#99000000"), Color.TRANSPARENT)
             )
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -1682,14 +1685,11 @@ class CinemaPlayerActivity : Activity() {
             override fun onPlaybackStateChanged(state: Int) {
                 if (!isSafeUi()) return
                 loadingSpinner.visibility = if (state == Player.STATE_BUFFERING) View.VISIBLE else View.GONE
-                if (state == Player.STATE_READY) {
-                    applyResizeModeToPlayer(resizeModes[resizeIndex])
-                    if (loudnessEnhancer == null) {
-                        attachLoudnessEnhancer(exo.audioSessionId)
-                    }
+                if (state == Player.STATE_READY && loudnessEnhancer == null) {
+                    attachLoudnessEnhancer(exo.audioSessionId)
                 }
                 updatePlayPauseLabel()
-                updateProgressUi()
+                if (hudVisible) updateProgressUi()
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -1699,7 +1699,6 @@ class CinemaPlayerActivity : Activity() {
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (!isSafeUi()) return
-                applyResizeModeToPlayer(resizeModes[resizeIndex])
                 updateInfoBadge()
             }
 
@@ -1943,6 +1942,8 @@ class CinemaPlayerActivity : Activity() {
         var draggingVertical = false
         var startEffectiveVol = 100
         var startBrightness = 0.5f
+        var lastBrightnessPct = -1
+        var lastVolumePct = -1
 
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
@@ -1977,6 +1978,8 @@ class CinemaPlayerActivity : Activity() {
                     startX = event.x
                     startY = event.y
                     draggingVertical = false
+                    lastBrightnessPct = -1
+                    lastVolumePct = -1
                     val sysPercent = (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100) / maxVol
                     startEffectiveVol = if (sysPercent >= 100) currentBoostPercent else sysPercent
                     val curB = window.attributes.screenBrightness
@@ -1995,18 +1998,28 @@ class CinemaPlayerActivity : Activity() {
                             val lp = window.attributes
                             lp.screenBrightness = newB
                             window.attributes = lp
-                            showFeedback("Brightness ${(newB * 100).toInt()}%")
+                            val pct = (newB * 100).toInt()
+                            if (pct != lastBrightnessPct) {
+                                lastBrightnessPct = pct
+                                showFeedback("Brightness $pct%")
+                            }
                         } else {
                             val targetPercent = (startEffectiveVol + (deltaRatio * 200f).toInt()).coerceIn(0, 200)
                             if (targetPercent <= 100) {
                                 val sysStep = ((targetPercent * maxVol) / 100).coerceIn(0, maxVol)
                                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, sysStep, 0)
                                 applyAudioBoostPercent(100, showToast = false)
-                                showFeedback("Volume $targetPercent%")
+                                if (targetPercent != lastVolumePct) {
+                                    lastVolumePct = targetPercent
+                                    showFeedback("Volume $targetPercent%")
+                                }
                             } else {
                                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVol, 0)
                                 applyAudioBoostPercent(targetPercent, showToast = false)
-                                showFeedback("🔊 Volume Boost $targetPercent%")
+                                if (targetPercent != lastVolumePct) {
+                                    lastVolumePct = targetPercent
+                                    showFeedback("🔊 Volume Boost $targetPercent%")
+                                }
                             }
                         }
                     }
@@ -2171,6 +2184,9 @@ class CinemaPlayerActivity : Activity() {
         if (!isSafeUi()) return
         hudVisible = visible
         hudContainer.visibility = if (visible) View.VISIBLE else View.GONE
+        if (visible) {
+            updateProgressUi()
+        }
         handler.removeCallbacks(hideHudRunnable)
         if (visible && !isScreenLocked) scheduleHideHud()
     }
