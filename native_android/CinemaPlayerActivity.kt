@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.text.TextUtils
 import android.util.JsonReader
 import android.util.JsonToken
@@ -176,11 +177,15 @@ class CinemaPlayerActivity : Activity() {
 
         window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val lp = window.attributes
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            window.attributes = lp
+        }
 
         seekStepSec = intent.getIntExtra("seekSeconds", 15).coerceIn(5, 60)
         seekStepMs = seekStepSec * 1000L
 
-        // Pure Hardware Decoder (Zero artificial filter)
         currentPreset = PicturePreset.JUST_PLAYER
         CinemaPictureEngineState.currentPreset = currentPreset
 
@@ -204,9 +209,12 @@ class CinemaPlayerActivity : Activity() {
             }
         playerView = foundPlayerView
         playerView.useController = false
+        playerView.clipToOutline = false
+        playerView.clipToPadding = false
         playerView.layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER
         )
         applyResizeModeToPlayer(resizeModes[resizeIndex])
 
@@ -289,9 +297,6 @@ class CinemaPlayerActivity : Activity() {
         centerBar.visibility = if (connecting) View.GONE else View.VISIBLE
     }
 
-    // =========================================================================
-    // 200% AUDIO BOOST ENGINE (LOUDNESS ENHANCER)
-    // =========================================================================
     private fun attachLoudnessEnhancer(audioSessionId: Int) {
         if (audioSessionId <= 0 || audioSessionId == C.AUDIO_SESSION_ID_UNSET) return
         releaseLoudnessEnhancer()
@@ -347,9 +352,6 @@ class CinemaPlayerActivity : Activity() {
         }
     }
 
-    // =========================================================================
-    // RAM-SAFE STRICT EXACT-MATCH STREAM RESOLVER (IPTV VOD + SERIES + STREMIO)
-    // =========================================================================
     private fun resolveStreamsInsidePlayer(
         tmdbId: String,
         tmdbKey: String,
@@ -836,10 +838,15 @@ class CinemaPlayerActivity : Activity() {
             playerView.resizeMode = mode
         }
         findAspectFrameLayout(playerView)?.let { aspectFrame ->
+            aspectFrame.layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
             if (aspectFrame.resizeMode != mode) {
                 aspectFrame.resizeMode = mode
-                aspectFrame.requestLayout()
             }
+            aspectFrame.requestLayout()
         }
     }
 
@@ -1407,7 +1414,6 @@ class CinemaPlayerActivity : Activity() {
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        // Pure Android Hardware Decoder
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             .setEnableDecoderFallback(true)
@@ -1642,6 +1648,17 @@ class CinemaPlayerActivity : Activity() {
         return listOfNotNull(fmt.label, lang).distinct().joinToString(" • ").ifBlank { fallback }
     }
 
+    private fun getCurrentBrightnessFloat(): Float {
+        val winB = window.attributes.screenBrightness
+        if (winB >= 0f) return winB.coerceIn(0.05f, 1.0f)
+        return try {
+            val sysVal = Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+            (sysVal / 255f).coerceIn(0.05f, 1.0f)
+        } catch (_: Throwable) {
+            0.6f
+        }
+    }
+
     private fun setupTouchGestures(view: View) {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
@@ -1650,7 +1667,7 @@ class CinemaPlayerActivity : Activity() {
         var startY = 0f
         var draggingVertical = false
         var startEffectiveVol = 100
-        var startBrightness = 0.5f
+        var startBrightness = 0.6f
         var lastBrightnessPct = -1
         var lastVolumePct = -1
 
@@ -1682,17 +1699,16 @@ class CinemaPlayerActivity : Activity() {
                     lastVolumePct = -1
                     val sysPercent = (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100) / maxVol
                     startEffectiveVol = if (sysPercent >= 100) currentBoostPercent else sysPercent
-                    val curB = window.attributes.screenBrightness
-                    startBrightness = if (curB < 0f) 0.5f else curB
+                    startBrightness = getCurrentBrightnessFloat()
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - startX
                     val dy = startY - event.y
-                    if (!draggingVertical && abs(dy) > dp(18) && abs(dy) > abs(dx)) {
+                    if (!draggingVertical && abs(dy) > dp(14) && abs(dy) > abs(dx)) {
                         draggingVertical = true
                     }
                     if (draggingVertical && v.height > 0) {
-                        val deltaRatio = dy / (v.height * 0.65f)
+                        val deltaRatio = dy / (v.height * 0.45f)
                         if (startX < v.width / 2f) {
                             val newB = (startBrightness + deltaRatio).coerceIn(0.05f, 1.0f)
                             val lp = window.attributes
