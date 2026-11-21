@@ -3,10 +3,15 @@ package com.netflixpro.netflix_pro
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.Paint
+import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
@@ -76,6 +81,43 @@ import kotlin.math.abs
 @OptIn(UnstableApi::class)
 class CinemaPlayerActivity : Activity() {
 
+    private class VerticalThumbDrawable(
+        private val colorInt: Int,
+        private val widthPx: Int,
+        private val heightPx: Int
+    ) : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = colorInt
+            style = Paint.Style.FILL
+        }
+
+        override fun getIntrinsicWidth(): Int = widthPx
+        override fun getIntrinsicHeight(): Int = heightPx
+
+        override fun draw(canvas: Canvas) {
+            val b = bounds
+            val cx = b.exactCenterX()
+            val left = cx - (widthPx / 2f)
+            val right = cx + (widthPx / 2f)
+            val top = b.exactCenterY() - (heightPx / 2f)
+            val bottom = b.exactCenterY() + (heightPx / 2f)
+            canvas.drawRoundRect(left, top, right, bottom, 2f, 2f, paint)
+        }
+
+        override fun setAlpha(alpha: Int) {
+            paint.alpha = alpha
+            invalidateSelf()
+        }
+
+        override fun setColorFilter(colorFilter: ColorFilter?) {
+            paint.colorFilter = colorFilter
+            invalidateSelf()
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+    }
+
     private data class StreamSourceItem(
         val server: String,
         val title: String,
@@ -130,7 +172,6 @@ class CinemaPlayerActivity : Activity() {
     @Volatile private var isActivityDestroyed = false
     @Volatile private var isResolvingAllSources = false
 
-    // 200% Audio Boost Steps (gesture / audio support)
     private val boostLevels = intArrayOf(100, 135, 170, 200)
     private var boostIndex = 0
     private var currentBoostPercent = 100
@@ -141,7 +182,8 @@ class CinemaPlayerActivity : Activity() {
         AspectRatioFrameLayout.RESIZE_MODE_FILL
     )
     private val resizeLabels = arrayOf("Fit", "Crop / Zoom", "Fill")
-    private var resizeIndex = 0
+    // Default to Crop / Zoom so full-screen zoomed playback matches your second photo
+    private var resizeIndex = 1
 
     private val speeds = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
     private var speedIndex = 1
@@ -215,7 +257,8 @@ class CinemaPlayerActivity : Activity() {
         playerView.useController = false
         playerView.layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER
         )
         applyResizeModeToPlayer(resizeModes[resizeIndex])
 
@@ -811,6 +854,19 @@ class CinemaPlayerActivity : Activity() {
         playerView.resizeMode = mode
         findAspectFrameLayout(playerView)?.let { aspectFrame ->
             aspectFrame.resizeMode = mode
+            aspectFrame.layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
+            for (i in 0 until aspectFrame.childCount) {
+                val child = aspectFrame.getChildAt(i)
+                child.layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    Gravity.CENTER
+                )
+            }
             aspectFrame.requestLayout()
             aspectFrame.invalidate()
         }
@@ -1001,7 +1057,7 @@ class CinemaPlayerActivity : Activity() {
         centerBar.addView(fwBtn)
         hudContainer.addView(centerBar)
 
-        // Bottom Panel: SeekBar + 4 Actions (Lock | Fit | Audio | Subtitles)
+        // Bottom Panel: SeekBar + 4 Spaced Actions (Lock | Crop / Zoom | Audio | Subtitles)
         val bottomPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(22), dp(20), dp(14))
@@ -1071,10 +1127,12 @@ class CinemaPlayerActivity : Activity() {
             isFocusable = true
             isFocusableInTouchMode = false
             progressDrawable = seekLayerDrawable
-            thumb = GradientDrawable().apply {
-                setColor(Color.parseColor("#E50914"))
-                cornerRadius = dp(2).toFloat()
-                setSize(dp(5), dp(20))
+            thumb = VerticalThumbDrawable(
+                colorInt = Color.parseColor("#E50914"),
+                widthPx = dp(6),
+                heightPx = dp(22)
+            ).apply {
+                setBounds(0, 0, dp(6), dp(22))
             }
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 leftMargin = dp(12)
@@ -1151,24 +1209,21 @@ class CinemaPlayerActivity : Activity() {
 
         val actionsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, 0)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(10), dp(8), dp(2))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        val lockBtn = createHudButton("🔒 Lock") { lockScreen() }.apply { background = null }
-        aspectBtn = createHudButton("⛶ Fit") { cycleAspectRatio() }.apply { background = null }
-        val audioBtn = createHudButton("♫ Audio") { showAudioDialog() }.apply { background = null }
-        val subBtn = createHudButton("CC Subtitles") { showSubAndQualityDialog() }.apply { background = null }
+        val lockBtn = createSpacedActionButton("🔒 Lock") { lockScreen() }
+        aspectBtn = createSpacedActionButton("⛶ ${resizeLabels[resizeIndex]}") { cycleAspectRatio() }
+        val audioBtn = createSpacedActionButton("♫ Audio") { showAudioDialog() }
+        val subBtn = createSpacedActionButton("CC Subtitles") { showSubAndQualityDialog() }
 
         actionsRow.addView(lockBtn)
-        actionsRow.addView(spacer(dp(22)))
         actionsRow.addView(aspectBtn)
-        actionsRow.addView(spacer(dp(22)))
         actionsRow.addView(audioBtn)
-        actionsRow.addView(spacer(dp(22)))
         actionsRow.addView(subBtn)
 
         bottomPanel.addView(seekBarRow)
@@ -1229,6 +1284,25 @@ class CinemaPlayerActivity : Activity() {
         errorOverlay.addView(errorMessageView)
         errorOverlay.addView(errBtns)
         root.addView(errorOverlay)
+    }
+
+    private fun createSpacedActionButton(label: String, onClick: () -> Unit): Button {
+        return Button(this).apply {
+            text = label
+            isAllCaps = false
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            typeface = Typeface.DEFAULT_BOLD
+            isFocusable = true
+            isFocusableInTouchMode = false
+            minWidth = 0
+            minHeight = 0
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            background = null
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener { onClick() }
+        }
     }
 
     private fun buildSourcesSidePanel(root: FrameLayout) {
