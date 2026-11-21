@@ -1,19 +1,17 @@
 // ============================================================================
-// NETFLIX PRO STREAM RESOLVER (GIST XTREAM + STREMIO - NO HARDCODED SERVER)
+// NETFLIX PRO TV STREAM RESOLVER (GIST XTREAM + STREMIO - NO HARDCODED SERVER)
 // ============================================================================
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:android_intent_plus/android_intent.dart';
-import 'package:android_intent_plus/flag.dart';
-import 'internal_player.dart';
 import 'tmdb_config.dart';
 import 'category_grid_screen.dart';
+import 'internal_player.dart';
 
-// Helper: Fetch raw JSON data directly from user-configured Gist URL
-Future<dynamic> _fetchGistPayload() async {
-  final rawGist = await MobileConfig.getGistUrl();
+// Helper: Fetch raw JSON data directly from user-configured TV Gist URL
+Future<dynamic> _fetchTvGistPayload() async {
+  final rawGist = await TvConfig.getGistUrl();
   if (rawGist.isEmpty) return null;
 
   final sep = rawGist.contains('?') ? '&' : '?';
@@ -26,13 +24,13 @@ Future<dynamic> _fetchGistPayload() async {
   return null;
 }
 
-// Helper: Ensure providers are loaded from saved Gist URL
-Future<List<dynamic>> _ensureProvidersLoaded(List<dynamic>? passed) async {
-  final rawGist = await MobileConfig.getGistUrl();
+// Helper: Ensure providers are loaded from saved TV Gist URL
+Future<List<dynamic>> _ensureTvProvidersLoaded(List<dynamic>? passed) async {
+  final rawGist = await TvConfig.getGistUrl();
 
   try {
     if (rawGist.isNotEmpty) {
-      final decoded = await _fetchGistPayload();
+      final decoded = await _fetchTvGistPayload();
       final list = decoded is List
           ? decoded
           : (decoded is Map
@@ -40,7 +38,7 @@ Future<List<dynamic>> _ensureProvidersLoaded(List<dynamic>? passed) async {
               : []);
       if (list is List) {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('cached_active_providers', jsonEncode(list));
+        await prefs.setString('cached_tv_active_providers', jsonEncode(list));
         return list;
       }
     }
@@ -49,7 +47,7 @@ Future<List<dynamic>> _ensureProvidersLoaded(List<dynamic>? passed) async {
   if (passed != null && passed.isNotEmpty) return passed;
 
   final prefs = await SharedPreferences.getInstance();
-  final cached = prefs.getString('cached_active_providers');
+  final cached = prefs.getString('cached_tv_active_providers');
   if (cached != null && cached.isNotEmpty) {
     try {
       final list = jsonDecode(cached);
@@ -61,81 +59,45 @@ Future<List<dynamic>> _ensureProvidersLoaded(List<dynamic>? passed) async {
 }
 
 // ============================================================================
-// FULL SCREEN CATEGORIES OVERLAY MODAL
+// FULL SCREEN CATEGORIES OVERLAY MODAL (TV)
 // ============================================================================
-void openCategoriesModal(
+void openTvCategoriesModal(
     BuildContext context, List<dynamic> providers, VoidCallback onRefresh) {
   List allCategories = [
     {
       'title': 'South Action Hits (Hindi Dubbed)',
       'url':
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=te|ta|ml|kn',
+          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te|ta|ml|kn',
       'isTv': false
     },
     {
       'title': 'Hollywood Blockbusters (Hindi Dubbed)',
       'url':
-          '${MobileConfig.tmdbBase}/movie/popular?api_key=${MobileConfig.tmdbKey}',
+          '${TvConfig.tmdbBase}/movie/popular?api_key=${TvConfig.tmdbKey}',
       'isTv': false
     },
     {
       'title': 'Latest Netflix Blockbusters',
       'url':
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
+          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN',
       'isTv': false
     },
     {
       'title': 'Amazon Prime Video Hits',
       'url':
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_watch_providers=119&watch_region=IN',
+          '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN',
       'isTv': false
     },
     {
       'title': 'Disney+ Hotstar Specials',
       'url':
-          '${MobileConfig.tmdbBase}/movie/now_playing?api_key=${MobileConfig.tmdbKey}&language=en-US&region=IN',
+          '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN',
       'isTv': false
     },
     {
       'title': 'Trending Hindi Web Series',
       'url':
-          '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=3',
-      'isTv': true
-    },
-    {
-      'title': 'Action & Adventure',
-      'url':
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28',
-      'isTv': false
-    },
-    {
-      'title': 'Suspense & Thrillers',
-      'url':
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53',
-      'isTv': false
-    },
-    {
-      'title': 'Sci-Fi & Fantasy',
-      'url':
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=878',
-      'isTv': false
-    },
-    {
-      'title': 'Horror Movies',
-      'url':
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=27',
-      'isTv': false
-    },
-    {
-      'title': 'Comedy Specials',
-      'url':
-          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=35',
-      'isTv': false
-    },
-    {
-      'title': 'Global TV Hits',
-      'url':
-          '${MobileConfig.tmdbBase}/tv/popular?api_key=${MobileConfig.tmdbKey}&language=en-US',
+          '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=3',
       'isTv': true
     },
   ];
@@ -181,7 +143,7 @@ void openCategoriesModal(
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => MobileCategoryGridScreen(
+                          builder: (_) => TVCategoryGridScreen(
                             title: catTitle,
                             baseUrl: catUrl,
                             isTv: catIsTv,
@@ -225,14 +187,14 @@ void openCategoriesModal(
 }
 
 // ============================================================================
-// MOBILE EPISODE SELECTOR BOTTOM SHEET (FROM GIST XTREAM SEASONS + FALLBACK)
+// TV EPISODE SELECTOR SHEET (FROM GIST XTREAM SEASONS + TMDB FALLBACK)
 // ============================================================================
-class MobileEpisodeSheet extends StatefulWidget {
+class TvEpisodeSheet extends StatefulWidget {
   final dynamic item;
   final List<dynamic>? providers;
-  final Function(int s, int ep) onSelected;
+  final void Function(int season, int episode) onSelected;
 
-  const MobileEpisodeSheet({
+  const TvEpisodeSheet({
     super.key,
     required this.item,
     this.providers,
@@ -240,10 +202,10 @@ class MobileEpisodeSheet extends StatefulWidget {
   });
 
   @override
-  State<MobileEpisodeSheet> createState() => _MobileEpisodeSheetState();
+  State<TvEpisodeSheet> createState() => _TvEpisodeSheetState();
 }
 
-class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
+class _TvEpisodeSheetState extends State<TvEpisodeSheet> {
   int selectedSeason = 1;
   Map<int, List<dynamic>> xtreamSeasonsMap = {};
   List<int> seasons = [1];
@@ -259,7 +221,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
   }
 
   Future<void> _fetchDetails() async {
-    final activeProvs = await _ensureProvidersLoaded(widget.providers);
+    final activeProvs = await _ensureTvProvidersLoaded(widget.providers);
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final cleanTarget = _clean((widget.item['title'] ?? '').toString());
 
@@ -327,11 +289,11 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
       return;
     }
 
-    if (MobileConfig.tmdbKey.isNotEmpty) {
+    if (TvConfig.tmdbKey.isNotEmpty) {
       try {
         final res = await http
             .get(Uri.parse(
-                '${MobileConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${MobileConfig.tmdbKey}'))
+                '${TvConfig.tmdbBase}/tv/${widget.item['tmdb_id']}?api_key=${TvConfig.tmdbKey}'))
             .timeout(const Duration(seconds: 8));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
@@ -378,7 +340,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
           ),
           const SizedBox(height: 12),
           Text(
-            widget.item['title'],
+            widget.item['title'] ?? 'Episodes',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
@@ -417,8 +379,8 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
             Expanded(
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  childAspectRatio: 1.6,
+                  crossAxisCount: 6,
+                  childAspectRatio: 1.8,
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
                 ),
@@ -430,6 +392,7 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
                           (i + 1))
                       : (i + 1);
                   return ElevatedButton(
+                    autofocus: i == 0,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white12,
                       foregroundColor: Colors.white,
@@ -452,16 +415,16 @@ class _MobileEpisodeSheetState extends State<MobileEpisodeSheet> {
 }
 
 // ============================================================================
-// MOBILE STREAM RESOLVER BOTTOM SHEET (GIST XTREAM + STREMIO SOURCES)
+// TV STREAM RESOLVER SHEET (DIRECTLY FROM USER TV GIST XTREAM + STREMIO)
 // ============================================================================
-class MobileStreamSheet extends StatefulWidget {
+class TvStreamSheet extends StatefulWidget {
   final dynamic item;
   final int? season;
   final int? episode;
   final List<dynamic> providers;
   final VoidCallback onPlaySaved;
 
-  const MobileStreamSheet({
+  const TvStreamSheet({
     super.key,
     required this.item,
     this.season,
@@ -471,10 +434,10 @@ class MobileStreamSheet extends StatefulWidget {
   });
 
   @override
-  State<MobileStreamSheet> createState() => _MobileStreamSheetState();
+  State<TvStreamSheet> createState() => _TvStreamSheetState();
 }
 
-class _MobileStreamSheetState extends State<MobileStreamSheet> {
+class _TvStreamSheetState extends State<TvStreamSheet> {
   var streams = [];
   bool loading = true;
   bool missingGistUrl = false;
@@ -500,7 +463,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
 
   Future<void> _fetchDirectStreams() async {
     var resolved = [];
-    final rawGist = await MobileConfig.getGistUrl();
+    final rawGist = await TvConfig.getGistUrl();
 
     if (rawGist.isEmpty) {
       if (mounted) {
@@ -513,7 +476,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
       return;
     }
 
-    final activeProvs = await _ensureProvidersLoaded(widget.providers);
+    final activeProvs = await _ensureTvProvidersLoaded(widget.providers);
     final targetTmdbId = widget.item['tmdb_id']?.toString() ?? '';
     final isTv = widget.item['isTv'] == true;
     final movieTitle = (widget.item['title'] ?? '').toString();
@@ -522,12 +485,12 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     final cleanTarget = _clean(movieTitle);
 
     String? imdbId;
-    if (targetTmdbId.isNotEmpty && MobileConfig.tmdbKey.isNotEmpty) {
+    if (targetTmdbId.isNotEmpty && TvConfig.tmdbKey.isNotEmpty) {
       try {
         final extType = isTv ? 'tv' : 'movie';
         final extRes = await http
             .get(Uri.parse(
-                '${MobileConfig.tmdbBase}/$extType/$targetTmdbId/external_ids?api_key=${MobileConfig.tmdbKey}'))
+                '${TvConfig.tmdbBase}/$extType/$targetTmdbId/external_ids?api_key=${TvConfig.tmdbKey}'))
             .timeout(const Duration(seconds: 4));
         if (extRes.statusCode == 200) {
           imdbId = jsonDecode(extRes.body)['imdb_id'];
@@ -737,7 +700,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
-      final raw = prefs.getString('continue_watching_mobile');
+      final raw = prefs.getString('continue_watching_tv');
       var curr = [];
       if (raw != null && raw.isNotEmpty) {
         curr = jsonDecode(raw) as List<dynamic>;
@@ -755,37 +718,25 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
       if (curr.length > 15) {
         curr = curr.sublist(0, 15);
       }
-      await prefs.setString('continue_watching_mobile', jsonEncode(curr));
+      await prefs.setString('continue_watching_tv', jsonEncode(curr));
       widget.onPlaySaved();
     } catch (_) {}
   }
 
-  void _playStream(String url, bool isExternal) async {
+  void _playStream(String url) async {
     await _saveContinueWatching();
     if (!mounted) return;
     Navigator.pop(context);
 
-    final cleanUrl = url.trim();
-
-    if (isExternal) {
-      final intent = AndroidIntent(
-        action: 'action_view',
-        data: cleanUrl,
-        type: 'video/*',
-        flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
-      );
-      await intent.launch();
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => InternalPlayerScreen(
-            streamUrl: cleanUrl,
-            title: widget.item['title'],
-          ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InternalPlayerScreen(
+          streamUrl: url.trim(),
+          title: widget.item['title'],
         ),
-      );
-    }
+      ),
+    );
   }
 
   @override
@@ -825,7 +776,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
                     ? Center(
                         child: Text(
                           missingGistUrl
-                              ? 'Please add your GitHub Gist Raw URL first'
+                              ? 'Please add your GitHub Gist Raw URL from Sidebar'
                               : 'No streams found from Gist providers',
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: Colors.white54),
@@ -846,6 +797,7 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
                                   : null,
                             ),
                             child: ListTile(
+                              autofocus: i == 0,
                               title: Text(
                                 s['title'],
                                 style: const TextStyle(
@@ -858,173 +810,13 @@ class _MobileStreamSheetState extends State<MobileStreamSheet> {
                                 style: const TextStyle(
                                     color: Colors.white54, fontSize: 12),
                               ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.play_circle_fill,
-                                        color: Color(0xFFE50914), size: 32),
-                                    onPressed: () =>
-                                        _playStream(s['url'], false),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.open_in_new,
-                                        color: Colors.amber, size: 22),
-                                    onPressed: () =>
-                                        _playStream(s['url'], true),
-                                  ),
-                                ],
-                              ),
+                              trailing: const Icon(Icons.play_circle_fill,
+                                  color: Color(0xFFE50914), size: 32),
+                              onTap: () => _playStream(s['url']),
                             ),
                           );
                         },
                       ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// 5. MORE SCREEN (OTT WEB SERIES HUB WITH FILTERS)
-// ============================================================================
-class MobileMoreScreen extends StatelessWidget {
-  final List<dynamic> providers;
-  const MobileMoreScreen({super.key, required this.providers});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF141414),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1F1F1F),
-        title: const Text('OTT Web Series Hub',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ListTile(
-            leading:
-                const Icon(Icons.video_collection, color: Color(0xFFE50914)),
-            title: const Text('Netflix Web Series',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
-            trailing: const Icon(Icons.arrow_forward_ios,
-                color: Colors.white54, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCategoryGridScreen(
-                    title: 'Netflix Web Series',
-                    baseUrl:
-                        '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=213&without_genres=10766',
-                    isTv: true,
-                    providers: providers,
-                    onPlaySaved: () {},
-                  ),
-                ),
-              );
-            },
-          ),
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.video_library, color: Color(0xFFE50914)),
-            title: const Text('Amazon Web Series',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
-            trailing: const Icon(Icons.arrow_forward_ios,
-                color: Colors.white54, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCategoryGridScreen(
-                    title: 'Amazon Web Series',
-                    baseUrl:
-                        '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=1024&without_genres=10766',
-                    isTv: true,
-                    providers: providers,
-                    onPlaySaved: () {},
-                  ),
-                ),
-              );
-            },
-          ),
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.live_tv, color: Color(0xFFE50914)),
-            title: const Text('Disney+ Hotstar Web Series',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
-            trailing: const Icon(Icons.arrow_forward_ios,
-                color: Colors.white54, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCategoryGridScreen(
-                    title: 'Disney+ Hotstar Web Series',
-                    baseUrl:
-                        '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=2739&without_genres=10766',
-                    isTv: true,
-                    providers: providers,
-                    onPlaySaved: () {},
-                  ),
-                ),
-              );
-            },
-          ),
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.tv_rounded, color: Color(0xFFE50914)),
-            title: const Text('Zee5 Web Series',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
-            trailing: const Icon(Icons.arrow_forward_ios,
-                color: Colors.white54, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCategoryGridScreen(
-                    title: 'Zee5 Web Series',
-                    baseUrl:
-                        '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=2377&without_genres=10766',
-                    isTv: true,
-                    providers: providers,
-                    onPlaySaved: () {},
-                  ),
-                ),
-              );
-            },
-          ),
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading:
-                const Icon(Icons.monitor_rounded, color: Color(0xFFE50914)),
-            title: const Text('SonyLIV Web Series',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
-            trailing: const Icon(Icons.arrow_forward_ios,
-                color: Colors.white54, size: 16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MobileCategoryGridScreen(
-                    title: 'SonyLIV Web Series',
-                    baseUrl:
-                        '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_networks=2334&without_genres=10766',
-                    isTv: true,
-                    providers: providers,
-                    onPlaySaved: () {},
-                  ),
-                ),
-              );
-            },
           ),
         ],
       ),
