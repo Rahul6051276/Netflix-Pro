@@ -1,3 +1,6 @@
+// ============================================================================
+// NETFLIX PRO TV MAIN ENTRY POINT ('N' RIBBON + ZOOM-THROUGH SPLASH)
+// ============================================================================
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -44,6 +47,7 @@ class NetflixTvApp extends StatelessWidget {
         primaryColor: const Color(0xFFE50914),
         fontFamily: 'sans-serif',
       ),
+      // ऑटो-पॉपअप नहीं खुलेगा; सीधे TvHomeScreen खुलेगी (जहाँ Sidebar में Gist लिंक बटन है)
       home: skipIntro ? const TvHomeScreen() : const NetflixNIntroScreen(),
     );
   }
@@ -56,17 +60,17 @@ class NetflixNIntroScreen extends StatefulWidget {
   const NetflixNIntroScreen({super.key});
 
   @override
-  State createState() => _NetflixNIntroScreenState();
+  State<NetflixNIntroScreen> createState() => _NetflixNIntroScreenState();
 }
 
 class _NetflixNIntroScreenState extends State<NetflixNIntroScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation _leftBarProgress;
-  late Animation _diagonalBarProgress;
-  late Animation _rightBarProgress;
-  late Animation _zoomScale;
-  late Animation _fadeOut;
+  late Animation<double> _leftBarProgress;
+  late Animation<double> _diagonalBarProgress;
+  late Animation<double> _rightBarProgress;
+  late Animation<double> _zoomScale;
+  late Animation<double> _fadeOut;
 
   @override
   void initState() {
@@ -78,35 +82,35 @@ class _NetflixNIntroScreenState extends State<NetflixNIntroScreen>
       duration: const Duration(milliseconds: 2800),
     );
 
-    _leftBarProgress = Tween(begin: 0.0, end: 1.0).animate(
+    _leftBarProgress = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.0, 0.22, curve: Curves.easeOutCubic),
       ),
     );
 
-    _diagonalBarProgress = Tween(begin: 0.0, end: 1.0).animate(
+    _diagonalBarProgress = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.18, 0.42, curve: Curves.easeInOutCubic),
       ),
     );
 
-    _rightBarProgress = Tween(begin: 0.0, end: 1.0).animate(
+    _rightBarProgress = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.38, 0.60, curve: Curves.easeOutCubic),
       ),
     );
 
-    _zoomScale = Tween(begin: 1.0, end: 22.0).animate(
+    _zoomScale = Tween<double>(begin: 1.0, end: 22.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.70, 1.0, curve: Curves.easeInExpo),
       ),
     );
 
-    _fadeOut = Tween(begin: 1.0, end: 0.0).animate(
+    _fadeOut = Tween<double>(begin: 1.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.82, 1.0, curve: Curves.easeOut),
@@ -130,11 +134,13 @@ class _NetflixNIntroScreenState extends State<NetflixNIntroScreen>
     });
   }
 
-  Future _saveIntroTimestamp() async {
+  Future<void> _saveIntroTimestamp() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(
-          'tv_last_intro_ms', DateTime.now().millisecondsSinceEpoch);
+        'tv_last_intro_ms',
+        DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (_) {}
   }
 

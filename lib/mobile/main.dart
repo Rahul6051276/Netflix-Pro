@@ -32,6 +32,7 @@ class NetflixMobileApp extends StatelessWidget {
         primaryColor: const Color(0xFFE50914),
         fontFamily: 'sans-serif',
       ),
+      // ऑटो-पॉपअप नहीं खुलेगा; Splash के बाद सीधे MobileRootScreen खुलेगा
       home: const NetflixSplashScreen(),
     );
   }
@@ -66,7 +67,10 @@ class _NetflixSplashScreenState extends State<NetflixSplashScreen>
     );
 
     _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.5, curve: Curves.easeIn)),
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+      ),
     );
 
     _controller.forward();
