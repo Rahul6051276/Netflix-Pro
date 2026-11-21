@@ -5,8 +5,10 @@ import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
 import android.media.AudioManager
 import android.media.audiofx.LoudnessEnhancer
@@ -1033,18 +1035,46 @@ class CinemaPlayerActivity : Activity() {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             typeface = Typeface.DEFAULT_BOLD
         }
+
+        val bgTrack = GradientDrawable().apply {
+            setColor(Color.parseColor("#4A4A4A"))
+            cornerRadius = dp(3).toFloat()
+        }
+        val secTrack = ClipDrawable(
+            GradientDrawable().apply {
+                setColor(Color.parseColor("#888888"))
+                cornerRadius = dp(3).toFloat()
+            },
+            Gravity.START,
+            ClipDrawable.HORIZONTAL
+        )
+        val progTrack = ClipDrawable(
+            GradientDrawable().apply {
+                setColor(Color.parseColor("#E50914"))
+                cornerRadius = dp(3).toFloat()
+            },
+            Gravity.START,
+            ClipDrawable.HORIZONTAL
+        )
+        val seekLayerDrawable = LayerDrawable(
+            arrayOf(bgTrack, secTrack, progTrack)
+        ).apply {
+            setId(0, android.R.id.background)
+            setId(1, android.R.id.secondaryProgress)
+            setId(2, android.R.id.progress)
+        }
+
         seekBar = SeekBar(this).apply {
             max = 1000
             keyProgressIncrement = 15
+            splitTrack = false
             isFocusable = true
             isFocusableInTouchMode = false
-            progressDrawable = GradientDrawable().apply {
-                setColor(Color.parseColor("#E50914"))
-                cornerRadius = dp(2).toFloat()
-            }
+            progressDrawable = seekLayerDrawable
             thumb = GradientDrawable().apply {
                 setColor(Color.parseColor("#E50914"))
-                setSize(dp(5), dp(18))
+                cornerRadius = dp(2).toFloat()
+                setSize(dp(5), dp(20))
             }
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 leftMargin = dp(12)
