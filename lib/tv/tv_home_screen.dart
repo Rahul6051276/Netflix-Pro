@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'gist_source_controls.dart';
 
 class TvHomeScreen extends StatefulWidget {
   final List<String> featuredTitles;
@@ -35,13 +34,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   static const String _gistPrefKey = 'saved_gist_raw_url';
 
   String _gistUrl = '';
-  int _selectedNavIndex = 2; // Home icon index in left sidebar
+  int _selectedNavIndex = 2;
   bool _isLoadingGist = false;
 
   @override
   void initState() {
     super.initState();
-    // ऑटो-पॉपअप नहीं खुलेगा; सिर्फ सेव किया हुआ Gist URL बैकग्राउंड में लोड होगा
     _loadSavedGistSilently();
   }
 
@@ -81,7 +79,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   Future<void> _syncGistProviders(String url, {required bool showToast}) async {
     setState(() => _isLoadingGist = true);
     try {
-      // यहाँ अपना मौजूदा Gist JSON fetch / providers parsing लॉजिक रखें
       await Future<void>.delayed(const Duration(milliseconds: 250));
       if (mounted && showToast) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -96,7 +93,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 
   Future<void> _openGistDialog() async {
-    await showGistRawUrlDialog(
+    await _showTvGistDialog(
       context: context,
       initialUrl: _gistUrl,
       onSaveAndLoad: _saveAndLoadGist,
@@ -155,8 +152,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     ),
                   ],
                 ),
-                // Sidebar में Gist Link बटन (यहीं से बीच में पॉप-अप खुलेगा)
-                GistSidebarButton(
+                _TvGistSidebarButton(
                   isConnected: _gistUrl.isNotEmpty,
                   onPressed: _openGistDialog,
                 ),
@@ -164,7 +160,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             ),
           ),
 
-          // Main TV Content Area (Hero + Catalogue)
+          // Main TV Content Area
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -254,6 +250,224 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       ),
     );
   }
+}
+
+class _TvGistSidebarButton extends StatefulWidget {
+  final VoidCallback onPressed;
+  final bool isConnected;
+
+  const _TvGistSidebarButton({
+    required this.onPressed,
+    this.isConnected = false,
+  });
+
+  @override
+  State<_TvGistSidebarButton> createState() => _TvGistSidebarButtonState();
+}
+
+class _TvGistSidebarButtonState extends State<_TvGistSidebarButton> {
+  bool _hasFocus = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      onFocusChange: (bool focused) => setState(() => _hasFocus = focused),
+      onKeyEvent: (FocusNode node, KeyEvent event) {
+        if (event is KeyDownEvent &&
+            (event.logicalKey == LogicalKeyboardKey.select ||
+                event.logicalKey == LogicalKeyboardKey.enter ||
+                event.logicalKey == LogicalKeyboardKey.numpadEnter)) {
+          widget.onPressed();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: _hasFocus ? Colors.white.withOpacity(0.16) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _hasFocus ? Colors.orangeAccent : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: <Widget>[
+              Icon(
+                Icons.link,
+                size: 24,
+                color: _hasFocus ? Colors.orangeAccent : Colors.white70,
+              ),
+              if (widget.isConnected)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.greenAccent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showTvGistDialog({
+  required BuildContext context,
+  required String initialUrl,
+  required Future<void> Function(String newUrl) onSaveAndLoad,
+  required Future<void> Function() onClear,
+}) async {
+  final TextEditingController controller = TextEditingController(text: initialUrl);
+  bool isSaving = false;
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    builder: (BuildContext dialogContext) {
+      return StatefulBuilder(
+        builder: (BuildContext context, StateSetter setModalState) {
+          Future<void> handleSave() async {
+            if (isSaving) return;
+            final String trimmed = controller.text.trim();
+            setModalState(() => isSaving = true);
+            try {
+              await onSaveAndLoad(trimmed);
+              if (dialogContext.mounted) {
+                Navigator.of(dialogContext).pop();
+              }
+            } finally {
+              if (dialogContext.mounted) {
+                setModalState(() => isSaving = false);
+              }
+            }
+          }
+
+          Future<void> handleClear() async {
+            if (isSaving) return;
+            controller.clear();
+            setModalState(() => isSaving = true);
+            try {
+              await onClear();
+            } finally {
+              if (dialogContext.mounted) {
+                setModalState(() => isSaving = false);
+              }
+            }
+          }
+
+          return Dialog(
+            backgroundColor: const Color(0xFF1F242D),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: Colors.white24, width: 1),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        const Icon(Icons.link, color: Colors.orangeAccent),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Enter Gist Raw URL',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          icon: const Icon(Icons.close, color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'अपना GitHub Gist Raw Link (providers.json) यहाँ पेस्ट करें:',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      enabled: !isSaving,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      onSubmitted: (_) => handleSave(),
+                      decoration: InputDecoration(
+                        hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
+                        hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+                        filled: true,
+                        fillColor: const Color(0xFF14181F),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Colors.white30),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: <Widget>[
+                        OutlinedButton(
+                          onPressed: isSaving ? null : handleClear,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white38),
+                          ),
+                          child: const Text('Clear'),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: isSaving ? null : handleSave,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF6D00),
+                            foregroundColor: Colors.white,
+                          ),
+                          child: isSaving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Save & Load'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+
+  controller.dispose();
 }
 
 class _TvSidebarIconButton extends StatefulWidget {
