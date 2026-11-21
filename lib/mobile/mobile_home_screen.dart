@@ -29,70 +29,281 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
     _fetchGlobalProviders();
   }
 
+  String _formatConnectedProviders() {
+    if (activeProviders.isEmpty) {
+      return 'Connected: Gist Source Active';
+    }
+    final names = activeProviders
+        .map((p) => p is Map ? (p['name'] ?? p['title'] ?? p['id'] ?? '').toString() : p.toString())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (names.isEmpty) {
+      return 'Connected: ${activeProviders.length} Active Sources';
+    }
+    return 'Connected: ${names.join(' + ')}';
+  }
+
   void _showGistConfigDialog() {
     final controller = TextEditingController();
     MobileConfig.getGistUrl().then((existing) {
       controller.text = existing;
       if (!mounted) return;
+      bool isSyncing = false;
+
       showDialog(
         context: context,
         barrierDismissible: true,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          title: const Text(
-            'Gist Raw URL Settings',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'अपना GitHub Gist Raw लिंक (providers.json) यहाँ पेस्ट करें:',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, setModalState) {
+            final bool isConnected = controller.text.trim().isNotEmpty;
+
+            return Dialog(
+              backgroundColor: const Color(0xFF1A2234),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+                side: const BorderSide(color: Colors.white12, width: 1),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
-                  hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
-                  filled: true,
-                  fillColor: Colors.black45,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header Row
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 4),
+                          child: Icon(Icons.link_rounded, color: Color(0xFFEAB308), size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'GitHub Gist Raw Source',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.2,
+                                ),
+                              ),
+                              SizedBox(height: 6),
+                              Text(
+                                'Supports Xtream IPTV, Stremio Addons & JSON',
+                                style: TextStyle(
+                                  color: Color(0xFFEAB308),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 22),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Input Label & Multi-line Box
+                    const Text(
+                      'GitHub Gist Raw Link (or IPTV / Stremio link)',
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: controller,
+                      maxLines: 3,
+                      minLines: 2,
+                      style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.35),
+                      onChanged: (_) => setModalState(() {}),
+                      decoration: InputDecoration(
+                        hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
+                        hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+                        filled: true,
+                        fillColor: const Color(0xFF131926),
+                        contentPadding: const EdgeInsets.all(14),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.white24),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Green Connected Status Box
+                    if (isConnected) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF123528),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF22C55E).withOpacity(0.45)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_rounded, color: Color(0xFF22C55E), size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _formatConnectedProviders(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Connect & Sync + Clear Buttons Row
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2563EB),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: isSyncing
+                                ? null
+                                : () async {
+                                    final val = controller.text.trim();
+                                    if (val.isEmpty) return;
+                                    setModalState(() => isSyncing = true);
+                                    await MobileConfig.saveGistUrl(val);
+                                    await _fetchGlobalProviders();
+                                    if (ctx.mounted) Navigator.pop(ctx);
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Gist Source Connected & Synced!'),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
+                                  },
+                            icon: isSyncing
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text(
+                              'Connect & Sync',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 2,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFEF4444),
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              side: BorderSide(color: const Color(0xFFEF4444).withOpacity(0.55)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: isSyncing
+                                ? null
+                                : () async {
+                                    controller.clear();
+                                    await MobileConfig.saveGistUrl('');
+                                    final prefs = await SharedPreferences.getInstance();
+                                    await prefs.remove('cached_active_providers');
+                                    if (mounted) {
+                                      setState(() {
+                                        activeProviders = [];
+                                        _hasGistUrl = false;
+                                      });
+                                    }
+                                    setModalState(() {});
+                                  },
+                            child: const Text(
+                              'Clear',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Bottom Helper Links Row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            controller.text =
+                                'https://gist.githubusercontent.com/username/gist_id/raw/providers.json';
+                            setModalState(() {});
+                          },
+                          child: const Text(
+                            'Fill Sample URL',
+                            style: TextStyle(
+                              color: Color(0xFFEAB308),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Supported format: {"active_providers": [...]}'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            'View Gist Templates',
+                            style: TextStyle(
+                              color: Color(0xFF3B82F6),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)),
-              onPressed: () async {
-                final val = controller.text.trim();
-                if (val.isNotEmpty) {
-                  await MobileConfig.saveGistUrl(val);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                  await _fetchGlobalProviders();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Gist URL Saved & Connected!'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                }
-              },
-              child: const Text('Save & Connect', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
+            );
+          },
         ),
       ).then((_) => controller.dispose());
     });
@@ -106,7 +317,6 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
       setState(() => _hasGistUrl = rawGist.isNotEmpty);
     }
 
-    // Startup par auto-popup nahi khulega; user top bar ke Gist button se kholega
     if (rawGist.isEmpty) return;
 
     final cached = prefs.getString('cached_active_providers');
@@ -293,7 +503,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
     final todayIso =
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    // Mixed Languages: Bollywood (hi) + South (te, ta, ml, kn) + English (en)
     const mixedLangs = 'hi|en|te|ta|ml|kn';
 
     final results = await Future.wait([
@@ -738,92 +947,130 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                   ),
                 ),
 
+                // Top Header Bar (Clean alignment: Left Brand + Right Gist Active Pill + Circular Search)
                 Positioned(
                   top: 0,
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.only(top: 40, left: 16, right: 16, bottom: 12),
+                    padding: const EdgeInsets.only(top: 38, left: 16, right: 14, bottom: 14),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [Colors.black.withOpacity(0.9), Colors.transparent],
+                        colors: [
+                          Colors.black.withOpacity(0.95),
+                          Colors.black.withOpacity(0.6),
+                          Colors.transparent,
+                        ],
                       ),
                     ),
-                    child: Stack(
-                      alignment: Alignment.center,
+                    child: Row(
                       children: [
                         const Text(
-                          'NETFLIX PRO',
+                          'NETFLIX',
                           style: TextStyle(
                             color: Color(0xFFE50914),
-                            fontSize: 22,
+                            fontSize: 21,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: 2.0,
+                            letterSpacing: 1.4,
                           ),
                         ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            if (widget.onOpenGistDialog != null)
-                              InkWell(
-                                onTap: widget.onOpenGistDialog,
-                                borderRadius: BorderRadius.circular(16),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: widget.hasGistUrl
-                                        ? const Color(0xFF143626)
-                                        : Colors.black54,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: widget.hasGistUrl
-                                          ? Colors.greenAccent.withOpacity(0.6)
-                                          : Colors.white30,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.link,
-                                        size: 13,
-                                        color: widget.hasGistUrl
-                                            ? Colors.greenAccent
-                                            : Colors.white70,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        widget.hasGistUrl ? 'Gist Active' : 'Gist Link',
-                                        style: TextStyle(
-                                          color: widget.hasGistUrl
-                                              ? Colors.greenAccent
-                                              : Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE50914),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'PRO',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        if (widget.onOpenGistDialog != null)
+                          InkWell(
+                            onTap: widget.onOpenGistDialog,
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: widget.hasGistUrl
+                                    ? const Color(0xFF123528).withOpacity(0.92)
+                                    : Colors.black54,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: widget.hasGistUrl
+                                      ? const Color(0xFF22C55E).withOpacity(0.65)
+                                      : Colors.white24,
                                 ),
                               ),
-                            const SizedBox(width: 4),
-                            IconButton(
-                              icon: const Icon(Icons.search, color: Colors.white, size: 26),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => MobileSearchScreen(
-                                      providers: widget.providers,
-                                      onPlaySaved: _loadContinueWatching,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.link_rounded,
+                                    size: 14,
+                                    color: widget.hasGistUrl
+                                        ? const Color(0xFF22C55E)
+                                        : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    widget.hasGistUrl ? 'Gist Active' : 'Gist Link',
+                                    style: TextStyle(
+                                      color: widget.hasGistUrl
+                                          ? const Color(0xFF22C55E)
+                                          : Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                );
-                              },
+                                  if (widget.hasGistUrl) ...[
+                                    const SizedBox(width: 5),
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF22C55E),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
-                          ],
+                          ),
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => MobileSearchScreen(
+                                  providers: widget.providers,
+                                  onPlaySaved: _loadContinueWatching,
+                                ),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.12),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white12),
+                            ),
+                            child: const Icon(Icons.search_rounded, color: Colors.white, size: 20),
+                          ),
                         ),
                       ],
                     ),
@@ -1143,7 +1390,7 @@ class MobileMoreScreen extends StatelessWidget {
         children: [
           ListTile(
             leading: const Icon(Icons.link_rounded, color: Color(0xFFE50914)),
-            title: const Text('Gist Raw URL Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            title: const Text('GitHub Gist Raw Source', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
             onTap: onOpenGistSettings,
           ),
