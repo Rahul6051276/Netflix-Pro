@@ -182,7 +182,6 @@ class CinemaPlayerActivity : Activity() {
         AspectRatioFrameLayout.RESIZE_MODE_FILL
     )
     private val resizeLabels = arrayOf("Fit", "Crop / Zoom", "Fill")
-    // Default to Crop / Zoom so full-screen zoomed playback matches your second photo
     private var resizeIndex = 1
 
     private val speeds = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
@@ -343,7 +342,11 @@ class CinemaPlayerActivity : Activity() {
                     }
                 }
             }
-            activeSourceIndex = intent.getIntExtra("activeIndex", 0)
+            activeSourceIndex = if (intent.hasExtra("initialIndex")) {
+                intent.getIntExtra("initialIndex", 0)
+            } else {
+                intent.getIntExtra("activeIndex", 0)
+            }
         } catch (_: Throwable) {}
     }
 
@@ -950,7 +953,6 @@ class CinemaPlayerActivity : Activity() {
             )
         }
 
-        // Top Bar: Back + Title/Subtitle on Left | HW + Sources (N) on Right
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1018,7 +1020,6 @@ class CinemaPlayerActivity : Activity() {
         topBar.addView(sourcesBtn)
         hudContainer.addView(topBar)
 
-        // Center Controls: -10s | Red Circle Play/Pause | +10s
         centerBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -1057,7 +1058,6 @@ class CinemaPlayerActivity : Activity() {
         centerBar.addView(fwBtn)
         hudContainer.addView(centerBar)
 
-        // Bottom Panel: SeekBar + 4 Spaced Actions (Lock | Crop / Zoom | Audio | Subtitles)
         val bottomPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(22), dp(20), dp(14))
