@@ -18,12 +18,9 @@ class TvHomeScreen extends StatefulWidget {
 
 class _TvHomeScreenState extends State<TvHomeScreen> {
   int _selectedNavIndex = 2; // Default Home
-  final List<FocusNode> _sidebarFocusNodes = List.generate(6, (_) => FocusNode());
-  final FocusNode _gistSidebarFocusNode = FocusNode();
+  final List _sidebarFocusNodes = List.generate(6, (_) => FocusNode());
   final FocusNode _firstContentCardFocus = FocusNode();
   final FocusNode _watchNowFocusNode = FocusNode();
-
-  bool _hasGistUrl = false;
 
   List activeProviders = [];
   List continueWatchingList = [];
@@ -61,7 +58,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     for (var node in _sidebarFocusNodes) {
       node.dispose();
     }
-    _gistSidebarFocusNode.dispose();
     _firstContentCardFocus.dispose();
     _watchNowFocusNode.dispose();
     super.dispose();
@@ -99,344 +95,140 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     } catch (_) {}
   }
 
-  String _formatTvConnectedProviders() {
-    if (activeProviders.isEmpty) {
-      return 'Connected: Gist Source Active';
-    }
-    final names = activeProviders
-        .map((p) => p is Map
-            ? (p['name'] ?? p['title'] ?? p['id'] ?? '').toString()
-            : p.toString())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    if (names.isEmpty) {
-      return 'Connected: ${activeProviders.length} Active Sources';
-    }
-    return 'Connected: ${names.join(' + ')}';
-  }
-
-  bool _isRemoteOkKey(LogicalKeyboardKey key) {
-    return key == LogicalKeyboardKey.select ||
-        key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.numpadEnter ||
-        key == LogicalKeyboardKey.gameButtonA;
-  }
-
   void _showGistConfigDialog() {
     final controller = TextEditingController();
-    final FocusNode inputFocus = FocusNode(debugLabel: 'tv_gist_input');
-    final FocusNode syncFocus = FocusNode(debugLabel: 'tv_gist_sync');
-    final FocusNode clearFocus = FocusNode(debugLabel: 'tv_gist_clear');
-    final FocusNode closeFocus = FocusNode(debugLabel: 'tv_gist_close');
+    final FocusNode urlFocusNode = FocusNode();
+    final FocusNode saveFocusNode = FocusNode();
 
     TvConfig.getGistUrl().then((existing) {
       controller.text = existing;
       if (!mounted) return;
-      bool isSyncing = false;
-
       showDialog(
         context: context,
-        barrierDismissible: true,
-        builder: (ctx) => StatefulBuilder(
-          builder: (context, setModalState) {
-            final bool isConnected = controller.text.trim().isNotEmpty;
-
-            Future<void> handleConnectAndSync() async {
-              if (isSyncing) return;
-              final val = controller.text.trim();
-              if (val.isEmpty) return;
-              setModalState(() => isSyncing = true);
-              try {
-                await TvConfig.saveGistUrl(val);
-                if (ctx.mounted) Navigator.of(ctx).pop();
-                if (mounted) {
-                  setState(() {
-                    _hasGistUrl = true;
-                    isLoading = true;
-                  });
-                }
-                await _loadAllTvData();
-              } finally {
-                if (mounted) {
-                  setModalState(() => isSyncing = false);
-                }
-              }
-            }
-
-            Future<void> handleClear() async {
-              if (isSyncing) return;
-              controller.clear();
-              await TvConfig.saveGistUrl('');
-              if (mounted) {
-                setState(() {
-                  activeProviders = [];
-                  _hasGistUrl = false;
-                });
-              }
-              setModalState(() {});
-            }
-
-            return Dialog(
-              backgroundColor: const Color(0xFF1A2234),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-                side: const BorderSide(color: Colors.white12, width: 1),
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 500),
-                child: FocusTraversalGroup(
-                  policy: OrderedTraversalPolicy(),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(22),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 4),
-                              child: Icon(Icons.link_rounded,
-                                  color: Color(0xFFEAB308), size: 22),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'GitHub Gist Raw Source',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Supports Xtream IPTV, Stremio Addons & JSON',
-                                    style: TextStyle(
-                                      color: Color(0xFFEAB308),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            FocusTraversalOrder(
-                              order: const NumericFocusOrder(4),
-                              child: Focus(
-                                focusNode: closeFocus,
-                                onKeyEvent: (node, event) {
-                                  if (event is KeyDownEvent &&
-                                      _isRemoteOkKey(event.logicalKey)) {
-                                    Navigator.of(ctx).pop();
-                                    return KeyEventResult.handled;
-                                  }
-                                  return KeyEventResult.ignored;
-                                },
-                                child: Builder(builder: (c) {
-                                  final focused = Focus.of(c).hasFocus;
-                                  return IconButton(
-                                    onPressed: () => Navigator.of(ctx).pop(),
-                                    icon: Icon(
-                                      Icons.close_rounded,
-                                      color: focused ? Colors.white : Colors.white70,
-                                    ),
-                                  );
-                                }),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        const Text(
-                          'GitHub Gist Raw Link (or IPTV / Stremio link)',
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
-                        ),
-                        const SizedBox(height: 8),
-                        FocusTraversalOrder(
-                          order: const NumericFocusOrder(1),
-                          child: TextField(
-                            controller: controller,
-                            focusNode: inputFocus,
-                            autofocus: true,
-                            maxLines: 2,
-                            minLines: 1,
-                            style: const TextStyle(color: Colors.white, fontSize: 13.5),
-                            textInputAction: TextInputAction.done,
-                            onChanged: (_) => setModalState(() {}),
-                            onSubmitted: (_) => handleConnectAndSync(),
-                            decoration: InputDecoration(
-                              hintText:
-                                  'https://gist.githubusercontent.com/.../raw/providers.json',
-                              hintStyle: const TextStyle(
-                                  color: Colors.white38, fontSize: 13),
-                              filled: true,
-                              fillColor: const Color(0xFF131926),
-                              contentPadding: const EdgeInsets.all(14),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: Colors.white24),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(
-                                    color: Color(0xFF3B82F6), width: 2),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        if (isConnected) ...[
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF123528),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: const Color(0xFF22C55E).withOpacity(0.45)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.check_circle_rounded,
-                                    color: Color(0xFF22C55E), size: 20),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    _formatTvConnectedProviders(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: FocusTraversalOrder(
-                                order: const NumericFocusOrder(2),
-                                child: Focus(
-                                  focusNode: syncFocus,
-                                  onKeyEvent: (node, event) {
-                                    if (event is KeyDownEvent &&
-                                        _isRemoteOkKey(event.logicalKey)) {
-                                      handleConnectAndSync();
-                                      return KeyEventResult.handled;
-                                    }
-                                    return KeyEventResult.ignored;
-                                  },
-                                  child: Builder(builder: (c) {
-                                    final focused = Focus.of(c).hasFocus;
-                                    return SizedBox(
-                                      height: 46,
-                                      child: ElevatedButton.icon(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFF2563EB),
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 14),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                          side: BorderSide(
-                                            color: focused
-                                                ? Colors.white
-                                                : Colors.transparent,
-                                            width: 2.2,
-                                          ),
-                                        ),
-                                        onPressed:
-                                            isSyncing ? null : handleConnectAndSync,
-                                        icon: const Icon(Icons.refresh_rounded,
-                                            size: 18),
-                                        label: const Text(
-                                          'Connect & Sync',
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 13.5),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 2,
-                              child: FocusTraversalOrder(
-                                order: const NumericFocusOrder(3),
-                                child: Focus(
-                                  focusNode: clearFocus,
-                                  onKeyEvent: (node, event) {
-                                    if (event is KeyDownEvent &&
-                                        _isRemoteOkKey(event.logicalKey)) {
-                                      handleClear();
-                                      return KeyEventResult.handled;
-                                    }
-                                    return KeyEventResult.ignored;
-                                  },
-                                  child: Builder(builder: (c) {
-                                    final focused = Focus.of(c).hasFocus;
-                                    return SizedBox(
-                                      height: 46,
-                                      child: OutlinedButton(
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: const Color(0xFFEF4444),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 12),
-                                          side: BorderSide(
-                                            color: focused
-                                                ? Colors.white
-                                                : const Color(0xFFEF4444)
-                                                    .withOpacity(0.55),
-                                            width: focused ? 2.2 : 1,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                        ),
-                                        onPressed: isSyncing ? null : handleClear,
-                                        child: const Text(
-                                          'Clear',
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 13.5),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+        barrierDismissible: existing.isNotEmpty,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF141414),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: Color(0xFFE50914), width: 2),
+          ),
+          title: const Text(
+            'Enter Gist Raw URL',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'अपना GitHub Gist Raw Link (providers.json) यहाँ पेस्ट करें:',
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                Focus(
+                  onKey: (_, event) {
+                    if (event is RawKeyDownEvent &&
+                        event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      FocusScope.of(ctx).unfocus();
+                      Future.microtask(() => saveFocusNode.requestFocus());
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: TextField(
+                    controller: controller,
+                    focusNode: urlFocusNode,
+                    autofocus: true,
+                    cursorColor: const Color(0xFFE50914),
+                    textInputAction: TextInputAction.done,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    onSubmitted: (_) {
+                      FocusScope.of(ctx).unfocus();
+                      Future.microtask(() => saveFocusNode.requestFocus());
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
+                      hintStyle: const TextStyle(color: Colors.white38),
+                      filled: true,
+                      fillColor: Colors.black45,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Color(0xFFE50914), width: 1.5),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Color(0xFFE50914), width: 2.2),
+                      ),
                     ),
                   ),
                 ),
+              ],
+            ),
+          ),
+          actions: [
+            if (existing.isNotEmpty)
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
               ),
-            );
-          },
+            Focus(
+              focusNode: saveFocusNode,
+              onKey: (_, event) {
+                if (event is RawKeyDownEvent &&
+                    (event.logicalKey == LogicalKeyboardKey.select ||
+                        event.logicalKey == LogicalKeyboardKey.enter)) {
+                  final val = controller.text.trim();
+                  if (val.isNotEmpty) {
+                    TvConfig.saveGistUrl(val).then((_) {
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (mounted) {
+                        setState(() => isLoading = true);
+                        _loadAllTvData();
+                      }
+                    });
+                  }
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: Builder(
+                builder: (btnCtx) {
+                  final focused = Focus.of(btnCtx).hasFocus;
+                  return ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE50914),
+                      foregroundColor: Colors.white,
+                      side: BorderSide(
+                        color: focused ? Colors.white : const Color(0xFFE50914),
+                        width: focused ? 2 : 1,
+                      ),
+                    ),
+                    onPressed: () async {
+                      final val = controller.text.trim();
+                      if (val.isNotEmpty) {
+                        await TvConfig.saveGistUrl(val);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (mounted) {
+                          setState(() => isLoading = true);
+                          await _loadAllTvData();
+                        }
+                      }
+                    },
+                    child: const Text(
+                      'Save & Load',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ).then((_) {
-        inputFocus.dispose();
-        syncFocus.dispose();
-        clearFocus.dispose();
-        closeFocus.dispose();
-        controller.dispose();
+        urlFocusNode.dispose();
+        saveFocusNode.dispose();
       });
     });
   }
@@ -444,44 +236,42 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   Future _fetchProviders() async {
     try {
       final rawGist = await TvConfig.getGistUrl();
-      if (mounted) {
-        setState(() => _hasGistUrl = rawGist.isNotEmpty);
+      if (rawGist.isEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showGistConfigDialog();
+        });
+        return;
       }
-      if (rawGist.isEmpty) return;
-
       final sep = rawGist.contains('?') ? '&' : '?';
       final url = '$rawGist${sep}t=${DateTime.now().millisecondsSinceEpoch}';
-      final res =
-          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
         activeProviders = jsonDecode(res.body)['active_providers'] ?? [];
       }
     } catch (_) {}
   }
 
+  // Fast Parallel Instant Render for Home Screen (5x Faster)
   Future _fetchHomeCatalogContent() async {
     if (TvConfig.tmdbKey.isEmpty) return;
     await Future.wait([
+      // 1. Netflix Latest
       () async {
         try {
-          final netflixRes = await http
-              .get(Uri.parse(
-                  '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc'))
-              .timeout(const Duration(seconds: 6));
+          final netflixRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=8&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 6));
           if (netflixRes.statusCode == 200) {
             homeNetflixList = _parseTvList(jsonDecode(netflixRes.body)['results']);
-            if (homeNetflixList.isNotEmpty) {
-              activeShowcaseItem = homeNetflixList.first;
-            }
+            if (homeNetflixList.isNotEmpty) activeShowcaseItem = homeNetflixList.first;
           }
         } catch (_) {}
       }(),
+
+      // 2. Prime Video Latest
       () async {
         try {
-          final primeRes = await http
-              .get(Uri.parse(
-                  '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc'))
-              .timeout(const Duration(seconds: 6));
+          final primeRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_watch_providers=119&watch_region=IN&sort_by=primary_release_date.desc')).timeout(const Duration(seconds: 6));
           if (primeRes.statusCode == 200) {
             homePrimeList = _parseTvList(jsonDecode(primeRes.body)['results']);
             if (activeShowcaseItem == null && homePrimeList.isNotEmpty) {
@@ -490,46 +280,45 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           }
         } catch (_) {}
       }(),
+
+      // 3. Hotstar & Disney Specials
       () async {
         try {
-          final hotstarRes = await http
-              .get(Uri.parse(
-                  '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN'))
-              .timeout(const Duration(seconds: 6));
+          final hotstarRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/movie/now_playing?api_key=${TvConfig.tmdbKey}&language=en-US&region=IN')).timeout(const Duration(seconds: 6));
           if (hotstarRes.statusCode == 200) {
             homeHotstarList = _parseTvList(jsonDecode(hotstarRes.body)['results']);
           }
         } catch (_) {}
       }(),
+
+      // 4. Hindi Web Series
       () async {
         try {
-          final hindiTvRes = await http
-              .get(Uri.parse(
-                  '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=5'))
-              .timeout(const Duration(seconds: 6));
+          final hindiTvRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&sort_by=popularity.desc&vote_count.gte=5')).timeout(const Duration(seconds: 6));
           if (hindiTvRes.statusCode == 200) {
-            homeHindiSeriesList =
-                _parseTvList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
-                    .where((item) => !isSoapShow(item['title'] ?? ''))
-                    .toList();
+            homeHindiSeriesList = _parseTvList(jsonDecode(hindiTvRes.body)['results'], isTv: true)
+                .where((item) => !isSoapShow(item['title'] ?? ''))
+                .toList();
           }
         } catch (_) {}
       }(),
+
+      // 5. Global Web Series
       () async {
         try {
-          final engTvRes = await http
-              .get(Uri.parse(
-                  '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US'))
-              .timeout(const Duration(seconds: 6));
+          final engTvRes = await http.get(Uri.parse(
+              '${TvConfig.tmdbBase}/tv/on_the_air?api_key=${TvConfig.tmdbKey}&language=en-US')).timeout(const Duration(seconds: 6));
           if (engTvRes.statusCode == 200) {
-            homeEnglishSeriesList =
-                _parseTvList(jsonDecode(engTvRes.body)['results'], isTv: true);
+            homeEnglishSeriesList = _parseTvList(jsonDecode(engTvRes.body)['results'], isTv: true);
           }
         } catch (_) {}
       }(),
     ]);
   }
 
+  // Deep Fetch 200+ Titles via Parallel Multi-page Pagination
   Future _fetchDeepCatalogs() async {
     if (TvConfig.tmdbKey.isEmpty) return;
     final sortQuery = _catalogSortType == 'latest'
@@ -541,65 +330,55 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
     await Future.wait([
       _fetchPages(
-        baseUrl:
-            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&sort_by=$sortQuery',
+        baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi&sort_by=$sortQuery',
         isTv: false,
         onDone: (list) {
           if (mounted) setState(() => allBollywoodMovies = list);
         },
       ),
       _fetchPages(
-        baseUrl:
-            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=$sortQuery',
+        baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn&sort_by=$sortQuery',
         isTv: false,
         onDone: (list) {
           if (mounted) setState(() => allSouthMovies = list);
         },
       ),
       _fetchPages(
-        baseUrl:
-            '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&sort_by=$sortQuery',
+        baseUrl: '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&sort_by=$sortQuery',
         isTv: false,
         onDone: (list) {
           if (mounted) setState(() => allHollywoodMovies = list);
         },
       ),
       _fetchPages(
-        baseUrl:
-            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5&sort_by=$sortTvQuery',
+        baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5&sort_by=$sortTvQuery',
         isTv: true,
         onDone: (list) {
           if (mounted) {
-            setState(() => allHindiSeries =
-                list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
+            setState(() => allHindiSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
           }
         },
       ),
       _fetchPages(
-        baseUrl:
-            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766&sort_by=$sortTvQuery',
+        baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766&sort_by=$sortTvQuery',
         isTv: true,
         onDone: (list) {
           if (mounted) {
-            setState(() => allNetflixSeries =
-                list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
+            setState(() => allNetflixSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
           }
         },
       ),
       _fetchPages(
-        baseUrl:
-            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766&sort_by=$sortTvQuery',
+        baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766&sort_by=$sortTvQuery',
         isTv: true,
         onDone: (list) {
           if (mounted) {
-            setState(() => allAmazonSeries =
-                list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
+            setState(() => allAmazonSeries = list.where((i) => !isSoapShow(i['title'] ?? '')).toList());
           }
         },
       ),
       _fetchPages(
-        baseUrl:
-            '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml&sort_by=$sortTvQuery',
+        baseUrl: '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml&sort_by=$sortTvQuery',
         isTv: true,
         onDone: (list) {
           if (mounted) setState(() => allSouthSeries = list);
@@ -616,9 +395,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     final pageFutures = List.generate(8, (index) async {
       final p = index + 1;
       try {
-        final res = await http
-            .get(Uri.parse('$baseUrl&page=$p'))
-            .timeout(const Duration(seconds: 6));
+        final res = await http.get(Uri.parse('$baseUrl&page=$p')).timeout(const Duration(seconds: 6));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body)['results'];
           return _parseTvList(data, isTv: isTv);
@@ -653,9 +430,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       res.add({
         'tmdb_id': m['id'],
         'title': t,
-        'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear)
-            .toString()
-            .split('-')[0],
+        'year': (m['release_date'] ?? m['first_air_date'] ?? currentYear).toString().split('-')[0],
         'rating': m['vote_average']?.toString() ?? '7.5',
         'backdrop': m['backdrop_path'] != null
             ? '${TvConfig.backdropBase}${m['backdrop_path']}'
@@ -681,20 +456,23 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
+  // ============================================================================
+  // NETFLIX RED MINIMAL SLIM SIDEBAR (UNCHANGED)
+  // ============================================================================
   Widget _buildNetflixNavRail() {
     final icons = [
       Icons.person_outline_rounded,
       Icons.search_rounded,
       Icons.home_filled,
-      Icons.movie_creation_outlined,
-      Icons.tv_rounded,
+      Icons.movie_creation_outlined, // 3: Movies Tab
+      Icons.tv_rounded,              // 4: Web Series Tab
       Icons.grid_view_rounded,
     ];
 
     return Container(
       width: 58,
       color: Colors.transparent,
-      padding: const EdgeInsets.symmetric(vertical: 20),
+      padding: const EdgeInsets.symmetric(vertical: 24),
       child: Column(
         children: [
           Container(
@@ -705,11 +483,11 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 36),
           Expanded(
             child: ListView.separated(
               itemCount: icons.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 16),
+              separatorBuilder: (_, __) => const SizedBox(height: 18),
               itemBuilder: (ctx, i) {
                 return NetflixSidebarIcon(
                   focusNode: _sidebarFocusNodes[i],
@@ -717,6 +495,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   isSelected: _selectedNavIndex == i,
                   onRightArrow: _jumpFocusToContent,
                   onTap: () {
+                    if (i == 0) {
+                      _showGistConfigDialog();
+                      return;
+                    }
                     setState(() => _selectedNavIndex = i);
                     _jumpFocusToContent();
                   },
@@ -724,18 +506,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               },
             ),
           ),
-          NetflixSidebarIcon(
-            focusNode: _gistSidebarFocusNode,
-            icon: Icons.link_rounded,
-            isSelected: _hasGistUrl,
-            onRightArrow: _jumpFocusToContent,
-            onTap: _showGistConfigDialog,
-          ),
         ],
       ),
     );
   }
 
+  // ============================================================================
+  // NETFLIX BILLBOARD SHOWCASE (UNCHANGED)
+  // ============================================================================
   Widget _buildNetflixBillboard(dynamic item) {
     return SizedBox(
       height: 340,
@@ -758,8 +536,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 item['backdrop'],
                 fit: BoxFit.cover,
                 alignment: Alignment.topRight,
-                errorBuilder: (_, __, ___) =>
-                    Container(color: const Color(0xFF141414)),
+                errorBuilder: (_, __, ___) => Container(color: const Color(0xFF141414)),
               ),
             ),
           ),
@@ -769,11 +546,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Color(0x66141414),
-                    Color(0xFF141414)
-                  ],
+                  colors: [Colors.transparent, Color(0x66141414), Color(0xFF141414)],
                   stops: [0.2, 0.65, 1.0],
                 ),
               ),
@@ -790,26 +563,17 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 Row(
                   children: [
                     Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: const Color(0xFFE50914),
                         borderRadius: BorderRadius.circular(3),
                       ),
-                      child: const Text('NETFLIX PRO',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold)),
+                      child: const Text('NETFLIX PRO', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       item['isTv'] == true ? 'S E R I E S' : 'M O V I E',
-                      style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 10,
-                          letterSpacing: 2,
-                          fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -828,25 +592,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Text('${item['rating']} ★ Match',
-                        style: const TextStyle(
-                            color: Color(0xFF46D369),
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold)),
+                    Text('${item['rating']} ★ Match', style: const TextStyle(color: Color(0xFF46D369), fontSize: 13, fontWeight: FontWeight.bold)),
                     const SizedBox(width: 12),
-                    Text('${item['year']}',
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 13)),
+                    Text('${item['year']}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                     const SizedBox(width: 12),
                     Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white38),
-                          borderRadius: BorderRadius.circular(3)),
-                      child: const Text('Ultra HD 4K',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 9)),
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.white38), borderRadius: BorderRadius.circular(3)),
+                      child: const Text('Ultra HD 4K', style: TextStyle(color: Colors.white70, fontSize: 9)),
                     ),
                   ],
                 ),
@@ -881,14 +634,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         final focused = Focus.of(c).hasFocus;
                         return ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                focused ? Colors.white : const Color(0xFFE50914),
-                            foregroundColor:
-                                focused ? Colors.black : Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 11),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4)),
+                            backgroundColor: focused ? Colors.white : const Color(0xFFE50914),
+                            foregroundColor: focused ? Colors.black : Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                             side: BorderSide(
                               color: focused ? Colors.white : Colors.transparent,
                               width: 1.5,
@@ -896,9 +645,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                           ),
                           onPressed: () => _onTvItemSelect(item),
                           icon: const Icon(Icons.play_arrow_rounded, size: 22),
-                          label: const Text('Watch Now',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 13)),
+                          label: const Text('Watch Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                         );
                       }),
                     ),
@@ -910,8 +657,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         color: Colors.white12,
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: const Icon(Icons.add,
-                          color: Colors.white70, size: 20),
+                      child: const Icon(Icons.add, color: Colors.white70, size: 20),
                     ),
                   ],
                 ),
@@ -923,6 +669,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     );
   }
 
+  // ============================================================================
+  // NETFLIX LANDSCAPE ROW WITH DIRECT SEE-ALL INTEGRATION (UNCHANGED)
+  // ============================================================================
   Widget _buildNetflixRow(
     String title,
     List items,
@@ -967,10 +716,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 onTap: openSeeAll,
                 child: Text(
                   '${items.length} Titles  •  See All →',
-                  style: const TextStyle(
-                      color: Color(0xFFE50914),
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: Color(0xFFE50914), fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ),
             ],
@@ -986,8 +732,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               if (idx == items.length) {
                 return Container(
                   width: 160,
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                   child: Focus(
                     child: Builder(
                       builder: (context) {
@@ -1005,29 +750,16 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                 width: isFocused ? 2.5 : 1.0,
                               ),
                               boxShadow: isFocused
-                                  ? [
-                                      BoxShadow(
-                                          color: const Color(0xFFE50914)
-                                              .withOpacity(0.55),
-                                          blurRadius: 10,
-                                          spreadRadius: 2)
-                                    ]
+                                  ? [BoxShadow(color: const Color(0xFFE50914).withOpacity(0.55), blurRadius: 10, spreadRadius: 2)]
                                   : [],
                             ),
                             child: const Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.grid_view_rounded,
-                                    color: Color(0xFFE50914), size: 32),
+                                Icon(Icons.grid_view_rounded, color: Color(0xFFE50914), size: 32),
                                 SizedBox(height: 6),
-                                Text('See All',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14)),
-                                Text('Explore Catalog',
-                                    style: TextStyle(
-                                        color: Colors.white60, fontSize: 11)),
+                                Text('See All', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                Text('Explore Catalog', style: TextStyle(color: Colors.white60, fontSize: 11)),
                               ],
                             ),
                           ),
@@ -1040,8 +772,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
               final currentItem = items[idx];
               return NetflixCard(
-                focusNode:
-                    (isFirstRow && idx == 0) ? _firstContentCardFocus : null,
+                focusNode: (isFirstRow && idx == 0) ? _firstContentCardFocus : null,
                 item: currentItem,
                 isFirstInRow: idx == 0,
                 onLeftBoundaryHit: _jumpFocusToSidebar,
@@ -1066,8 +797,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         children: [
           Text(
             title,
-            style: const TextStyle(
-                color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
           ),
           Focus(
             onKey: (node, event) {
@@ -1085,8 +815,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 onTap: _toggleSortType,
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
                     color: focused ? Colors.white : const Color(0xFF222222),
                     borderRadius: BorderRadius.circular(20),
@@ -1095,17 +824,13 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   child: Row(
                     children: [
                       Icon(
-                        _catalogSortType == 'latest'
-                            ? Icons.fiber_new_rounded
-                            : Icons.whatshot_rounded,
+                        _catalogSortType == 'latest' ? Icons.fiber_new_rounded : Icons.whatshot_rounded,
                         size: 15,
                         color: focused ? Colors.black : const Color(0xFFE50914),
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        _catalogSortType == 'latest'
-                            ? 'Filter: Latest Releases'
-                            : 'Filter: Most Popular',
+                        _catalogSortType == 'latest' ? 'Filter: Latest Releases' : 'Filter: Most Popular',
                         style: TextStyle(
                           color: focused ? Colors.black : Colors.white,
                           fontSize: 12,
@@ -1132,8 +857,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           _buildNetflixNavRail(),
           Expanded(
             child: isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: Color(0xFFE50914)))
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
                 : _selectedNavIndex == 1
                     ? TvSearchScreen(
                         searchBoxFocusNode: _firstContentCardFocus,
@@ -1145,10 +869,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (_selectedNavIndex == 2 ||
-                                _selectedNavIndex == 0) ...[
-                              if (activeShowcaseItem != null)
-                                _buildNetflixBillboard(activeShowcaseItem!),
+                            // TAB 2: MAIN HOME (LATEST MIX)
+                            if (_selectedNavIndex == 2 || _selectedNavIndex == 0) ...[
+                              if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
                               if (continueWatchingList.isNotEmpty)
                                 _buildNetflixRow(
                                   'Continue Watching',
@@ -1190,61 +913,49 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                   isTv: true,
                                 ),
                             ],
+
+                            // TAB 3: DEDICATED MOVIES SECTION (200+ CATALOG)
                             if (_selectedNavIndex == 3) ...[
-                              _buildCategoryHeader(
-                                  'All Movies (200+ Titles Per Hub)'),
-                              if (activeShowcaseItem != null)
-                                _buildNetflixBillboard(activeShowcaseItem!),
+                              _buildCategoryHeader('All Movies (200+ Titles Per Hub)'),
+                              if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
                               _buildNetflixRow(
                                 'Bollywood Hit Movies',
-                                allBollywoodMovies.isNotEmpty
-                                    ? allBollywoodMovies
-                                    : homeNetflixList,
+                                allBollywoodMovies.isNotEmpty ? allBollywoodMovies : homeNetflixList,
                                 '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=hi',
                                 isFirstRow: true,
                               ),
                               _buildNetflixRow(
                                 'South Indian Blockbusters (Hindi Dubbed)',
-                                allSouthMovies.isNotEmpty
-                                    ? allSouthMovies
-                                    : homePrimeList,
+                                allSouthMovies.isNotEmpty ? allSouthMovies : homePrimeList,
                                 '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}&with_original_language=te%7Cta%7Cml%7Ckn',
                               ),
                               _buildNetflixRow(
                                 'Hollywood Blockbusters (Hindi Dubbed & Global)',
-                                allHollywoodMovies.isNotEmpty
-                                    ? allHollywoodMovies
-                                    : homeHotstarList,
+                                allHollywoodMovies.isNotEmpty ? allHollywoodMovies : homeHotstarList,
                                 '${TvConfig.tmdbBase}/discover/movie?api_key=${TvConfig.tmdbKey}',
                               ),
                             ],
+
+                            // TAB 4: DEDICATED WEB SERIES SECTION (200+ CATALOG)
                             if (_selectedNavIndex == 4) ...[
-                              _buildCategoryHeader(
-                                  'All Web Series (Hindi, Netflix, Amazon & South)'),
-                              if (activeShowcaseItem != null)
-                                _buildNetflixBillboard(activeShowcaseItem!),
+                              _buildCategoryHeader('All Web Series (Hindi, Netflix, Amazon & South)'),
+                              if (activeShowcaseItem != null) _buildNetflixBillboard(activeShowcaseItem!),
                               _buildNetflixRow(
                                 'All Hindi Web Series',
-                                allHindiSeries.isNotEmpty
-                                    ? allHindiSeries
-                                    : homeHindiSeriesList,
+                                allHindiSeries.isNotEmpty ? allHindiSeries : homeHindiSeriesList,
                                 '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=5',
                                 isFirstRow: true,
                                 isTv: true,
                               ),
                               _buildNetflixRow(
                                 'All Netflix Series',
-                                allNetflixSeries.isNotEmpty
-                                    ? allNetflixSeries
-                                    : homeEnglishSeriesList,
+                                allNetflixSeries.isNotEmpty ? allNetflixSeries : homeEnglishSeriesList,
                                 '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766',
                                 isTv: true,
                               ),
                               _buildNetflixRow(
                                 'All Amazon Series',
-                                allAmazonSeries.isNotEmpty
-                                    ? allAmazonSeries
-                                    : homeHindiSeriesList,
+                                allAmazonSeries.isNotEmpty ? allAmazonSeries : homeHindiSeriesList,
                                 '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766',
                                 isTv: true,
                               ),
@@ -1255,6 +966,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                                 isTv: true,
                               ),
                             ],
+
+                            // TAB 5: EXPLORE ALL
                             if (_selectedNavIndex == 5) ...[
                               _buildCategoryHeader('Explore All Collections'),
                               _buildNetflixRow(
@@ -1281,17 +994,13 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                               ),
                               _buildNetflixRow(
                                 'Netflix Originals',
-                                allNetflixSeries.isNotEmpty
-                                    ? allNetflixSeries
-                                    : homeEnglishSeriesList,
+                                allNetflixSeries.isNotEmpty ? allNetflixSeries : homeEnglishSeriesList,
                                 '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=213&without_genres=10766',
                                 isTv: true,
                               ),
                               _buildNetflixRow(
                                 'Amazon Prime Originals',
-                                allAmazonSeries.isNotEmpty
-                                    ? allAmazonSeries
-                                    : homeHindiSeriesList,
+                                allAmazonSeries.isNotEmpty ? allAmazonSeries : homeHindiSeriesList,
                                 '${TvConfig.tmdbBase}/discover/tv?api_key=${TvConfig.tmdbKey}&with_networks=1024&without_genres=10766',
                                 isTv: true,
                               ),
@@ -1306,6 +1015,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 }
 
+// ============================================================================
+// NETFLIX MINIMAL SIDEBAR ICON (UNCHANGED)
+// ============================================================================
 class NetflixSidebarIcon extends StatefulWidget {
   final FocusNode focusNode;
   final IconData icon;
@@ -1377,6 +1089,9 @@ class _NetflixSidebarIconState extends State<NetflixSidebarIcon> {
   }
 }
 
+// ============================================================================
+// NETFLIX POSTER CARD (UNCHANGED)
+// ============================================================================
 class NetflixCard extends StatefulWidget {
   final FocusNode? focusNode;
   final dynamic item;
@@ -1412,8 +1127,7 @@ class _NetflixCardState extends State<NetflixCard> {
       },
       onKey: (node, event) {
         if (event is RawKeyDownEvent) {
-          if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
-              widget.isFirstInRow) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowLeft && widget.isFirstInRow) {
             widget.onLeftBoundaryHit();
             return KeyEventResult.handled;
           }
@@ -1457,16 +1171,14 @@ class _NetflixCardState extends State<NetflixCard> {
                   Image.network(
                     widget.item['backdrop'],
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
-                        Container(color: const Color(0xFF222222)),
+                    errorBuilder: (_, __, ___) => Container(color: const Color(0xFF222222)),
                   ),
                   Positioned(
                     bottom: 0,
                     left: 0,
                     right: 0,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                       color: Colors.black87,
                       child: Text(
                         widget.item['title'],
