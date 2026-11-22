@@ -133,7 +133,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
           return PopScope(
             canPop: false,
-            onPopInvokedWithResult: (didPop, _) async {
+            onPopInvoked: (didPop) async {
               if (didPop) return;
               if (urlFocusNode.hasFocus) {
                 await hideKeyboardAndFocusSave();
