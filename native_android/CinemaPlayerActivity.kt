@@ -873,7 +873,6 @@ class CinemaPlayerActivity : Activity() {
         setupTvTouchGestures(gestureLayer)
         root.addView(gestureLayer)
 
-        // Top-Left Clean TV Title & Badges (88539.jpg)
         topHeaderCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(18), dp(24), dp(14))
@@ -926,7 +925,6 @@ class CinemaPlayerActivity : Activity() {
         topHeaderCard.addView(badgesRow)
         root.addView(topHeaderCard)
 
-        // Center Status Card (88539.jpg)
         centerStatusCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -965,7 +963,6 @@ class CinemaPlayerActivity : Activity() {
         centerStatusCard.addView(centerStatusSub)
         root.addView(centerStatusCard)
 
-        // Bottom Remote Shortcut Hint Strip (88539.jpg)
         bottomHintsBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1055,10 +1052,6 @@ class CinemaPlayerActivity : Activity() {
         root.addView(errorOverlay)
     }
 
-    // =========================================================================
-    // TV DOWN MENU OVERLAY (88543.jpg & 88542.jpg):
-    // [Sources] [Picture & Size] [Audio] [Subtitles] ............ [✕ Close]
-    // =========================================================================
     private fun buildTvSourcesAndSettingsMenu(root: FrameLayout) {
         tvMenuOverlay = FrameLayout(this).apply {
             setBackgroundColor(Color.parseColor("#E81B2638"))
@@ -1428,7 +1421,7 @@ class CinemaPlayerActivity : Activity() {
     private fun renderSubtitlesInMenu() {
         val exo = player ?: return
         val tracks = exo.currentTracks
-        val isDisabled = exo.trackSelectionParameters.trackTypeDisabled.contains(C.TRACK_TYPE_TEXT)
+        val isDisabled = exo.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
 
         val offCard = createTvOptionCard(
             title = "Subtitles Off",
