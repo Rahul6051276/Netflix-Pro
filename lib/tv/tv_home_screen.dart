@@ -106,126 +106,143 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       showDialog(
         context: context,
         barrierDismissible: existing.isNotEmpty,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF141414),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: const BorderSide(color: Color(0xFFE50914), width: 2),
-          ),
-          title: const Text(
-            'Enter Gist Raw URL',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-          content: SizedBox(
-            width: 460,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'अपना GitHub Gist Raw Link (providers.json) यहाँ पेस्ट करें:',
-                  style: TextStyle(color: Colors.white70, fontSize: 13),
+        builder: (ctx) {
+          Future<void> hideKeyboardAndFocusSave() async {
+            FocusScope.of(ctx).unfocus();
+            try {
+              await SystemChannels.textInput.invokeMethod('TextInput.hide');
+            } catch (_) {}
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (saveFocusNode.canRequestFocus) {
+                saveFocusNode.requestFocus();
+              }
+            });
+          }
+
+          Future<void> saveAndReloadUrl() async {
+            final val = controller.text.trim();
+            if (val.isNotEmpty) {
+              await TvConfig.saveGistUrl(val);
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                setState(() => isLoading = true);
+                await _loadAllTvData();
+              }
+            }
+          }
+
+          return PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) async {
+              if (didPop) return;
+              if (urlFocusNode.hasFocus) {
+                await hideKeyboardAndFocusSave();
+              } else if (existing.isNotEmpty && ctx.mounted) {
+                Navigator.pop(ctx);
+              } else {
+                await hideKeyboardAndFocusSave();
+              }
+            },
+            child: AlertDialog(
+              backgroundColor: const Color(0xFF141414),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: const BorderSide(color: Color(0xFFE50914), width: 2),
+              ),
+              title: const Text(
+                'Enter Gist Raw URL',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              content: SizedBox(
+                width: 460,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'अपना GitHub Gist Raw Link (providers.json) यहाँ पेस्ट करें:',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    Focus(
+                      onKey: (_, event) {
+                        if (event is RawKeyDownEvent &&
+                            event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          hideKeyboardAndFocusSave();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      child: TextField(
+                        controller: controller,
+                        focusNode: urlFocusNode,
+                        autofocus: true,
+                        cursorColor: const Color(0xFFE50914),
+                        textInputAction: TextInputAction.done,
+                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                        onSubmitted: (_) => hideKeyboardAndFocusSave(),
+                        decoration: InputDecoration(
+                          hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
+                          hintStyle: const TextStyle(color: Colors.white38),
+                          filled: true,
+                          fillColor: Colors.black45,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFFE50914), width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFFE50914), width: 2.2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
+              ),
+              actions: [
+                if (existing.isNotEmpty)
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+                  ),
                 Focus(
+                  focusNode: saveFocusNode,
                   onKey: (_, event) {
                     if (event is RawKeyDownEvent &&
-                        event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                      FocusScope.of(ctx).unfocus();
-                      Future.microtask(() => saveFocusNode.requestFocus());
+                        (event.logicalKey == LogicalKeyboardKey.select ||
+                            event.logicalKey == LogicalKeyboardKey.enter ||
+                            event.logicalKey == LogicalKeyboardKey.numpadEnter)) {
+                      saveAndReloadUrl();
                       return KeyEventResult.handled;
                     }
                     return KeyEventResult.ignored;
                   },
-                  child: TextField(
-                    controller: controller,
-                    focusNode: urlFocusNode,
-                    autofocus: true,
-                    cursorColor: const Color(0xFFE50914),
-                    textInputAction: TextInputAction.done,
-                    style: const TextStyle(color: Colors.white, fontSize: 13),
-                    onSubmitted: (_) {
-                      FocusScope.of(ctx).unfocus();
-                      Future.microtask(() => saveFocusNode.requestFocus());
+                  child: Builder(
+                    builder: (btnCtx) {
+                      final focused = Focus.of(btnCtx).hasFocus;
+                      return ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE50914),
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: focused ? Colors.white : const Color(0xFFE50914),
+                            width: focused ? 2 : 1,
+                          ),
+                        ),
+                        onPressed: saveAndReloadUrl,
+                        child: const Text(
+                          'Save & Load',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      );
                     },
-                    decoration: InputDecoration(
-                      hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
-                      hintStyle: const TextStyle(color: Colors.white38),
-                      filled: true,
-                      fillColor: Colors.black45,
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Color(0xFFE50914), width: 1.5),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Color(0xFFE50914), width: 2.2),
-                      ),
-                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          actions: [
-            if (existing.isNotEmpty)
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
-              ),
-            Focus(
-              focusNode: saveFocusNode,
-              onKey: (_, event) {
-                if (event is RawKeyDownEvent &&
-                    (event.logicalKey == LogicalKeyboardKey.select ||
-                        event.logicalKey == LogicalKeyboardKey.enter)) {
-                  final val = controller.text.trim();
-                  if (val.isNotEmpty) {
-                    TvConfig.saveGistUrl(val).then((_) {
-                      if (ctx.mounted) Navigator.pop(ctx);
-                      if (mounted) {
-                        setState(() => isLoading = true);
-                        _loadAllTvData();
-                      }
-                    });
-                  }
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              child: Builder(
-                builder: (btnCtx) {
-                  final focused = Focus.of(btnCtx).hasFocus;
-                  return ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE50914),
-                      foregroundColor: Colors.white,
-                      side: BorderSide(
-                        color: focused ? Colors.white : const Color(0xFFE50914),
-                        width: focused ? 2 : 1,
-                      ),
-                    ),
-                    onPressed: () async {
-                      final val = controller.text.trim();
-                      if (val.isNotEmpty) {
-                        await TvConfig.saveGistUrl(val);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        if (mounted) {
-                          setState(() => isLoading = true);
-                          await _loadAllTvData();
-                        }
-                      }
-                    },
-                    child: const Text(
-                      'Save & Load',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ).then((_) {
         urlFocusNode.dispose();
         saveFocusNode.dispose();
