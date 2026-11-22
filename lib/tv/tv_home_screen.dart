@@ -107,16 +107,22 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         context: context,
         barrierDismissible: existing.isNotEmpty,
         builder: (ctx) {
-          Future<void> hideKeyboardAndFocusSave() async {
-            FocusScope.of(ctx).unfocus();
+          Future<void> focusSaveButton() async {
             try {
               await SystemChannels.textInput.invokeMethod('TextInput.hide');
             } catch (_) {}
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (saveFocusNode.canRequestFocus) {
-                saveFocusNode.requestFocus();
-              }
-            });
+            if (saveFocusNode.canRequestFocus) {
+              saveFocusNode.requestFocus();
+            }
+          }
+
+          Future<void> focusUrlBox() async {
+            if (urlFocusNode.canRequestFocus) {
+              urlFocusNode.requestFocus();
+              try {
+                await SystemChannels.textInput.invokeMethod('TextInput.show');
+              } catch (_) {}
+            }
           }
 
           Future<void> saveAndReloadUrl() async {
@@ -131,17 +137,19 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             }
           }
 
-          return PopScope(
-            canPop: false,
-            onPopInvoked: (didPop) async {
-              if (didPop) return;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (ctx.mounted && urlFocusNode.canRequestFocus) {
+              urlFocusNode.requestFocus();
+            }
+          });
+
+          return WillPopScope(
+            onWillPop: () async {
               if (urlFocusNode.hasFocus) {
-                await hideKeyboardAndFocusSave();
-              } else if (existing.isNotEmpty && ctx.mounted) {
-                Navigator.pop(ctx);
-              } else {
-                await hideKeyboardAndFocusSave();
+                await focusSaveButton();
+                return false;
               }
+              return existing.isNotEmpty;
             },
             child: AlertDialog(
               backgroundColor: const Color(0xFF141414),
@@ -168,33 +176,42 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       onKey: (_, event) {
                         if (event is RawKeyDownEvent &&
                             event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                          hideKeyboardAndFocusSave();
+                          focusSaveButton();
                           return KeyEventResult.handled;
                         }
                         return KeyEventResult.ignored;
                       },
-                      child: TextField(
-                        controller: controller,
-                        focusNode: urlFocusNode,
-                        autofocus: true,
-                        cursorColor: const Color(0xFFE50914),
-                        textInputAction: TextInputAction.done,
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
-                        onSubmitted: (_) => hideKeyboardAndFocusSave(),
-                        decoration: InputDecoration(
-                          hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
-                          hintStyle: const TextStyle(color: Colors.white38),
-                          filled: true,
-                          fillColor: Colors.black45,
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFFE50914), width: 1.5),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFFE50914), width: 2.2),
-                          ),
-                        ),
+                      child: Builder(
+                        builder: (fieldCtx) {
+                          final hasBoxFocus = Focus.of(fieldCtx).hasFocus;
+                          return GestureDetector(
+                            onTap: focusUrlBox,
+                            child: TextField(
+                              controller: controller,
+                              focusNode: urlFocusNode,
+                              autofocus: true,
+                              showCursor: true,
+                              cursorColor: const Color(0xFFE50914),
+                              textInputAction: TextInputAction.done,
+                              style: const TextStyle(color: Colors.white, fontSize: 13),
+                              onSubmitted: (_) => focusSaveButton(),
+                              decoration: InputDecoration(
+                                hintText: 'https://gist.githubusercontent.com/.../raw/providers.json',
+                                hintStyle: const TextStyle(color: Colors.white38),
+                                filled: true,
+                                fillColor: hasBoxFocus ? const Color(0xFF1E1E1E) : Colors.black45,
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(color: Color(0xFFE50914), width: 1.5),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(color: Colors.white, width: 2.2),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -209,12 +226,17 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 Focus(
                   focusNode: saveFocusNode,
                   onKey: (_, event) {
-                    if (event is RawKeyDownEvent &&
-                        (event.logicalKey == LogicalKeyboardKey.select ||
-                            event.logicalKey == LogicalKeyboardKey.enter ||
-                            event.logicalKey == LogicalKeyboardKey.numpadEnter)) {
-                      saveAndReloadUrl();
-                      return KeyEventResult.handled;
+                    if (event is RawKeyDownEvent) {
+                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                        focusUrlBox();
+                        return KeyEventResult.handled;
+                      }
+                      if (event.logicalKey == LogicalKeyboardKey.select ||
+                          event.logicalKey == LogicalKeyboardKey.enter ||
+                          event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                        saveAndReloadUrl();
+                        return KeyEventResult.handled;
+                      }
                     }
                     return KeyEventResult.ignored;
                   },
