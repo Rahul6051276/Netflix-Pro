@@ -70,6 +70,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.math.abs
+import kotlin.math.max
 
 @OptIn(UnstableApi::class)
 class CinemaPlayerActivity : Activity() {
@@ -184,6 +185,9 @@ class CinemaPlayerActivity : Activity() {
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -196,7 +200,6 @@ class CinemaPlayerActivity : Activity() {
         seekStepSec = intent.getIntExtra("seekSeconds", 15).coerceIn(5, 60)
         seekStepMs = seekStepSec * 1000L
 
-        // Default: Pure Hardware Surface (No artificial OpenGL color distortion)
         val savedName = prefs.getString("picture_preset_pure_hw", PicturePreset.JUST_PLAYER.name)
         currentPreset = PicturePreset.values().firstOrNull { it.name == savedName }
             ?: PicturePreset.JUST_PLAYER
@@ -310,9 +313,6 @@ class CinemaPlayerActivity : Activity() {
         centerBar.visibility = if (connecting) View.GONE else View.VISIBLE
     }
 
-    // =========================================================================
-    // 200% AUDIO BOOST ENGINE (LOUDNESS ENHANCER)
-    // =========================================================================
     private fun attachLoudnessEnhancer(audioSessionId: Int) {
         if (audioSessionId <= 0 || audioSessionId == C.AUDIO_SESSION_ID_UNSET) return
         releaseLoudnessEnhancer()
@@ -387,9 +387,6 @@ class CinemaPlayerActivity : Activity() {
         )
     }
 
-    // =========================================================================
-    // RAM-SAFE STRICT EXACT-MATCH STREAM RESOLVER (IPTV VOD + SERIES + STREMIO)
-    // =========================================================================
     private fun resolveStreamsInsidePlayer(
         tmdbId: String,
         tmdbKey: String,
@@ -871,6 +868,32 @@ class CinemaPlayerActivity : Activity() {
         return null
     }
 
+    private fun applyCameraEdgeZoomToSurface(targetView: View, mode: Int) {
+        val screenW = resources.displayMetrics.widthPixels.toFloat()
+        val screenH = resources.displayMetrics.heightPixels.toFloat()
+        val vw = targetView.width.toFloat()
+        val vh = targetView.height.toFloat()
+
+        if (mode == AspectRatioFrameLayout.RESIZE_MODE_FIT || screenW <= 0f || screenH <= 0f || vw <= 0f || vh <= 0f) {
+            targetView.scaleX = 1f
+            targetView.scaleY = 1f
+            targetView.translationX = 0f
+            targetView.translationY = 0f
+            return
+        }
+
+        val scaleToCoverW = screenW / vw
+        val scaleToCoverH = screenH / vh
+        val coverScale = max(1f, max(scaleToCoverW, scaleToCoverH))
+
+        targetView.pivotX = vw / 2f
+        targetView.pivotY = vh / 2f
+        targetView.scaleX = coverScale
+        targetView.scaleY = coverScale
+        targetView.translationX = 0f
+        targetView.translationY = 0f
+    }
+
     private fun applyResizeModeToPlayer(mode: Int) {
         if (!::playerView.isInitialized) return
         applyCameraCutoutFullScreen()
@@ -888,9 +911,19 @@ class CinemaPlayerActivity : Activity() {
             aspectFrame.resizeMode = mode
             aspectFrame.requestLayout()
             aspectFrame.invalidate()
+            aspectFrame.post {
+                if (!isSafeUi()) return@post
+                applyCameraEdgeZoomToSurface(aspectFrame, mode)
+            }
         }
         playerView.requestLayout()
         playerView.invalidate()
+        playerView.post {
+            if (!isSafeUi()) return@post
+            playerView.videoSurfaceView?.let { surface ->
+                applyCameraEdgeZoomToSurface(surface, mode)
+            }
+        }
     }
 
     private fun buildGestureAndHudLayers(root: FrameLayout) {
@@ -1659,7 +1692,6 @@ class CinemaPlayerActivity : Activity() {
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        // Pure Android Hardware Decoder (Matches native Media3 player quality & natural colors)
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             .setEnableDecoderFallback(true)
