@@ -26,3 +26,19 @@ Netflix-Pro/
 │   └── activity_cinema_player.xml
 ├── Icon.png
 └── pubspec.yaml
+{
+  "active_providers": [
+    {
+      "name": "Server Ka Naam",
+      "type": "xtream",
+      "host": "http://example.com:8080",
+      "username": "user123",
+      "password": "password123"
+    },
+    {
+      "name": "Stremio Server Name",
+      "type": "stremio",
+      "url": "https://example.com/manifest.json"
+    }
+  ]
+}
