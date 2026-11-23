@@ -1,26 +1,28 @@
 # Netflix-Pro
-# Netflix Pro - Streaming App
 
-## GitHub Gist Server Configuration (`providers.json`)
+Netflix Pro — Mobile और Android TV दोनों के लिए एक Flutter + Kotlin नेटिव मीडिया प्लेयर स्ट्रीमिंग ऐप।
 
-App mein servers (Xtream IPTV aur Stremio Addons) ko load karne ke liye GitHub Gist mein `providers.json` file ka format bilkul niche diye gaye structure jaisa hona chahiye.
+## Platform Support
+- **Mobile:** टच जेस्चर (सिंगल/डबल टैप, ब्राइटनेस और वॉल्यूम/ऑडियो बूस्ट स्वाइप), फ्रंट कैमरा/कटआउट सपोर्ट के साथ `Fit`, `Crop / Zoom`, और `Fill` मोड।
+- **Android TV:** D-Pad / रिमोट नेविगेशन, फोकस-आधारित कंट्रोल्स, और साइड पैनल से स्ट्रीम सोर्स स्विचिंग।
 
-### Exact JSON Format (Copy & Paste)
+## Branch & Repository Structure
 
-```json
-{
-  "active_providers": [
-    {
-      "name": "Livebox Pro",
-      "type": "xtream",
-      "host": "[http://livebox.pro](http://livebox.pro)",
-      "username": "YOUR_USERNAME",
-      "password": "YOUR_PASSWORD"
-    },
-    {
-      "name": "PenguPlay",
-      "type": "stremio",
-      "url": "[https://example.com/manifest.json](https://example.com/manifest.json)"
-    }
-  ]
-}
+- **Default Branch:** `main`
+
+```text
+Netflix-Pro/
+├── .github/
+│   └── workflows/          # APK build and release workflows
+├── android/
+│   └── app/
+│       └── src/
+│           └── main/       # Android manifest and app configuration
+├── lib/                    # Flutter UI screens (including TV home screen)
+├── native_android/
+│   ├── CinemaPlayerActivity.kt
+│   ├── CinemaPictureEffect.kt
+│   ├── MainActivity.kt
+│   └── activity_cinema_player.xml
+├── Icon.png
+└── pubspec.yaml
