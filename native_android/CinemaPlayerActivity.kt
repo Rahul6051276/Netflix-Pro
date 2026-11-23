@@ -2,7 +2,10 @@ package com.netflixpro.netflix_pro
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.UiModeManager
 import android.content.Context
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
@@ -91,6 +94,7 @@ class CinemaPlayerActivity : Activity() {
 
     private lateinit var hudContainer: FrameLayout
     private lateinit var centerBar: LinearLayout
+    private lateinit var actionsRow: LinearLayout
     private lateinit var unlockBtn: Button
     private lateinit var loadingSpinner: ProgressBar
     private lateinit var connectingCard: LinearLayout
@@ -104,6 +108,9 @@ class CinemaPlayerActivity : Activity() {
     private lateinit var speedBtn: Button
     private lateinit var pictureBtn: Button
     private lateinit var sourcesBtn: Button
+    private lateinit var lockBtn: Button
+    private lateinit var backBtn: Button
+    private lateinit var tvHintView: TextView
     private lateinit var timeCurrentView: TextView
     private lateinit var timeTotalView: TextView
     private lateinit var seekBar: SeekBar
@@ -111,6 +118,7 @@ class CinemaPlayerActivity : Activity() {
     private lateinit var errorOverlay: LinearLayout
     private lateinit var errorMessageView: TextView
 
+    // Sources Side Panel
     private lateinit var sourcesOverlay: FrameLayout
     private lateinit var sourcesListContainer: LinearLayout
     private val streamSources = mutableListOf<StreamSourceItem>()
@@ -125,11 +133,13 @@ class CinemaPlayerActivity : Activity() {
     private var isScreenLocked = false
     private var isSeekingFromUser = false
     private var isShaderAttached = false
+    private var isTvDevice = false
     private var seekStepSec = 15
     private var seekStepMs = 15_000L
     @Volatile private var isActivityDestroyed = false
     @Volatile private var isResolvingAllSources = false
 
+    // 200% Audio Boost Steps
     private val boostLevels = intArrayOf(100, 135, 170, 200)
     private var boostIndex = 0
     private var currentBoostPercent = 100
@@ -162,6 +172,14 @@ class CinemaPlayerActivity : Activity() {
 
     private fun isSafeUi(): Boolean = !isActivityDestroyed && !isFinishing && !isDestroyed
 
+    private fun detectAndroidTv(): Boolean {
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+        val isTvMode = uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+        val hasLeanback = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+        val hasTouch = packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+        return isTvMode || (hasLeanback && !hasTouch) || intent.getBooleanExtra("isTvDevice", false)
+    }
+
     private fun finishPlayerCleanly() {
         isActivityDestroyed = true
         handler.removeCallbacksAndMessages(null)
@@ -176,7 +194,6 @@ class CinemaPlayerActivity : Activity() {
         finish()
     }
 
-    // Front camera cutout (notch/punch-hole) support for landscape full coverage
     private fun applyCameraCutoutFullScreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {
@@ -191,6 +208,8 @@ class CinemaPlayerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        isTvDevice = detectAndroidTv()
 
         window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -239,6 +258,7 @@ class CinemaPlayerActivity : Activity() {
         parseIncomingSources()
         buildGestureAndHudLayers(root)
         buildSourcesSidePanel(root)
+        configureDeviceSpecificHud()
         setContentView(root)
         enableImmersiveFullscreen()
 
@@ -290,6 +310,29 @@ class CinemaPlayerActivity : Activity() {
         }
     }
 
+    private fun configureDeviceSpecificHud() {
+        if (isTvDevice) {
+            // TV Mode: Screen ke beech me koi bhi Play/Pause/Forward button nahi dikhega
+            centerBar.visibility = View.GONE
+            actionsRow.visibility = View.GONE
+            backBtn.visibility = View.GONE
+            sourcesBtn.visibility = View.GONE
+            pictureBtn.visibility = View.GONE
+            lockBtn.visibility = View.GONE
+            tvHintView.visibility = View.VISIBLE
+            seekBar.isFocusable = false
+        } else {
+            // Mobile Mode: Touch buttons aur center bar normal rahenge
+            centerBar.visibility = View.VISIBLE
+            actionsRow.visibility = View.VISIBLE
+            backBtn.visibility = View.VISIBLE
+            sourcesBtn.visibility = View.VISIBLE
+            pictureBtn.visibility = View.VISIBLE
+            lockBtn.visibility = View.VISIBLE
+            tvHintView.visibility = View.GONE
+        }
+    }
+
     private fun parseIncomingSources() {
         try {
             val rawJson = intent.getStringExtra("sourcesJson")?.trim().orEmpty()
@@ -313,7 +356,7 @@ class CinemaPlayerActivity : Activity() {
 
     private fun setConnectingState(connecting: Boolean) {
         connectingCard.visibility = if (connecting) View.VISIBLE else View.GONE
-        centerBar.visibility = if (connecting) View.GONE else View.VISIBLE
+        centerBar.visibility = if (connecting || isTvDevice) View.GONE else View.VISIBLE
     }
 
     private fun attachLoudnessEnhancer(audioSessionId: Int) {
@@ -449,7 +492,9 @@ class CinemaPlayerActivity : Activity() {
                             currentUserAgent,
                             currentPreset
                         )
-                        playPauseBtn.requestFocus()
+                        if (!isTvDevice) {
+                            playPauseBtn.requestFocus()
+                        }
                         scheduleHideHud()
                     }
                 }
@@ -491,7 +536,7 @@ class CinemaPlayerActivity : Activity() {
                 } catch (_: Throwable) {}
             }
 
-            val latch = CountDownLatch(providers.size + 1)
+            val latch = CountDownLatch(providers.size)
 
             for (prov in providers) {
                 thread(start = true) {
@@ -613,51 +658,6 @@ class CinemaPlayerActivity : Activity() {
                     } finally {
                         latch.countDown()
                     }
-                }
-            }
-
-            thread(start = true) {
-                try {
-                    val embedType = if (isTv) "series" else "movie"
-                    val embedUrl = if (isTv) {
-                        "https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$tmdbId?season=$season&episode=$episode"
-                    } else {
-                        "https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$tmdbId"
-                    }
-                    val cStr = httpGet(embedUrl, 12_000)
-                    if (cStr.isNotEmpty()) {
-                        val trimmed = cStr.trim()
-                        val arr = if (trimmed.startsWith("[")) {
-                            JSONArray(trimmed)
-                        } else {
-                            JSONObject(trimmed).optJSONArray("streams") ?: JSONArray()
-                        }
-                        var addedAny = false
-                        for (i in 0 until arr.length()) {
-                            val sObj = arr.getJSONObject(i)
-                            val sUrl = sObj.optString("url", "").trim()
-                            if (sUrl.isNotEmpty()) {
-                                val sTitle = sObj.optString("title", "$movieTitle HD")
-                                val pName = sObj.optString("provider", "Cloud HD")
-                                val explicitHindi = isExplicitHindi("$pName $sTitle")
-                                val multiHindi = isIndianMultiAudioServer("$pName $sTitle")
-                                found.add(
-                                    StreamSourceItem(
-                                        server = pName,
-                                        title = sTitle,
-                                        url = sUrl,
-                                        isHindi = explicitHindi || multiHindi,
-                                        isMultiAudio = multiHindi && !explicitHindi
-                                    )
-                                )
-                                addedAny = true
-                            }
-                        }
-                        if (addedAny) syncSourcesToUi(isFinal = false)
-                    }
-                } catch (_: Throwable) {
-                } finally {
-                    latch.countDown()
                 }
             }
 
@@ -975,7 +975,9 @@ class CinemaPlayerActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
-        setupTouchGestures(gestureLayer)
+        if (!isTvDevice) {
+            setupTouchGestures(gestureLayer)
+        }
         root.addView(gestureLayer)
 
         loadingSpinner = ProgressBar(this).apply {
@@ -1032,7 +1034,7 @@ class CinemaPlayerActivity : Activity() {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER_HORIZONTAL or Gravity.TOP
             ).apply {
-                topMargin = dp(76)
+                topMargin = dp(36)
             }
         }
         root.addView(feedbackBadge)
@@ -1059,7 +1061,7 @@ class CinemaPlayerActivity : Activity() {
             )
         }
 
-        val backBtn = createHudButton("← Back") { finishPlayerCleanly() }
+        backBtn = createHudButton("← Back") { finishPlayerCleanly() }
         titleView = TextView(this).apply {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
@@ -1085,7 +1087,7 @@ class CinemaPlayerActivity : Activity() {
             background = createSourcesPill()
         }
         pictureBtn = createHudButton("HW Original") { showPicturePresetDialog() }
-        val lockBtn = createHudButton("🔒 Lock") { lockScreen() }
+        lockBtn = createHudButton("🔒 Lock") { lockScreen() }
 
         topBar.addView(backBtn)
         topBar.addView(titleView)
@@ -1153,45 +1155,11 @@ class CinemaPlayerActivity : Activity() {
         seekBar = SeekBar(this).apply {
             max = 1000
             keyProgressIncrement = 15
-            isFocusable = true
+            isFocusable = !isTvDevice
             isFocusableInTouchMode = false
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 leftMargin = dp(14)
                 rightMargin = dp(14)
-            }
-            setOnFocusChangeListener { _, hasFocus ->
-                seekBarRow.background = GradientDrawable().apply {
-                    setColor(if (hasFocus) Color.parseColor("#33E50914") else Color.TRANSPARENT)
-                    cornerRadius = dp(10).toFloat()
-                    if (hasFocus) {
-                        setStroke(dp(2), Color.parseColor("#FACC15"))
-                    }
-                }
-                if (hasFocus) {
-                    scheduleHideHud()
-                    showFeedback("◀ SeekBar ▶  (Use Left / Right)")
-                }
-            }
-            setOnKeyListener { _, keyCode, event ->
-                if (event.action == KeyEvent.ACTION_DOWN) {
-                    when (keyCode) {
-                        KeyEvent.KEYCODE_DPAD_LEFT -> {
-                            seekBy(-seekStepMs)
-                            true
-                        }
-                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            seekBy(seekStepMs)
-                            true
-                        }
-                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                            togglePlayPause()
-                            true
-                        }
-                        else -> false
-                    }
-                } else {
-                    false
-                }
             }
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -1228,7 +1196,16 @@ class CinemaPlayerActivity : Activity() {
         seekBarRow.addView(seekBar)
         seekBarRow.addView(timeTotalView)
 
-        val actionsRow = LinearLayout(this).apply {
+        tvHintView = TextView(this).apply {
+            text = "◀ -${seekStepSec}s   |   OK Play/Pause   |   +${seekStepSec}s ▶   |   ▲ Screen Size   |   ▼ Sources"
+            setTextColor(Color.parseColor("#CBD5E1"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(6), 0, dp(2))
+            visibility = View.GONE
+        }
+
+        actionsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(0, dp(10), 0, 0)
@@ -1254,6 +1231,7 @@ class CinemaPlayerActivity : Activity() {
         actionsRow.addView(speedBtn)
 
         bottomPanel.addView(seekBarRow)
+        bottomPanel.addView(tvHintView)
         bottomPanel.addView(actionsRow)
         hudContainer.addView(bottomPanel)
 
@@ -1422,7 +1400,8 @@ class CinemaPlayerActivity : Activity() {
         sourcesOverlay.visibility = View.VISIBLE
         sourcesListContainer.post {
             if (!isSafeUi()) return@post
-            val targetIdx = activeSourceIndex.coerceIn(0, (sourcesListContainer.childCount - 1).coerceAtLeast(0))
+            val offset = if (isResolvingAllSources) 1 else 0
+            val targetIdx = (activeSourceIndex + offset).coerceIn(0, (sourcesListContainer.childCount - 1).coerceAtLeast(0))
             if (sourcesListContainer.childCount > 0) {
                 sourcesListContainer.getChildAt(targetIdx)?.requestFocus()
             }
@@ -1432,7 +1411,9 @@ class CinemaPlayerActivity : Activity() {
     private fun closeSourcesPanel() {
         if (!isSafeUi()) return
         sourcesOverlay.visibility = View.GONE
-        sourcesBtn.requestFocus()
+        if (!isTvDevice) {
+            sourcesBtn.requestFocus()
+        }
         scheduleHideHud()
     }
 
@@ -1685,6 +1666,7 @@ class CinemaPlayerActivity : Activity() {
     }
 
     private fun lockScreen() {
+        if (isTvDevice) return
         isScreenLocked = true
         setHudVisible(false)
         showUnlockPillTemporarily()
@@ -2119,6 +2101,51 @@ class CinemaPlayerActivity : Activity() {
             return super.onKeyDown(keyCode, event)
         }
 
+        // TV Remote-Only Mode:
+        // - OK / Center: Play / Pause
+        // - Right: +15s Forward
+        // - Left: -15s Rewind
+        // - Down: Open Sources Panel (Server list)
+        // - Up: Cycle Screen Size (Fit / Crop / Fill)
+        if (isTvDevice) {
+            return when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                    togglePlayPause()
+                    setHudVisible(true)
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                    setHudVisible(true)
+                    seekBy(seekStepMs)
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                    setHudVisible(true)
+                    seekBy(-seekStepMs)
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    openSourcesPanel()
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    cycleAspectRatio()
+                    true
+                }
+                KeyEvent.KEYCODE_BACK -> {
+                    if (hudVisible) {
+                        setHudVisible(false)
+                        true
+                    } else {
+                        finishPlayerCleanly()
+                        true
+                    }
+                }
+                else -> super.onKeyDown(keyCode, event)
+            }
+        }
+
+        // Mobile Keyboard / External Controller Mode
         if (isScreenLocked) {
             if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
                 if (unlockBtn.visibility == View.VISIBLE) {
@@ -2186,10 +2213,10 @@ class CinemaPlayerActivity : Activity() {
         val exo = player ?: return
         if (exo.isPlaying) {
             exo.pause()
-            showFeedback("Paused")
+            showFeedback("❚❚ Paused")
         } else {
             exo.play()
-            showFeedback("Playing")
+            showFeedback("▶ Playing")
         }
         updatePlayPauseLabel()
         scheduleHideHud()
@@ -2272,7 +2299,7 @@ class CinemaPlayerActivity : Activity() {
     private fun scheduleHideHud() {
         handler.removeCallbacks(hideHudRunnable)
         if (!isScreenLocked && isSafeUi()) {
-            handler.postDelayed(hideHudRunnable, 4500)
+            handler.postDelayed(hideHudRunnable, if (isTvDevice) 3500 else 4500)
         }
     }
 
@@ -2281,7 +2308,7 @@ class CinemaPlayerActivity : Activity() {
         feedbackBadge.text = msg
         feedbackBadge.visibility = View.VISIBLE
         handler.removeCallbacks(hideFeedbackRunnable)
-        handler.postDelayed(hideFeedbackRunnable, 1000)
+        handler.postDelayed(hideFeedbackRunnable, 1200)
     }
 
     private fun showError(msg: String) {
