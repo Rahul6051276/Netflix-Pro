@@ -312,7 +312,6 @@ class CinemaPlayerActivity : Activity() {
 
     private fun configureDeviceSpecificHud() {
         if (isTvDevice) {
-            // TV Mode: Screen ke beech me koi bhi Play/Pause/Forward button nahi dikhega
             centerBar.visibility = View.GONE
             actionsRow.visibility = View.GONE
             backBtn.visibility = View.GONE
@@ -322,7 +321,6 @@ class CinemaPlayerActivity : Activity() {
             tvHintView.visibility = View.VISIBLE
             seekBar.isFocusable = false
         } else {
-            // Mobile Mode: Touch buttons aur center bar normal rahenge
             centerBar.visibility = View.VISIBLE
             actionsRow.visibility = View.VISIBLE
             backBtn.visibility = View.VISIBLE
@@ -1197,7 +1195,7 @@ class CinemaPlayerActivity : Activity() {
         seekBarRow.addView(timeTotalView)
 
         tvHintView = TextView(this).apply {
-            text = "◀ -${seekStepSec}s   |   OK Play/Pause   |   +${seekStepSec}s ▶   |   ▲ Screen Size   |   ▼ Sources"
+            text = "◀ -${seekStepSec}s   |   OK Play/Pause   |   +${seekStepSec}s ▶   |   ▲ Screen Size   |   ▼ Sources & Audio"
             setTextColor(Color.parseColor("#CBD5E1"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
             gravity = Gravity.CENTER
@@ -1330,21 +1328,52 @@ class CinemaPlayerActivity : Activity() {
             )
         }
 
+        // Top-Left Audio button inside Sources Panel for TV remote navigation
+        val topLeftAudioBtn = Button(this).apply {
+            text = "🔊 Audio"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            typeface = Typeface.DEFAULT_BOLD
+            minWidth = 0
+            minHeight = 0
+            isFocusable = true
+            isFocusableInTouchMode = false
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            background = createFocusablePill()
+            setOnClickListener {
+                closeSourcesPanel()
+                showAudioDialog()
+            }
+            setOnKeyListener { _, keyCode, event ->
+                if (event.action == KeyEvent.ACTION_DOWN &&
+                    (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)
+                ) {
+                    closeSourcesPanel()
+                    showAudioDialog()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+
         val headerTexts = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), 0, dp(8), 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         val headerTitle = TextView(this).apply {
             text = "Select Stream Source"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16.5f)
             typeface = Typeface.DEFAULT_BOLD
         }
         val headerSub = TextView(this).apply {
             text = "IPTV VOD & Hindi servers listed on top"
             setTextColor(Color.parseColor("#FACC15"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
             setPadding(0, dp(2), 0, 0)
         }
         headerTexts.addView(headerTitle)
@@ -1363,6 +1392,7 @@ class CinemaPlayerActivity : Activity() {
             setOnClickListener { closeSourcesPanel() }
         }
 
+        headerRow.addView(topLeftAudioBtn)
         headerRow.addView(headerTexts)
         headerRow.addView(closeDrawerBtn)
         drawer.addView(headerRow)
@@ -2101,12 +2131,6 @@ class CinemaPlayerActivity : Activity() {
             return super.onKeyDown(keyCode, event)
         }
 
-        // TV Remote-Only Mode:
-        // - OK / Center: Play / Pause
-        // - Right: +15s Forward
-        // - Left: -15s Rewind
-        // - Down: Open Sources Panel (Server list)
-        // - Up: Cycle Screen Size (Fit / Crop / Fill)
         if (isTvDevice) {
             return when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
@@ -2145,7 +2169,6 @@ class CinemaPlayerActivity : Activity() {
             }
         }
 
-        // Mobile Keyboard / External Controller Mode
         if (isScreenLocked) {
             if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
                 if (unlockBtn.visibility == View.VISIBLE) {
