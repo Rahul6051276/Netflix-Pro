@@ -231,6 +231,10 @@ class CinemaPlayerActivity : Activity() {
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         )
+        playerView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (!isSafeUi()) return@addOnLayoutChangeListener
+            syncZoomScaleOnly(resizeModes[resizeIndex])
+        }
         applyResizeModeToPlayer(resizeModes[resizeIndex])
 
         parseIncomingSources()
@@ -869,12 +873,20 @@ class CinemaPlayerActivity : Activity() {
     }
 
     private fun applyCameraEdgeZoomToSurface(targetView: View, mode: Int) {
+        if (mode == AspectRatioFrameLayout.RESIZE_MODE_FIT) {
+            targetView.scaleX = 1f
+            targetView.scaleY = 1f
+            targetView.translationX = 0f
+            targetView.translationY = 0f
+            return
+        }
+
         val screenW = resources.displayMetrics.widthPixels.toFloat()
         val screenH = resources.displayMetrics.heightPixels.toFloat()
         val vw = targetView.width.toFloat()
         val vh = targetView.height.toFloat()
 
-        if (mode == AspectRatioFrameLayout.RESIZE_MODE_FIT || screenW <= 0f || screenH <= 0f || vw <= 0f || vh <= 0f) {
+        if (screenW <= 0f || screenH <= 0f || vw <= 0f || vh <= 0f) {
             targetView.scaleX = 1f
             targetView.scaleY = 1f
             targetView.translationX = 0f
@@ -884,7 +896,7 @@ class CinemaPlayerActivity : Activity() {
 
         val scaleToCoverW = screenW / vw
         val scaleToCoverH = screenH / vh
-        val coverScale = max(1f, max(scaleToCoverW, scaleToCoverH))
+        val coverScale = max(1.02f, max(scaleToCoverW, scaleToCoverH) * 1.01f)
 
         targetView.pivotX = vw / 2f
         targetView.pivotY = vh / 2f
@@ -892,6 +904,16 @@ class CinemaPlayerActivity : Activity() {
         targetView.scaleY = coverScale
         targetView.translationX = 0f
         targetView.translationY = 0f
+    }
+
+    private fun syncZoomScaleOnly(mode: Int) {
+        if (!::playerView.isInitialized) return
+        findAspectFrameLayout(playerView)?.let { aspectFrame ->
+            applyCameraEdgeZoomToSurface(aspectFrame, mode)
+        }
+        playerView.videoSurfaceView?.let { surface ->
+            applyCameraEdgeZoomToSurface(surface, mode)
+        }
     }
 
     private fun applyResizeModeToPlayer(mode: Int) {
