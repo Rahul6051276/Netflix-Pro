@@ -15,6 +15,8 @@ class MediaDetailSheet extends StatelessWidget {
 
   static const MethodChannel _playerChannel =
       MethodChannel('com.netflixpro.netflix_pro/player');
+  static const MethodChannel _altPlayerChannel =
+      MethodChannel('com.netflixpro/player');
 
   const MediaDetailSheet({
     super.key,
@@ -55,20 +57,28 @@ class MediaDetailSheet extends StatelessWidget {
     final title = (item['title'] ?? 'Netflix Pro').toString();
     final isTv = item['isTv'] == true;
 
+    final args = <String, dynamic>{
+      'url': '',
+      'title': title,
+      'tmdbId': tmdbId,
+      'tmdbKey': MobileConfig.tmdbKey,
+      'gistUrl': savedGistUrl,
+      'isTv': isTv,
+      'season': season,
+      'episode': episode,
+      'isTvDevice': false,
+      'seekSeconds': 30,
+      'userAgent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
+
     try {
-      await _playerChannel.invokeMethod('playVideo', {
-        'url': '',
-        'title': title,
-        'tmdbId': tmdbId,
-        'tmdbKey': MobileConfig.tmdbKey,
-        'gistUrl': savedGistUrl,
-        'isTv': isTv,
-        'season': season,
-        'episode': episode,
-        'userAgent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      });
-    } catch (_) {}
+      await _playerChannel.invokeMethod('playVideo', args);
+    } catch (_) {
+      try {
+        await _altPlayerChannel.invokeMethod('playVideo', args);
+      } catch (_) {}
+    }
   }
 
   void _onWatchPressed(BuildContext context) {
@@ -101,7 +111,8 @@ class MediaDetailSheet extends StatelessWidget {
     final String title = item['title'] ?? 'Untitled';
     final String rating = item['rating'] ?? '7.5';
     final String year = item['year'] ?? '';
-    final String overview = item['overview'] ?? 'Storyline details available on playback.';
+    final String overview =
+        item['overview'] ?? 'Storyline details available on playback.';
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.82,
@@ -118,7 +129,10 @@ class MediaDetailSheet extends StatelessWidget {
                 height: 260,
                 width: double.infinity,
                 child: backdrop.isNotEmpty
-                    ? Image.network(backdrop, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.black))
+                    ? Image.network(backdrop,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            Container(color: Colors.black))
                     : Container(color: Colors.black),
               ),
               Container(
@@ -137,7 +151,8 @@ class MediaDetailSheet extends StatelessWidget {
                 child: CircleAvatar(
                   backgroundColor: Colors.black54,
                   child: IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                    icon:
+                        const Icon(Icons.close, color: Colors.white, size: 20),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ),
@@ -156,7 +171,8 @@ class MediaDetailSheet extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: Color(0xFFE50914),
                       ),
-                      child: const Icon(Icons.play_arrow, color: Colors.white, size: 36),
+                      child: const Icon(Icons.play_arrow,
+                          color: Colors.white, size: 36),
                     ),
                   ),
                 ),
@@ -171,22 +187,36 @@ class MediaDetailSheet extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(color: const Color(0xFF222222), borderRadius: BorderRadius.circular(4)),
-                        child: Text('$rating IMDb', style: const TextStyle(color: Color(0xFF46D369), fontSize: 11, fontWeight: FontWeight.bold)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                            color: const Color(0xFF222222),
+                            borderRadius: BorderRadius.circular(4)),
+                        child: Text('$rating IMDb',
+                            style: const TextStyle(
+                                color: Color(0xFF46D369),
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold)),
                       ),
                       const SizedBox(width: 8),
-                      Text(year, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(year,
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12)),
                       const SizedBox(width: 8),
                       const Text('•', style: TextStyle(color: Colors.white54)),
                       const SizedBox(width: 8),
-                      Text(isTv ? 'Web Series' : 'Movie', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(isTv ? 'Web Series' : 'Movie',
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12)),
                     ],
                   ),
                   const SizedBox(height: 14),
@@ -197,7 +227,8 @@ class MediaDetailSheet extends StatelessWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFE50914),
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6)),
                       ),
                       onPressed: () => _onWatchPressed(context),
                       child: const Row(
@@ -205,17 +236,25 @@ class MediaDetailSheet extends StatelessWidget {
                         children: [
                           Icon(Icons.play_arrow, size: 20),
                           SizedBox(width: 6),
-                          Text('Watch Now', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                          Text('Watch Now',
+                              style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text('STORYLINE', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                  const Text('STORYLINE',
+                      style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0)),
                   const SizedBox(height: 6),
                   Text(
                     overview,
-                    style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 13, height: 1.4),
                   ),
                   const SizedBox(height: 30),
                 ],

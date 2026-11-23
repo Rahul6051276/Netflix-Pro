@@ -4,10 +4,15 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'tmdb_config.dart';
 
 class InternalPlayerScreen extends StatefulWidget {
   final String streamUrl;
   final String title;
+  final String tmdbId;
+  final bool isTv;
+  final int season;
+  final int episode;
   final List<dynamic> sources;
   final int initialIndex;
 
@@ -16,6 +21,10 @@ class InternalPlayerScreen extends StatefulWidget {
     String? videoUrl,
     String? streamUrl,
     required this.title,
+    this.tmdbId = '',
+    this.isTv = false,
+    this.season = 1,
+    this.episode = 1,
     this.sources = const [],
     this.initialIndex = 0,
   }) : streamUrl = (streamUrl != null && streamUrl.isNotEmpty)
@@ -29,6 +38,8 @@ class InternalPlayerScreen extends StatefulWidget {
 class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
   static const MethodChannel _playerChannel =
       MethodChannel('com.netflixpro.netflix_pro/player');
+  static const MethodChannel _altPlayerChannel =
+      MethodChannel('com.netflixpro/player');
 
   bool _hasError = false;
   String _errorMessage = '';
@@ -51,8 +62,11 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
     final cleanUrl = widget.streamUrl.trim();
     final encodedSources =
         widget.sources.isNotEmpty ? jsonEncode(widget.sources) : '';
+    final savedGistUrl = await MobileConfig.getGistUrl();
 
-    if (cleanUrl.isEmpty && encodedSources.isEmpty) {
+    if (cleanUrl.isEmpty &&
+        encodedSources.isEmpty &&
+        widget.tmdbId.trim().isEmpty) {
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -62,27 +76,44 @@ class _InternalPlayerScreenState extends State<InternalPlayerScreen> {
       return;
     }
 
-    try {
-      await _playerChannel.invokeMethod('playVideo', {
-        'url': cleanUrl,
-        'title': widget.title,
-        'sourcesJson': encodedSources,
-        'initialIndex': widget.initialIndex,
-        'userAgent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      });
+    final args = <String, dynamic>{
+      'url': cleanUrl,
+      'title': widget.title,
+      'tmdbId': widget.tmdbId,
+      'tmdbKey': MobileConfig.tmdbKey,
+      'gistUrl': savedGistUrl,
+      'isTv': widget.isTv,
+      'season': widget.season,
+      'episode': widget.episode,
+      'isTvDevice': false,
+      'seekSeconds': 30,
+      'sourcesJson': encodedSources,
+      'initialIndex': widget.initialIndex,
+      'userAgent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
 
+    try {
+      await _playerChannel.invokeMethod('playVideo', args);
       await _restorePortraitMode();
-      if (mounted) {
+      if (mounted && Navigator.canPop(context)) {
         Navigator.of(context).pop();
       }
     } on PlatformException catch (e) {
-      await _restorePortraitMode();
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMessage = e.message ?? 'Native player open नहीं हो पाया।';
-        });
+      try {
+        await _altPlayerChannel.invokeMethod('playVideo', args);
+        await _restorePortraitMode();
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.of(context).pop();
+        }
+      } catch (_) {
+        await _restorePortraitMode();
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _errorMessage = e.message ?? 'Native player open नहीं हो पाया।';
+          });
+        }
       }
     } catch (e) {
       await _restorePortraitMode();
