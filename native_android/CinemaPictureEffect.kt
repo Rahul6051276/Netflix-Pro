@@ -26,8 +26,8 @@ enum class PicturePreset(
     val gamma: Float
 ) {
     JUST_PLAYER(
-        displayName = "Hardware Original (Default)",
-        tagline = "100% Direct Hardware Decoder • True Natural Colors • Smooth Frame Pacing",
+        displayName = "Just Player Pure (Default)",
+        tagline = "Direct Hardware SurfaceView • True HDR10 / Natural Color",
         useShader = false,
         brightness = 0f,
         contrast = 1f,
@@ -39,29 +39,55 @@ enum class PicturePreset(
         gamma = 1f
     ),
     CINEMA_NATURAL(
-        displayName = "Clean Clarity",
-        tagline = "Subtle Detail • Natural Colors • Zero Color Crush",
+        displayName = "Cinema Natural",
+        tagline = "Subtle clarity • Natural skin tones • Zero red tint",
         useShader = true,
-        brightness = 0.005f,
-        contrast = 1.03f,
-        saturation = 1.02f,
-        vibrance = 0.05f,
-        shadowLift = 0.01f,
+        brightness = 0.01f,
+        contrast = 1.06f,
+        saturation = 1.06f,
+        vibrance = 0.12f,
+        shadowLift = 0.015f,
         warmth = 0.00f,
         sharpness = 0.18f,
-        gamma = 0.99f
+        gamma = 0.97f
     ),
-    BRIGHT_SHADOW(
-        displayName = "Shadow Lift",
-        tagline = "Clean Dark Scene Visibility • Preserves Highlights",
+    BRIGHT_SDR(
+        displayName = "Bright Shadow Boost",
+        tagline = "Lifts dark scenes cleanly • Best for dark prints",
         useShader = true,
-        brightness = 0.015f,
-        contrast = 1.01f,
+        brightness = 0.03f,
+        contrast = 1.04f,
+        saturation = 1.07f,
+        vibrance = 0.14f,
+        shadowLift = 0.035f,
+        warmth = 0.00f,
+        sharpness = 0.20f,
+        gamma = 0.90f
+    ),
+    CRISP_4K(
+        displayName = "Crisp 4K Clarity",
+        tagline = "Extra edge sharpness • Cool balanced tone",
+        useShader = true,
+        brightness = 0.01f,
+        contrast = 1.08f,
+        saturation = 1.06f,
+        vibrance = 0.12f,
+        shadowLift = 0.01f,
+        warmth = -0.03f,
+        sharpness = 0.36f,
+        gamma = 0.96f
+    ),
+    NIGHT_SOFT(
+        displayName = "Night Soft",
+        tagline = "Gentle eye-comfort • Balanced shadows",
+        useShader = true,
+        brightness = 0.00f,
+        contrast = 1.02f,
         saturation = 1.02f,
         vibrance = 0.06f,
-        shadowLift = 0.03f,
-        warmth = 0.00f,
-        sharpness = 0.15f,
+        shadowLift = 0.025f,
+        warmth = 0.03f,
+        sharpness = 0.12f,
         gamma = 0.95f
     )
 }
@@ -77,9 +103,7 @@ class CinemaPictureEffect : GlEffect {
         return CinemaPictureShaderProgram(useHdr)
     }
 
-    override fun isNoOp(inputWidth: Int, inputHeight: Int): Boolean {
-        return !CinemaPictureEngineState.currentPreset.useShader
-    }
+    override fun isNoOp(inputWidth: Int, inputHeight: Int): Boolean = false
 }
 
 @OptIn(UnstableApi::class)
@@ -117,7 +141,7 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
             glProgram.setFloatUniform("uShadowLift", s.shadowLift)
             glProgram.setFloatUniform("uWarmth", s.warmth)
             glProgram.setFloatUniform("uSharpness", s.sharpness)
-            glProgram.setFloatUniform("uGamma", s.gamma.coerceIn(0.80f, 1.20f))
+            glProgram.setFloatUniform("uGamma", s.gamma.coerceIn(0.75f, 1.25f))
             glProgram.bindAttributesAndUniforms()
 
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
@@ -150,7 +174,7 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
         """
 
         private const val FRAGMENT_SHADER = """
-            precision highp float;
+            precision mediump float;
             uniform sampler2D uTexSampler;
             uniform vec2 uTexelSize;
             uniform float uBrightness;
@@ -163,43 +187,36 @@ private class CinemaPictureShaderProgram(useHdr: Boolean) :
             uniform float uGamma;
             varying vec2 vTexSamplingCoord;
 
-            float getLuma(vec3 c) {
-                return dot(c, vec3(0.2126, 0.7152, 0.0722));
-            }
-
             void main() {
                 vec4 center = texture2D(uTexSampler, vTexSamplingCoord);
                 vec3 color = center.rgb;
 
                 if (uSharpness > 0.01) {
-                    float lC = getLuma(color);
-                    float lN = getLuma(texture2D(uTexSampler, vTexSamplingCoord + vec2(0.0, uTexelSize.y)).rgb);
-                    float lS = getLuma(texture2D(uTexSampler, vTexSamplingCoord - vec2(0.0, uTexelSize.y)).rgb);
-                    float lE = getLuma(texture2D(uTexSampler, vTexSamplingCoord + vec2(uTexelSize.x, 0.0)).rgb);
-                    float lW = getLuma(texture2D(uTexSampler, vTexSamplingCoord - vec2(uTexelSize.x, 0.0)).rgb);
-
-                    float blurLuma = (lN + lS + lE + lW) * 0.25;
-                    float edgeDetail = lC - blurLuma;
-                    float sharpDelta = clamp(edgeDetail * uSharpness, -0.06, 0.06);
-                    color = clamp(color + vec3(sharpDelta), 0.0, 1.0);
+                    vec3 n = texture2D(uTexSampler, vTexSamplingCoord + vec2(0.0, uTexelSize.y)).rgb;
+                    vec3 s = texture2D(uTexSampler, vTexSamplingCoord - vec2(0.0, uTexelSize.y)).rgb;
+                    vec3 e = texture2D(uTexSampler, vTexSamplingCoord + vec2(uTexelSize.x, 0.0)).rgb;
+                    vec3 w = texture2D(uTexSampler, vTexSamplingCoord - vec2(uTexelSize.x, 0.0)).rgb;
+                    vec3 blur = (n + s + e + w) * 0.25;
+                    vec3 detail = color - blur;
+                    color = clamp(color + detail * (uSharpness * 0.9), 0.0, 1.0);
                 }
 
-                float lumaIn = getLuma(color);
+                float lumaIn = dot(color, vec3(0.2126, 0.7152, 0.0722));
                 float shadowWeight = (1.0 - lumaIn) * (1.0 - lumaIn);
                 color = clamp(color + vec3(uBrightness + uShadowLift * shadowWeight), 0.0, 1.0);
 
                 color = clamp((color - 0.5) * uContrast + 0.5, 0.0, 1.0);
                 color = pow(max(color, vec3(0.0001)), vec3(uGamma));
 
-                float luma = getLuma(color);
+                float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
                 float maxC = max(color.r, max(color.g, color.b));
                 float minC = min(color.r, min(color.g, color.b));
                 float currentSat = maxC - minC;
                 float vibBoost = 1.0 + uVibrance * (1.0 - clamp(currentSat, 0.0, 1.0));
                 color = mix(vec3(luma), color, uSaturation * vibBoost);
 
-                color.r += uWarmth * 0.03;
-                color.b -= uWarmth * 0.03;
+                color.r += uWarmth * 0.06;
+                color.b -= uWarmth * 0.06;
 
                 gl_FragColor = vec4(clamp(color, 0.0, 1.0), center.a);
             }
