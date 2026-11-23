@@ -60,6 +60,8 @@ Future<void> launchTvDirectNativePlayer({
   VoidCallback? onPlaySaved,
 }) async {
   const MethodChannel playerChannel =
+      MethodChannel('com.netflixpro/player');
+  const MethodChannel legacyChannel =
       MethodChannel('com.netflixpro.netflix_pro/player');
 
   String savedGistUrl = '';
@@ -95,19 +97,27 @@ Future<void> launchTvDirectNativePlayer({
   final title = (item['title'] ?? 'Netflix Pro TV').toString();
   final isTv = item['isTv'] == true;
 
+  final args = <String, dynamic>{
+    'url': '',
+    'title': title,
+    'tmdbId': tmdbId,
+    'tmdbKey': TvConfig.tmdbKey,
+    'gistUrl': savedGistUrl,
+    'isTv': isTv,
+    'season': season,
+    'episode': episode,
+    'isTvDevice': true,
+    'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) CinemaTV/1.0',
+    'seekSeconds': 15,
+  };
+
   try {
-    await playerChannel.invokeMethod('playVideo', {
-      'url': '',
-      'title': title,
-      'tmdbId': tmdbId,
-      'tmdbKey': TvConfig.tmdbKey,
-      'gistUrl': savedGistUrl,
-      'isTv': isTv,
-      'season': season,
-      'episode': episode,
-      'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) CinemaTV/1.0',
-    });
-  } catch (_) {}
+    await playerChannel.invokeMethod('playVideo', args);
+  } catch (_) {
+    try {
+      await legacyChannel.invokeMethod('playVideo', args);
+    } catch (_) {}
+  }
 }
 
 // ============================================================================
@@ -1382,7 +1392,11 @@ class _TvStreamSheetState extends State<TvStreamSheet> {
       MaterialPageRoute(
         builder: (_) => InternalPlayerScreen(
           streamUrl: url.trim(),
-          title: widget.item['title'],
+          title: (widget.item['title'] ?? 'Netflix Pro TV').toString(),
+          tmdbId: (widget.item['tmdb_id'] ?? '').toString(),
+          isTv: widget.item['isTv'] == true,
+          season: widget.season ?? 1,
+          episode: widget.episode ?? 1,
         ),
       ),
     );
