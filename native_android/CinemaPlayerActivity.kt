@@ -111,6 +111,7 @@ class CinemaPlayerActivity : Activity() {
     private lateinit var errorOverlay: LinearLayout
     private lateinit var errorMessageView: TextView
 
+    // Sources Side Panel
     private lateinit var sourcesOverlay: FrameLayout
     private lateinit var sourcesListContainer: LinearLayout
     private val streamSources = mutableListOf<StreamSourceItem>()
@@ -130,6 +131,7 @@ class CinemaPlayerActivity : Activity() {
     @Volatile private var isActivityDestroyed = false
     @Volatile private var isResolvingAllSources = false
 
+    // 200% Audio Boost Steps
     private val boostLevels = intArrayOf(100, 135, 170, 200)
     private var boostIndex = 0
     private var currentBoostPercent = 100
@@ -176,7 +178,6 @@ class CinemaPlayerActivity : Activity() {
         finish()
     }
 
-    // Front camera cutout (notch/punch-hole) support for landscape full coverage
     private fun applyCameraCutoutFullScreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {
