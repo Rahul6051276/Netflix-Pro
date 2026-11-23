@@ -897,21 +897,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           _buildMobileRow('Continue Watching', continueWatchingList, ''),
 
                         _buildMobileRow(
-                          'Action & Adventure (Bollywood • South • English)',
-                          homeActionList,
-                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=20',
-                        ),
-                        _buildMobileRow(
-                          'Thriller & Suspense (Bollywood • South • English)',
-                          homeThrillerSuspenseList,
-                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
-                        ),
-                        _buildMobileRow(
-                          'Crime & Mystery Suspense (Latest Mix)',
-                          homeCrimeMysteryList,
-                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=9648,80&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
-                        ),
-                        _buildMobileRow(
                           'Bollywood Latest Movies',
                           homeBollywoodLatestList,
                           '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&primary_release_date.lte=$todayIso&vote_count.gte=8',
@@ -941,6 +926,21 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> {
                           homeHindiSeriesList,
                           '${MobileConfig.tmdbBase}/discover/tv?api_key=${MobileConfig.tmdbKey}&with_original_language=hi&without_genres=10766&vote_count.gte=3',
                           isTv: true,
+                        ),
+                        _buildMobileRow(
+                          'Action & Adventure (Bollywood • South • English)',
+                          homeActionList,
+                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=28&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=20',
+                        ),
+                        _buildMobileRow(
+                          'Thriller & Suspense (Bollywood • South • English)',
+                          homeThrillerSuspenseList,
+                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=53&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
+                        ),
+                        _buildMobileRow(
+                          'Crime & Mystery Suspense (Latest Mix)',
+                          homeCrimeMysteryList,
+                          '${MobileConfig.tmdbBase}/discover/movie?api_key=${MobileConfig.tmdbKey}&with_genres=9648,80&with_original_language=$mixedLangs&primary_release_date.lte=$todayIso&vote_count.gte=15',
                         ),
                       ],
                     ),
