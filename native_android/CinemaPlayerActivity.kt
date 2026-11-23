@@ -3,17 +3,10 @@ package com.netflixpro.netflix_pro
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.ColorFilter
-import android.graphics.Paint
-import android.graphics.PixelFormat
 import android.graphics.Typeface
-import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
 import android.media.AudioManager
 import android.media.audiofx.LoudnessEnhancer
@@ -81,43 +74,6 @@ import kotlin.math.abs
 @OptIn(UnstableApi::class)
 class CinemaPlayerActivity : Activity() {
 
-    private class VerticalThumbDrawable(
-        private val colorInt: Int,
-        private val widthPx: Int,
-        private val heightPx: Int
-    ) : Drawable() {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = colorInt
-            style = Paint.Style.FILL
-        }
-
-        override fun getIntrinsicWidth(): Int = widthPx
-        override fun getIntrinsicHeight(): Int = heightPx
-
-        override fun draw(canvas: Canvas) {
-            val b = bounds
-            val cx = b.exactCenterX()
-            val left = cx - (widthPx / 2f)
-            val right = cx + (widthPx / 2f)
-            val top = b.exactCenterY() - (heightPx / 2f)
-            val bottom = b.exactCenterY() + (heightPx / 2f)
-            canvas.drawRoundRect(left, top, right, bottom, 2f, 2f, paint)
-        }
-
-        override fun setAlpha(alpha: Int) {
-            paint.alpha = alpha
-            invalidateSelf()
-        }
-
-        override fun setColorFilter(colorFilter: ColorFilter?) {
-            paint.colorFilter = colorFilter
-            invalidateSelf()
-        }
-
-        @Deprecated("Deprecated in Java")
-        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
-    }
-
     private data class StreamSourceItem(
         val server: String,
         val title: String,
@@ -140,10 +96,12 @@ class CinemaPlayerActivity : Activity() {
     private lateinit var connectingText: TextView
     private lateinit var feedbackBadge: TextView
     private lateinit var titleView: TextView
-    private lateinit var subtitleView: TextView
     private lateinit var infoBadgeView: TextView
     private lateinit var playPauseBtn: Button
+    private lateinit var boostBtn: Button
     private lateinit var aspectBtn: Button
+    private lateinit var speedBtn: Button
+    private lateinit var pictureBtn: Button
     private lateinit var sourcesBtn: Button
     private lateinit var timeCurrentView: TextView
     private lateinit var timeTotalView: TextView
@@ -167,11 +125,12 @@ class CinemaPlayerActivity : Activity() {
     private var isScreenLocked = false
     private var isSeekingFromUser = false
     private var isShaderAttached = false
-    private var seekStepSec = 10
-    private var seekStepMs = 10_000L
+    private var seekStepSec = 15
+    private var seekStepMs = 15_000L
     @Volatile private var isActivityDestroyed = false
     @Volatile private var isResolvingAllSources = false
 
+    // 200% Audio Boost Steps
     private val boostLevels = intArrayOf(100, 135, 170, 200)
     private var boostIndex = 0
     private var currentBoostPercent = 100
@@ -182,7 +141,10 @@ class CinemaPlayerActivity : Activity() {
         AspectRatioFrameLayout.RESIZE_MODE_FILL
     )
     private val resizeLabels = arrayOf("Fit", "Crop / Zoom", "Fill")
-    private var resizeIndex = 1 // Default Crop / Zoom (full screen without left black bar)
+    private var resizeIndex = 0
+
+    private val speeds = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+    private var speedIndex = 1
 
     private val prefs by lazy {
         getSharedPreferences("netflix_pro_player_prefs", Context.MODE_PRIVATE)
@@ -215,15 +177,26 @@ class CinemaPlayerActivity : Activity() {
         finish()
     }
 
+    private fun applyCameraCutoutFullScreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        applyCameraCutoutFullScreen()
 
-        seekStepSec = intent.getIntExtra("seekSeconds", 10).coerceIn(5, 60)
+        seekStepSec = intent.getIntExtra("seekSeconds", 15).coerceIn(5, 60)
         seekStepMs = seekStepSec * 1000L
 
+        // Default: Pure Hardware Surface (No artificial OpenGL color distortion)
         val savedName = prefs.getString("picture_preset_pure_hw", PicturePreset.JUST_PLAYER.name)
         currentPreset = PicturePreset.values().firstOrNull { it.name == savedName }
             ?: PicturePreset.JUST_PLAYER
@@ -253,8 +226,7 @@ class CinemaPlayerActivity : Activity() {
         playerView.useController = false
         playerView.layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            Gravity.CENTER
+            FrameLayout.LayoutParams.MATCH_PARENT
         )
         applyResizeModeToPlayer(resizeModes[resizeIndex])
 
@@ -275,8 +247,9 @@ class CinemaPlayerActivity : Activity() {
         val episode = intent.getIntExtra("episode", 1)
 
         titleView.text = currentMovieTitle
-        updateHeaderSubtitle()
+        pictureBtn.text = if (currentPreset == PicturePreset.JUST_PLAYER) "HW Original" else currentPreset.displayName
         sourcesBtn.text = "Sources (${streamSources.size})"
+        updateBoostButtonUi()
 
         val directUrl = if (streamSources.isNotEmpty()) {
             activeSourceIndex = activeSourceIndex.coerceIn(0, streamSources.size - 1)
@@ -289,7 +262,7 @@ class CinemaPlayerActivity : Activity() {
             if (streamSources.isEmpty()) {
                 streamSources.add(
                     StreamSourceItem(
-                        server = "Gist Source",
+                        server = "Live Broadcast",
                         title = currentMovieTitle,
                         url = directUrl,
                         isHindi = isExplicitHindi(currentMovieTitle)
@@ -297,7 +270,6 @@ class CinemaPlayerActivity : Activity() {
                 )
                 sourcesBtn.text = "Sources (1)"
             }
-            updateHeaderSubtitle()
             currentActiveUrl = directUrl
             setConnectingState(false)
             loadingSpinner.visibility = View.VISIBLE
@@ -308,17 +280,7 @@ class CinemaPlayerActivity : Activity() {
             setConnectingState(true)
             resolveStreamsInsidePlayer(tmdbId, tmdbKey, customGistUrl, currentMovieTitle, isTv, season, episode)
         } else {
-            showError("Stream URL is empty.")
-        }
-    }
-
-    private fun updateHeaderSubtitle() {
-        if (!::subtitleView.isInitialized) return
-        val active = streamSources.getOrNull(activeSourceIndex)
-        subtitleView.text = if (active != null) {
-            "${active.server.uppercase(Locale.ROOT)} • ${active.title}"
-        } else {
-            "GIST SOURCE"
+            showError("Stream URL खाली है।")
         }
     }
 
@@ -339,11 +301,7 @@ class CinemaPlayerActivity : Activity() {
                     }
                 }
             }
-            activeSourceIndex = if (intent.hasExtra("initialIndex")) {
-                intent.getIntExtra("initialIndex", 0)
-            } else {
-                intent.getIntExtra("activeIndex", 0)
-            }
+            activeSourceIndex = intent.getIntExtra("activeIndex", 0)
         } catch (_: Throwable) {}
     }
 
@@ -352,6 +310,9 @@ class CinemaPlayerActivity : Activity() {
         centerBar.visibility = if (connecting) View.GONE else View.VISIBLE
     }
 
+    // =========================================================================
+    // 200% AUDIO BOOST ENGINE (LOUDNESS ENHANCER)
+    // =========================================================================
     private fun attachLoudnessEnhancer(audioSessionId: Int) {
         if (audioSessionId <= 0 || audioSessionId == C.AUDIO_SESSION_ID_UNSET) return
         releaseLoudnessEnhancer()
@@ -375,6 +336,7 @@ class CinemaPlayerActivity : Activity() {
         val clamped = percent.coerceIn(100, 200)
         currentBoostPercent = clamped
         prefs.edit().putInt("audio_boost_percent", clamped).apply()
+        updateBoostButtonUi()
 
         val exo = player
         if (exo != null && loudnessEnhancer == null) {
@@ -402,11 +364,32 @@ class CinemaPlayerActivity : Activity() {
 
         if (showToast) {
             showFeedback(
-                if (clamped > 100) "Audio Boost: $clamped%" else "Audio: 100% (Normal)"
+                if (clamped > 100) "🔊 Audio Boost: $clamped%" else "🔊 Audio: 100% (Normal)"
             )
         }
     }
 
+    private fun cycleAudioBoost() {
+        boostIndex = (boostIndex + 1) % boostLevels.size
+        applyAudioBoostPercent(boostLevels[boostIndex], showToast = true)
+        scheduleHideHud()
+    }
+
+    private fun updateBoostButtonUi() {
+        if (!::boostBtn.isInitialized) return
+        boostBtn.text = if (currentBoostPercent > 100) {
+            "🔊 $currentBoostPercent% BOOST"
+        } else {
+            "🔊 100%"
+        }
+        boostBtn.setTextColor(
+            if (currentBoostPercent > 100) Color.parseColor("#38BDF8") else Color.WHITE
+        )
+    }
+
+    // =========================================================================
+    // RAM-SAFE STRICT EXACT-MATCH STREAM RESOLVER (IPTV VOD + SERIES + STREMIO)
+    // =========================================================================
     private fun resolveStreamsInsidePlayer(
         tmdbId: String,
         tmdbKey: String,
@@ -445,7 +428,6 @@ class CinemaPlayerActivity : Activity() {
                         if (idx >= 0) activeSourceIndex = idx
                     }
 
-                    updateHeaderSubtitle()
                     sourcesBtn.text = if (isFinal) {
                         "Sources (${streamSources.size})"
                     } else {
@@ -459,7 +441,6 @@ class CinemaPlayerActivity : Activity() {
                     if (streamSources.isNotEmpty() && playbackStarted.compareAndSet(false, true)) {
                         activeSourceIndex = 0
                         currentActiveUrl = streamSources[0].url
-                        updateHeaderSubtitle()
                         setConnectingState(false)
                         loadingSpinner.visibility = View.VISIBLE
                         initExoPlayer(
@@ -510,132 +491,173 @@ class CinemaPlayerActivity : Activity() {
                 } catch (_: Throwable) {}
             }
 
-            val latch = CountDownLatch(providers.size.coerceAtLeast(1))
+            val latch = CountDownLatch(providers.size + 1)
 
-            if (providers.isEmpty()) {
-                latch.countDown()
-            } else {
-                for (prov in providers) {
-                    thread(start = true) {
-                        try {
-                            if (!isSafeUi()) return@thread
-                            val type = prov.optString("type", "")
-                            val provName = prov.optString("name", "Server")
+            for (prov in providers) {
+                thread(start = true) {
+                    try {
+                        if (!isSafeUi()) return@thread
+                        val type = prov.optString("type", "")
+                        val provName = prov.optString("name", "Server")
 
-                            if (type == "xtream") {
-                                val host = prov.optString("xc_host", prov.optString("host", "")).trimEnd('/')
-                                val user = prov.optString("xc_username", prov.optString("username", ""))
-                                val pass = prov.optString("xc_password", prov.optString("password", ""))
+                        if (type == "xtream") {
+                            val host = prov.optString("xc_host", prov.optString("host", "")).trimEnd('/')
+                            val user = prov.optString("xc_username", prov.optString("username", ""))
+                            val pass = prov.optString("xc_password", prov.optString("password", ""))
 
-                                if (host.isNotEmpty() && user.isNotEmpty() && pass.isNotEmpty()) {
-                                    if (isTv) {
-                                        val cands = streamSearchXtreamList(
-                                            apiUrl = "$host/player_api.php?username=$user&password=$pass&action=get_series",
-                                            tmdbId = tmdbId,
-                                            cleanTarget = cleanTarget,
-                                            idKey = "series_id"
+                            if (host.isNotEmpty() && user.isNotEmpty() && pass.isNotEmpty()) {
+                                if (isTv) {
+                                    val cands = streamSearchXtreamList(
+                                        apiUrl = "$host/player_api.php?username=$user&password=$pass&action=get_series",
+                                        tmdbId = tmdbId,
+                                        cleanTarget = cleanTarget,
+                                        idKey = "series_id"
+                                    )
+                                    cands.sortByDescending { if (it.isHindi) 1 else 0 }
+                                    for (bestSeries in cands) {
+                                        if (!isSafeUi()) break
+                                        val infoStr = httpGet(
+                                            "$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=${bestSeries.id}",
+                                            15_000,
+                                            userAgent = "IPTVSmartersPro"
                                         )
-                                        cands.sortByDescending { if (it.isHindi) 1 else 0 }
-                                        for (bestSeries in cands) {
-                                            if (!isSafeUi()) break
-                                            val infoStr = httpGet(
-                                                "$host/player_api.php?username=$user&password=$pass&action=get_series_info&series_id=${bestSeries.id}",
-                                                15_000,
-                                                userAgent = "IPTVSmartersPro"
-                                            )
-                                            if (infoStr.startsWith("{")) {
-                                                val epMap = JSONObject(infoStr).optJSONObject("episodes")
-                                                val epArr = epMap?.optJSONArray("$season")
-                                                if (epArr != null) {
-                                                    for (j in 0 until epArr.length()) {
-                                                        val epObj = epArr.getJSONObject(j)
-                                                        if (epObj.optInt("episode_num", -1) == episode) {
-                                                            val eid = epObj.optString("id", "")
-                                                            val ext = epObj.optString("container_extension", "mp4").ifBlank { "mp4" }
-                                                            found.add(
-                                                                StreamSourceItem(
-                                                                    server = provName.ifBlank { "IPTV Server" },
-                                                                    title = if (bestSeries.isHindi) "$movieTitle (Hindi) S$season:E$episode" else "$movieTitle S$season:E$episode",
-                                                                    url = "$host/series/$user/$pass/$eid.$ext",
-                                                                    isHindi = bestSeries.isHindi,
-                                                                    isMultiAudio = false
-                                                                )
+                                        if (infoStr.startsWith("{")) {
+                                            val epMap = JSONObject(infoStr).optJSONObject("episodes")
+                                            val epArr = epMap?.optJSONArray("$season")
+                                            if (epArr != null) {
+                                                for (j in 0 until epArr.length()) {
+                                                    val epObj = epArr.getJSONObject(j)
+                                                    if (epObj.optInt("episode_num", -1) == episode) {
+                                                        val eid = epObj.optString("id", "")
+                                                        val ext = epObj.optString("container_extension", "mp4").ifBlank { "mp4" }
+                                                        found.add(
+                                                            StreamSourceItem(
+                                                                server = provName.ifBlank { "IPTV Server" },
+                                                                title = if (bestSeries.isHindi) "$movieTitle (Hindi) S$season:E$episode" else "$movieTitle S$season:E$episode",
+                                                                url = "$host/series/$user/$pass/$eid.$ext",
+                                                                isHindi = bestSeries.isHindi,
+                                                                isMultiAudio = false
                                                             )
-                                                            syncSourcesToUi(isFinal = false)
-                                                            break
-                                                        }
+                                                        )
+                                                        syncSourcesToUi(isFinal = false)
+                                                        break
                                                     }
                                                 }
                                             }
                                         }
-                                    } else {
-                                        val cands = streamSearchXtreamList(
-                                            apiUrl = "$host/player_api.php?username=$user&password=$pass&action=get_vod_streams",
-                                            tmdbId = tmdbId,
-                                            cleanTarget = cleanTarget,
-                                            idKey = "stream_id"
-                                        )
-                                        cands.sortByDescending { if (it.isHindi) 1 else 0 }
-                                        for (bestMovie in cands) {
-                                            found.add(
-                                                StreamSourceItem(
-                                                    server = provName.ifBlank { "IPTV Server" },
-                                                    title = bestMovie.name.ifBlank { movieTitle },
-                                                    url = "$host/movie/$user/$pass/${bestMovie.id}.${bestMovie.ext}",
-                                                    isHindi = bestMovie.isHindi,
-                                                    isMultiAudio = false
-                                                )
-                                            )
-                                        }
-                                        if (cands.isNotEmpty()) syncSourcesToUi(isFinal = false)
                                     }
-                                }
-                            } else if (type == "stremio" && imdbId.isNotEmpty()) {
-                                val base = prov.optString("url", "").replace("/manifest.json", "")
-                                val streamPath = if (isTv) {
-                                    "$base/stream/series/$imdbId:$season:$episode.json"
                                 } else {
-                                    "$base/stream/movie/$imdbId.json"
-                                }
-                                val sStr = httpGet(streamPath, 12_000)
-                                if (sStr.startsWith("{")) {
-                                    val entries = JSONObject(sStr).optJSONArray("streams")
-                                    if (entries != null) {
-                                        var addedAny = false
-                                        for (i in 0 until entries.length()) {
-                                            val sObj = entries.getJSONObject(i)
-                                            val sUrl = sObj.optString("url", "").trim()
-                                            if (sUrl.isEmpty()) continue
-                                            val namePart = sObj.optString("name", "")
-                                            val titlePart = sObj.optString("title", "")
-                                            val combined = "$namePart $titlePart".trim()
-                                            val low = combined.lowercase(Locale.ROOT)
-                                            if (low.contains("donation") || low.contains("discord") || low.contains("telegram")) continue
-
-                                            val displayTitle = titlePart.ifBlank { namePart }.ifBlank { "$movieTitle HD" }
-                                            val explicitHindi = isExplicitHindi("$provName $combined")
-                                            val multiHindi = isIndianMultiAudioServer("$provName $combined")
-
-                                            found.add(
-                                                StreamSourceItem(
-                                                    server = provName.ifBlank { "Stremio" },
-                                                    title = displayTitle,
-                                                    url = sUrl,
-                                                    isHindi = explicitHindi || multiHindi,
-                                                    isMultiAudio = multiHindi && !explicitHindi
-                                                )
+                                    val cands = streamSearchXtreamList(
+                                        apiUrl = "$host/player_api.php?username=$user&password=$pass&action=get_vod_streams",
+                                        tmdbId = tmdbId,
+                                        cleanTarget = cleanTarget,
+                                        idKey = "stream_id"
+                                    )
+                                    cands.sortByDescending { if (it.isHindi) 1 else 0 }
+                                    for (bestMovie in cands) {
+                                        found.add(
+                                            StreamSourceItem(
+                                                server = provName.ifBlank { "IPTV Server" },
+                                                title = bestMovie.name.ifBlank { movieTitle },
+                                                url = "$host/movie/$user/$pass/${bestMovie.id}.${bestMovie.ext}",
+                                                isHindi = bestMovie.isHindi,
+                                                isMultiAudio = false
                                             )
-                                            addedAny = true
-                                        }
-                                        if (addedAny) syncSourcesToUi(isFinal = false)
+                                        )
                                     }
+                                    if (cands.isNotEmpty()) syncSourcesToUi(isFinal = false)
                                 }
                             }
-                        } catch (_: Throwable) {
-                        } finally {
-                            latch.countDown()
+                        } else if (type == "stremio" && imdbId.isNotEmpty()) {
+                            val base = prov.optString("url", "").replace("/manifest.json", "")
+                            val streamPath = if (isTv) {
+                                "$base/stream/series/$imdbId:$season:$episode.json"
+                            } else {
+                                "$base/stream/movie/$imdbId.json"
+                            }
+                            val sStr = httpGet(streamPath, 12_000)
+                            if (sStr.startsWith("{")) {
+                                val entries = JSONObject(sStr).optJSONArray("streams")
+                                if (entries != null) {
+                                    var addedAny = false
+                                    for (i in 0 until entries.length()) {
+                                        val sObj = entries.getJSONObject(i)
+                                        val sUrl = sObj.optString("url", "").trim()
+                                        if (sUrl.isEmpty()) continue
+                                        val namePart = sObj.optString("name", "")
+                                        val titlePart = sObj.optString("title", "")
+                                        val combined = "$namePart $titlePart".trim()
+                                        val low = combined.lowercase(Locale.ROOT)
+                                        if (low.contains("donation") || low.contains("discord") || low.contains("telegram")) continue
+
+                                        val displayTitle = titlePart.ifBlank { namePart }.ifBlank { "$movieTitle HD" }
+                                        val explicitHindi = isExplicitHindi("$provName $combined")
+                                        val multiHindi = isIndianMultiAudioServer("$provName $combined")
+
+                                        found.add(
+                                            StreamSourceItem(
+                                                server = provName.ifBlank { "HDHub4u" },
+                                                title = displayTitle,
+                                                url = sUrl,
+                                                isHindi = explicitHindi || multiHindi,
+                                                isMultiAudio = multiHindi && !explicitHindi
+                                            )
+                                        )
+                                        addedAny = true
+                                    }
+                                    if (addedAny) syncSourcesToUi(isFinal = false)
+                                }
+                            }
                         }
+                    } catch (_: Throwable) {
+                    } finally {
+                        latch.countDown()
                     }
+                }
+            }
+
+            thread(start = true) {
+                try {
+                    val embedType = if (isTv) "series" else "movie"
+                    val embedUrl = if (isTv) {
+                        "https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$tmdbId?season=$season&episode=$episode"
+                    } else {
+                        "https://tmdb-embed-api-4.onrender.com/api/streams/$embedType/$tmdbId"
+                    }
+                    val cStr = httpGet(embedUrl, 12_000)
+                    if (cStr.isNotEmpty()) {
+                        val trimmed = cStr.trim()
+                        val arr = if (trimmed.startsWith("[")) {
+                            JSONArray(trimmed)
+                        } else {
+                            JSONObject(trimmed).optJSONArray("streams") ?: JSONArray()
+                        }
+                        var addedAny = false
+                        for (i in 0 until arr.length()) {
+                            val sObj = arr.getJSONObject(i)
+                            val sUrl = sObj.optString("url", "").trim()
+                            if (sUrl.isNotEmpty()) {
+                                val sTitle = sObj.optString("title", "$movieTitle HD")
+                                val pName = sObj.optString("provider", "Cloud HD")
+                                val explicitHindi = isExplicitHindi("$pName $sTitle")
+                                val multiHindi = isIndianMultiAudioServer("$pName $sTitle")
+                                found.add(
+                                    StreamSourceItem(
+                                        server = pName,
+                                        title = sTitle,
+                                        url = sUrl,
+                                        isHindi = explicitHindi || multiHindi,
+                                        isMultiAudio = multiHindi && !explicitHindi
+                                    )
+                                )
+                                addedAny = true
+                            }
+                        }
+                        if (addedAny) syncSourcesToUi(isFinal = false)
+                    }
+                } catch (_: Throwable) {
+                } finally {
+                    latch.countDown()
                 }
             }
 
@@ -851,22 +873,19 @@ class CinemaPlayerActivity : Activity() {
 
     private fun applyResizeModeToPlayer(mode: Int) {
         if (!::playerView.isInitialized) return
+        applyCameraCutoutFullScreen()
+        playerView.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
         playerView.resizeMode = mode
         findAspectFrameLayout(playerView)?.let { aspectFrame ->
-            aspectFrame.resizeMode = mode
             aspectFrame.layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 Gravity.CENTER
             )
-            for (i in 0 until aspectFrame.childCount) {
-                val child = aspectFrame.getChildAt(i)
-                child.layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    Gravity.CENTER
-                )
-            }
+            aspectFrame.resizeMode = mode
             aspectFrame.requestLayout()
             aspectFrame.invalidate()
         }
@@ -950,7 +969,6 @@ class CinemaPlayerActivity : Activity() {
             )
         }
 
-        // Top Bar: Back + Title/Subtitle on Left | HW + Sources (N) on Right
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -966,59 +984,45 @@ class CinemaPlayerActivity : Activity() {
             )
         }
 
-        val backBtn = createHudButton("←") { finishPlayerCleanly() }.apply {
-            background = null
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-        }
-
-        val titleColumn = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), 0, dp(10), 0)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
+        val backBtn = createHudButton("← Back") { finishPlayerCleanly() }
         titleView = TextView(this).apply {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             typeface = Typeface.DEFAULT_BOLD
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(12), 0, dp(10), 0)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        subtitleView = TextView(this).apply {
-            text = "GIST SOURCE"
-            setTextColor(Color.parseColor("#B0FFFFFF"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-        }
-        titleColumn.addView(titleView)
-        titleColumn.addView(subtitleView)
-
         infoBadgeView = TextView(this).apply {
             text = "HW"
-            setTextColor(Color.parseColor("#4ADE80"))
+            setTextColor(Color.parseColor("#38BDF8"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             typeface = Typeface.DEFAULT_BOLD
             setPadding(dp(8), dp(4), dp(8), dp(4))
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#66000000"))
-                cornerRadius = dp(5).toFloat()
-                setStroke(dp(1), Color.parseColor("#22C55E"))
+                setColor(Color.parseColor("#331E88E5"))
+                cornerRadius = dp(6).toFloat()
             }
-            visibility = View.VISIBLE
+            visibility = View.GONE
         }
         sourcesBtn = createHudButton("Sources (0)") { openSourcesPanel() }.apply {
             background = createSourcesPill()
         }
+        pictureBtn = createHudButton("HW Original") { showPicturePresetDialog() }
+        val lockBtn = createHudButton("🔒 Lock") { lockScreen() }
 
         topBar.addView(backBtn)
-        topBar.addView(titleColumn)
+        topBar.addView(titleView)
         topBar.addView(infoBadgeView)
-        topBar.addView(spacer(dp(10)))
+        topBar.addView(spacer(dp(8)))
         topBar.addView(sourcesBtn)
+        topBar.addView(spacer(dp(8)))
+        topBar.addView(pictureBtn)
+        topBar.addView(spacer(dp(8)))
+        topBar.addView(lockBtn)
         hudContainer.addView(topBar)
 
-        // Center Controls: -10s | Red Circle Play/Pause | +10s
         centerBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -1028,36 +1032,16 @@ class CinemaPlayerActivity : Activity() {
                 Gravity.CENTER
             )
         }
-        val rwBtn = createHudButton("↺ ${seekStepSec}", big = true) { seekBy(-seekStepMs) }.apply {
-            background = null
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-        }
-        playPauseBtn = Button(this).apply {
-            text = "❚❚"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
-            typeface = Typeface.DEFAULT_BOLD
-            isFocusable = true
-            isFocusableInTouchMode = false
-            layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#E50914"))
-            }
-            setOnClickListener { togglePlayPause() }
-        }
-        val fwBtn = createHudButton("${seekStepSec} ↻", big = true) { seekBy(seekStepMs) }.apply {
-            background = null
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-        }
+        val rwBtn = createHudButton("↺ ${seekStepSec}s", big = true) { seekBy(-seekStepMs) }
+        playPauseBtn = createHudButton("❚❚", big = true) { togglePlayPause() }
+        val fwBtn = createHudButton("${seekStepSec}s ↻", big = true) { seekBy(seekStepMs) }
         centerBar.addView(rwBtn)
-        centerBar.addView(spacer(dp(34)))
+        centerBar.addView(spacer(dp(20)))
         centerBar.addView(playPauseBtn)
-        centerBar.addView(spacer(dp(34)))
+        centerBar.addView(spacer(dp(20)))
         centerBar.addView(fwBtn)
         hudContainer.addView(centerBar)
 
-        // Bottom Panel: SeekBar + 4 Spaced Actions (Lock | Crop / Zoom | Audio | Subtitles)
         val bottomPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(22), dp(20), dp(14))
@@ -1075,7 +1059,7 @@ class CinemaPlayerActivity : Activity() {
         seekBarRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setPadding(dp(10), dp(6), dp(10), dp(6))
             background = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
                 cornerRadius = dp(10).toFloat()
@@ -1088,55 +1072,17 @@ class CinemaPlayerActivity : Activity() {
         timeCurrentView = TextView(this).apply {
             text = "00:00"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             typeface = Typeface.DEFAULT_BOLD
         }
-
-        val bgTrack = GradientDrawable().apply {
-            setColor(Color.parseColor("#4A4A4A"))
-            cornerRadius = dp(3).toFloat()
-        }
-        val secTrack = ClipDrawable(
-            GradientDrawable().apply {
-                setColor(Color.parseColor("#888888"))
-                cornerRadius = dp(3).toFloat()
-            },
-            Gravity.START,
-            ClipDrawable.HORIZONTAL
-        )
-        val progTrack = ClipDrawable(
-            GradientDrawable().apply {
-                setColor(Color.parseColor("#E50914"))
-                cornerRadius = dp(3).toFloat()
-            },
-            Gravity.START,
-            ClipDrawable.HORIZONTAL
-        )
-        val seekLayerDrawable = LayerDrawable(
-            arrayOf(bgTrack, secTrack, progTrack)
-        ).apply {
-            setId(0, android.R.id.background)
-            setId(1, android.R.id.secondaryProgress)
-            setId(2, android.R.id.progress)
-        }
-
         seekBar = SeekBar(this).apply {
             max = 1000
             keyProgressIncrement = 15
-            splitTrack = false
             isFocusable = true
             isFocusableInTouchMode = false
-            progressDrawable = seekLayerDrawable
-            thumb = VerticalThumbDrawable(
-                colorInt = Color.parseColor("#E50914"),
-                widthPx = dp(6),
-                heightPx = dp(22)
-            ).apply {
-                setBounds(0, 0, dp(6), dp(22))
-            }
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                leftMargin = dp(12)
-                rightMargin = dp(12)
+                leftMargin = dp(14)
+                rightMargin = dp(14)
             }
             setOnFocusChangeListener { _, hasFocus ->
                 seekBarRow.background = GradientDrawable().apply {
@@ -1148,7 +1094,7 @@ class CinemaPlayerActivity : Activity() {
                 }
                 if (hasFocus) {
                     scheduleHideHud()
-                    showFeedback("SeekBar (Use Left / Right)")
+                    showFeedback("◀ SeekBar ▶  (Use Left / Right)")
                 }
             }
             setOnKeyListener { _, keyCode, event ->
@@ -1200,7 +1146,7 @@ class CinemaPlayerActivity : Activity() {
         timeTotalView = TextView(this).apply {
             text = "00:00"
             setTextColor(Color.parseColor("#CCFFFFFF"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             typeface = Typeface.DEFAULT_BOLD
         }
         seekBarRow.addView(timeCurrentView)
@@ -1209,22 +1155,28 @@ class CinemaPlayerActivity : Activity() {
 
         val actionsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), dp(10), dp(8), dp(2))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, 0)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        val lockBtn = createSpacedActionButton("🔒 Lock") { lockScreen() }
-        aspectBtn = createSpacedActionButton("⛶ ${resizeLabels[resizeIndex]}") { cycleAspectRatio() }
-        val audioBtn = createSpacedActionButton("♫ Audio") { showAudioDialog() }
-        val subBtn = createSpacedActionButton("CC Subtitles") { showSubAndQualityDialog() }
+        boostBtn = createHudButton("🔊 100%") { cycleAudioBoost() }
+        val audioBtn = createHudButton("Audio Track") { showAudioDialog() }
+        val subQualBtn = createHudButton("Sub / Quality") { showSubAndQualityDialog() }
+        aspectBtn = createHudButton("Fit") { cycleAspectRatio() }
+        speedBtn = createHudButton("1.0x") { cyclePlaybackSpeed() }
 
-        actionsRow.addView(lockBtn)
-        actionsRow.addView(aspectBtn)
+        actionsRow.addView(boostBtn)
+        actionsRow.addView(spacer(dp(8)))
         actionsRow.addView(audioBtn)
-        actionsRow.addView(subBtn)
+        actionsRow.addView(spacer(dp(8)))
+        actionsRow.addView(subQualBtn)
+        actionsRow.addView(spacer(dp(8)))
+        actionsRow.addView(aspectBtn)
+        actionsRow.addView(spacer(dp(8)))
+        actionsRow.addView(speedBtn)
 
         bottomPanel.addView(seekBarRow)
         bottomPanel.addView(actionsRow)
@@ -1284,25 +1236,6 @@ class CinemaPlayerActivity : Activity() {
         errorOverlay.addView(errorMessageView)
         errorOverlay.addView(errBtns)
         root.addView(errorOverlay)
-    }
-
-    private fun createSpacedActionButton(label: String, onClick: () -> Unit): Button {
-        return Button(this).apply {
-            text = label
-            isAllCaps = false
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            typeface = Typeface.DEFAULT_BOLD
-            isFocusable = true
-            isFocusableInTouchMode = false
-            minWidth = 0
-            minHeight = 0
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            background = null
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener { onClick() }
-        }
     }
 
     private fun buildSourcesSidePanel(root: FrameLayout) {
@@ -1475,7 +1408,7 @@ class CinemaPlayerActivity : Activity() {
 
         if (isResolvingAllSources) {
             val scanningBanner = TextView(this).apply {
-                text = "Scanning Gist sources (${streamSources.size} loaded)..."
+                text = "⏳ Scanning IPTV & Cloud servers (${streamSources.size} loaded)..."
                 setTextColor(Color.parseColor("#38BDF8"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
                 typeface = Typeface.DEFAULT_BOLD
@@ -1538,7 +1471,7 @@ class CinemaPlayerActivity : Activity() {
                 badgesRow.addView(spacer(dp(6)))
                 badgesRow.addView(
                     makeTagBadge(
-                        text = if (src.isMultiAudio) "HINDI / MULTI" else "HINDI",
+                        text = if (src.isMultiAudio) "★ HINDI / MULTI" else "★ HINDI",
                         bgHex = "#FACC15",
                         fgHex = "#111111"
                     )
@@ -1636,7 +1569,6 @@ class CinemaPlayerActivity : Activity() {
         activeSourceIndex = index
         val selected = streamSources[index]
         currentActiveUrl = selected.url
-        updateHeaderSubtitle()
 
         closeSourcesPanel()
         loadingSpinner.visibility = View.VISIBLE
@@ -1662,12 +1594,13 @@ class CinemaPlayerActivity : Activity() {
     private fun createSourcesPill(): StateListDrawable {
         val focused = GradientDrawable().apply {
             setColor(Color.parseColor("#0F172A"))
-            cornerRadius = dp(8).toFloat()
-            setStroke(dp(2), Color.parseColor("#FACC15"))
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(3), Color.parseColor("#FACC15"))
         }
         val normal = GradientDrawable().apply {
             setColor(Color.parseColor("#E50914"))
-            cornerRadius = dp(8).toFloat()
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(1), Color.parseColor("#66FFFFFF"))
         }
         return StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused), focused)
@@ -1726,6 +1659,7 @@ class CinemaPlayerActivity : Activity() {
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
+        // Pure Android Hardware Decoder (Matches native Media3 player quality & natural colors)
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             .setEnableDecoderFallback(true)
@@ -1815,6 +1749,47 @@ class CinemaPlayerActivity : Activity() {
         handler.post(progressRunnable)
     }
 
+    private fun applyPicturePreset(preset: PicturePreset) {
+        if (!isSafeUi()) return
+        CinemaPictureEngineState.currentPreset = preset
+        prefs.edit().putString("picture_preset_pure_hw", preset.name).apply()
+        pictureBtn.text = if (preset == PicturePreset.JUST_PLAYER) "HW Original" else preset.displayName
+
+        val exo = player ?: return
+        val needsShader = preset.useShader
+        if (needsShader != isShaderAttached) {
+            val pos = exo.currentPosition.coerceAtLeast(0L)
+            val wasPlaying = exo.playWhenReady
+            exo.stop()
+            exo.setVideoEffects(if (needsShader) listOf(CinemaPictureEffect()) else emptyList())
+            isShaderAttached = needsShader
+            exo.setMediaItem(currentMediaItem, pos)
+            exo.prepare()
+            exo.playWhenReady = wasPlaying
+        }
+        showFeedback(preset.displayName)
+    }
+
+    private fun showPicturePresetDialog() {
+        if (!isSafeUi()) return
+        handler.removeCallbacks(hideHudRunnable)
+        val presets = PicturePreset.values()
+        val labels = presets.map { "${it.displayName}\n${it.tagline}" }.toTypedArray()
+        val checked = presets.indexOf(CinemaPictureEngineState.currentPreset).coerceAtLeast(0)
+
+        try {
+            AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Picture Mode")
+                .setSingleChoiceItems(labels, checked) { dialog, which ->
+                    applyPicturePreset(presets[which])
+                    dialog.dismiss()
+                    scheduleHideHud()
+                }
+                .setOnCancelListener { scheduleHideHud() }
+                .show()
+        } catch (_: Throwable) {}
+    }
+
     private fun showAudioDialog() {
         if (!isSafeUi()) return
         val exo = player ?: return
@@ -1901,12 +1876,11 @@ class CinemaPlayerActivity : Activity() {
         val exo = player ?: return
         handler.removeCallbacks(hideHudRunnable)
         val tracks = exo.currentTracks
-        val isSubDisabled = exo.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
 
         val items = mutableListOf<String>()
         val actions = mutableListOf<() -> Unit>()
 
-        items.add(if (isSubDisabled) "✓ Subtitles: Off" else "Subtitles: Off")
+        items.add("Subtitles: Off")
         actions.add {
             exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
@@ -1918,7 +1892,7 @@ class CinemaPlayerActivity : Activity() {
                 for (i in 0 until group.length) {
                     if (group.isTrackSupported(i)) {
                         val fmt = group.getTrackFormat(i)
-                        val selected = if (!isSubDisabled && group.isTrackSelected(i)) "✓ " else ""
+                        val selected = if (group.isTrackSelected(i)) "✓ " else ""
                         val name = formatTrackName(fmt, "Subtitle ${i + 1}")
                         items.add("${selected}Subtitle: $name")
                         actions.add {
@@ -2052,7 +2026,7 @@ class CinemaPlayerActivity : Activity() {
                             } else {
                                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVol, 0)
                                 applyAudioBoostPercent(targetPercent, showToast = false)
-                                showFeedback("Volume Boost $targetPercent%")
+                                showFeedback("🔊 Volume Boost $targetPercent%")
                             }
                         }
                     }
@@ -2153,7 +2127,7 @@ class CinemaPlayerActivity : Activity() {
         val target = (exo.currentPosition + deltaMs).coerceIn(0L, dur)
         exo.seekTo(target)
         val timeLabel = formatTime(target)
-        showFeedback(if (deltaMs < 0) "-${seekStepSec}s ($timeLabel)" else "+${seekStepSec}s ($timeLabel)")
+        showFeedback(if (deltaMs < 0) "↺ -${seekStepSec}s  ($timeLabel)" else "+${seekStepSec}s ↻  ($timeLabel)")
         updateProgressUi()
         if (hudVisible) scheduleHideHud()
     }
@@ -2162,14 +2136,40 @@ class CinemaPlayerActivity : Activity() {
         resizeIndex = (resizeIndex + 1) % resizeModes.size
         val mode = resizeModes[resizeIndex]
         applyResizeModeToPlayer(mode)
-        aspectBtn.text = "⛶ ${resizeLabels[resizeIndex]}"
+        aspectBtn.text = resizeLabels[resizeIndex]
         showFeedback("Screen Size: ${resizeLabels[resizeIndex]}")
         scheduleHideHud()
     }
 
+    private fun cyclePlaybackSpeed() {
+        speedIndex = (speedIndex + 1) % speeds.size
+        val speed = speeds[speedIndex]
+        player?.setPlaybackSpeed(speed)
+        speedBtn.text = "${speed}x"
+        showFeedback("Speed ${speed}x")
+        scheduleHideHud()
+    }
+
     private fun updateInfoBadge() {
-        infoBadgeView.text = "HW"
-        infoBadgeView.visibility = View.VISIBLE
+        val vf = player?.videoFormat ?: return
+        val resTag = when {
+            vf.height >= 2160 -> "4K"
+            vf.height >= 1440 -> "2K"
+            vf.height >= 1080 -> "1080p"
+            vf.height >= 720 -> "720p"
+            vf.height > 0 -> "${vf.height}p"
+            else -> ""
+        }
+        val hdrTag = when (vf.colorInfo?.colorTransfer) {
+            C.COLOR_TRANSFER_ST2084 -> " • HDR10"
+            C.COLOR_TRANSFER_HLG -> " • HLG"
+            else -> ""
+        }
+        val badge = "$resTag$hdrTag".trim()
+        if (badge.isNotEmpty()) {
+            infoBadgeView.text = badge
+            infoBadgeView.visibility = View.VISIBLE
+        }
     }
 
     private fun updatePlayPauseLabel() {
@@ -2221,13 +2221,13 @@ class CinemaPlayerActivity : Activity() {
             text = label
             isAllCaps = false
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (big) 15f else 12.5f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (big) 15f else 12f)
             typeface = Typeface.DEFAULT_BOLD
             isFocusable = true
             isFocusableInTouchMode = false
             minWidth = 0
             minHeight = 0
-            setPadding(dp(if (big) 14 else 10), dp(if (big) 10 else 6), dp(if (big) 14 else 10), dp(if (big) 10 else 6))
+            setPadding(dp(if (big) 18 else 12), dp(if (big) 11 else 7), dp(if (big) 18 else 12), dp(if (big) 11 else 7))
             background = createFocusablePill()
             setOnClickListener { onClick() }
         }
@@ -2267,6 +2267,7 @@ class CinemaPlayerActivity : Activity() {
     }
 
     private fun enableImmersiveFullscreen() {
+        applyCameraCutoutFullScreen()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
